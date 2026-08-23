@@ -1446,6 +1446,10 @@ export const GoogleDriveExplorer: React.FC<GoogleDriveExplorerProps> = ({
               const isCurrent = crumb.id === currentFolderId;
               const isHovered = hoveredCrumbId === crumb.id && !isCurrent && !!activeDragItem;
               
+              // Check if any file is being dragged in the current selection
+              const isDraggingAnyFile = Array.from(selectedKeys).some(k => String(k).startsWith("file_")) || (activeDragItem && activeDragItem.type === "file");
+              const isDropAllowedOnCrumb = !(crumb.id === null && isDraggingAnyFile);
+              
               // Find all subfolders of this breadcrumb folder to display in popover
               const availableFoldersForCrumb = isHovered
                 ? folders.filter((f) => {
@@ -1491,7 +1495,7 @@ export const GoogleDriveExplorer: React.FC<GoogleDriveExplorerProps> = ({
                       }
                       setHoveredCrumbId(null);
                       setHoveredSubfolderId(null);
-                      if (activeDragItem && !isCurrent) {
+                      if (activeDragItem && !isCurrent && isDropAllowedOnCrumb) {
                         const dragData = e.dataTransfer.getData("application/my-drive-items");
                         if (dragData) {
                           try {
@@ -1513,7 +1517,7 @@ export const GoogleDriveExplorer: React.FC<GoogleDriveExplorerProps> = ({
                           ? "text-slate-900 font-bold bg-slate-100"
                           : "text-slate-600 hover:text-indigo-600 hover:bg-slate-50 cursor-pointer"
                       } ${
-                        isHovered
+                        isHovered && isDropAllowedOnCrumb
                           ? "ring-2 ring-indigo-500 bg-indigo-50 text-indigo-700 font-bold border-indigo-200 shadow-xs"
                           : ""
                       }`}

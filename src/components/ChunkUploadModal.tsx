@@ -51,6 +51,7 @@ interface ChunkUploadModalProps {
 }
 
 const CHUNK_SIZE = 1024 * 1024 * 2; // 2MB chunk for optimal throughput and quick pause/resume
+const MAX_CONCURRENT_UPLOADS = 3; // Support up to 3 files uploading concurrently in parallel
 
 export const ChunkUploadModal: React.FC<ChunkUploadModalProps> = ({
   isOpen,
@@ -70,6 +71,7 @@ export const ChunkUploadModal: React.FC<ChunkUploadModalProps> = ({
   const abortFlagsRef = useRef<Map<string, boolean>>(new Map());
   const completedRecordsRef = useRef<FileItem[]>([]);
   const isRunningRef = useRef<boolean>(false);
+  const startedTasksRef = useRef<Set<string>>(new Set());
 
   // Initialize upload tasks when files are provided
   useEffect(() => {
@@ -95,26 +97,42 @@ export const ChunkUploadModal: React.FC<ChunkUploadModalProps> = ({
     setTasks(initialTasks);
     completedRecordsRef.current = [];
     abortFlagsRef.current.clear();
+    startedTasksRef.current.clear();
     setIsAllPaused(false);
     setViewMode("compact");
   }, [isOpen, files, fileConflictModes]);
 
-  // Queue runner
+  // Parallel Queue runner
   useEffect(() => {
     if (!isOpen || tasks.length === 0) return;
 
-    const runQueue = async () => {
-      if (isRunningRef.current) return;
-      isRunningRef.current = true;
+    const runQueue = () => {
+      // Count currently active/running tasks (uploading or assembling)
+      const activeCount = tasks.filter(
+        (t) => t.status === "uploading" || t.status === "assembling"
+      ).length;
 
-      // Find next pending or active task
-      for (const task of tasks) {
-        if (task.status === "pending" && !abortFlagsRef.current.get(task.id)) {
-          await processUploadTask(task.id);
-        }
-      }
+      if (activeCount >= MAX_CONCURRENT_UPLOADS) return;
 
-      isRunningRef.current = false;
+      // Find pending tasks that have not started processing yet
+      const pendingTasks = tasks.filter(
+        (t) =>
+          t.status === "pending" &&
+          !abortFlagsRef.current.get(t.id) &&
+          !startedTasksRef.current.has(t.id)
+      );
+
+      if (pendingTasks.length === 0) return;
+
+      // Determine how many tasks we can start concurrently
+      const availableSlots = MAX_CONCURRENT_UPLOADS - activeCount;
+      const tasksToStart = pendingTasks.slice(0, availableSlots);
+
+      tasksToStart.forEach((task) => {
+        startedTasksRef.current.add(task.id);
+        // Start processing the upload task in the background (no await)
+        processUploadTask(task.id);
+      });
     };
 
     runQueue();
@@ -311,14 +329,14 @@ export const ChunkUploadModal: React.FC<ChunkUploadModalProps> = ({
 
   const handleResume = (taskId: string) => {
     abortFlagsRef.current.set(taskId, false);
+    startedTasksRef.current.delete(taskId);
     updateTask(taskId, { status: "pending", errorMessage: null });
-    processUploadTask(taskId);
   };
 
   const handleRetry = (taskId: string) => {
     abortFlagsRef.current.set(taskId, false);
+    startedTasksRef.current.delete(taskId);
     updateTask(taskId, { status: "pending", errorMessage: null });
-    processUploadTask(taskId);
   };
 
   const handleCancelTask = async (taskId: string) => {
