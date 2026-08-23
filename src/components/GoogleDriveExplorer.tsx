@@ -23,6 +23,7 @@ import { ChunkUploadModal } from "./ChunkUploadModal.tsx";
 import { FileConflictModal, ConflictResolutionMode, ConflictItem } from "./FileConflictModal.tsx";
 import { VideoThumbnail } from "./VideoThumbnail.tsx";
 import { OperationLoadingModal, OperationType } from "./OperationLoadingModal.tsx";
+import { MoveCopyModal } from "./MoveCopyModal.tsx";
 import {
   Folder as FolderIcon,
   FolderPlus,
@@ -61,6 +62,8 @@ import {
   Check,
   CheckSquare,
   Square,
+  Copy,
+  Move,
 } from "lucide-react";
 
 interface GoogleDriveExplorerProps {
@@ -126,6 +129,7 @@ export const GoogleDriveExplorer: React.FC<GoogleDriveExplorerProps> = ({
 
   // Modals & Drawers
   const [previewFile, setPreviewFile] = useState<FileItem | null>(null);
+  const [showMoveCopyModal, setShowMoveCopyModal] = useState<"move" | "copy" | null>(null);
   const [showCreateFolderModal, setShowCreateFolderModal] = useState(false);
   const [showImportGoogleDriveModal, setShowImportGoogleDriveModal] = useState(false);
   const [showMultiPartZipModal, setShowMultiPartZipModal] = useState(false);
@@ -157,6 +161,17 @@ export const GoogleDriveExplorer: React.FC<GoogleDriveExplorerProps> = ({
   const [detailsItem, setDetailsItem] = useState<
     { type: "folder"; data: Folder } | { type: "file"; data: FileItem } | null
   >(null);
+
+  // Drag and drop states for moving files & folders
+  const [activeDragItem, setActiveDragItem] = useState<{
+    key: string;
+    type: "folder" | "file";
+    id: string;
+  } | null>(null);
+  const [activeDragOverId, setActiveDragOverId] = useState<string | null>(null);
+  const [hoveredCrumbId, setHoveredCrumbId] = useState<string | null>(null);
+  const [hoveredSubfolderId, setHoveredSubfolderId] = useState<string | null>(null);
+  const hoverTimeoutRef = useRef<any>(null);
 
   // Clear selection when navigating to another folder
   useEffect(() => {
@@ -801,13 +816,6 @@ export const GoogleDriveExplorer: React.FC<GoogleDriveExplorerProps> = ({
 
   const handleChunkUploadComplete = () => {
     refreshCurrentView();
-    setShowChunkUploadModal(false);
-    setChunkUploadFiles([]);
-    setChunkUploadConflictModes(undefined);
-    setPendingRawFiles([]);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
   };
 
   // Delete Folder Handler
@@ -1213,11 +1221,171 @@ export const GoogleDriveExplorer: React.FC<GoogleDriveExplorerProps> = ({
     );
   };
 
+  // Internal Drag & Drop handlers for moving files/folders
+  const executeMoveItems = async (targetFolderId: string | null, overrideItems?: { files: string[]; folders: string[] }) => {
+    const filesToMove = overrideItems ? overrideItems.files : selectedFiles.map((f) => f.id);
+    const foldersToMove = overrideItems ? overrideItems.folders : selectedFolders.map((f) => f.id);
+
+    const fileCount = filesToMove.length;
+    const folderCount = foldersToMove.length;
+
+    if (folderCount === 0 && fileCount === 0) return;
+
+    // Prevent dragging a folder into itself or its own descendants
+    if (targetFolderId) {
+      const descendants = new Set<string>();
+      const findDescendants = (id: string) => {
+        folders.forEach((f) => {
+          if (f.parentId === id) {
+            descendants.add(f.id);
+            findDescendants(f.id);
+          }
+        });
+      };
+      
+      for (const folderId of foldersToMove) {
+        if (folderId === targetFolderId) {
+          showAlert({
+            title: "Tindakan Tidak Valid",
+            message: "Tidak dapat memindahkan folder ke dalam dirinya sendiri.",
+            type: "error",
+          });
+          return;
+        }
+        findDescendants(folderId);
+        if (descendants.has(targetFolderId)) {
+          showAlert({
+            title: "Tindakan Tidak Valid",
+            message: "Tidak dapat memindahkan folder ke dalam subfoldernya sendiri.",
+            type: "error",
+          });
+          return;
+        }
+      }
+    }
+
+    let itemDesc = "";
+    if (folderCount > 0 && fileCount > 0) {
+      itemDesc = `${folderCount} folder dan ${fileCount} berkas`;
+    } else if (folderCount > 0) {
+      itemDesc = `${folderCount} folder`;
+    } else {
+      itemDesc = `${fileCount} berkas`;
+    }
+
+    setOperationLoading({
+      isOpen: true,
+      title: "Memindahkan Item",
+      message: itemDesc,
+      type: "sync",
+      subMessage: `Sedang memindahkan ${itemDesc} ke folder tujuan...`,
+    });
+
+    try {
+      // 1. Move Files
+      if (fileCount > 0) {
+        await api.bulkMoveFiles(filesToMove, targetFolderId || "root");
+      }
+
+      // 2. Move Folders
+      if (folderCount > 0) {
+        for (const folderId of foldersToMove) {
+          await api.updateFolder(folderId, { parentId: targetFolderId });
+        }
+      }
+
+      setSelectedKeys(new Set());
+      showToast(`Berhasil memindahkan ${itemDesc}`, "success");
+      refreshCurrentView();
+    } catch (err: any) {
+      showAlert({
+        title: "Gagal Memindahkan Item",
+        message: err.message,
+        type: "error",
+      });
+    } finally {
+      setOperationLoading({ isOpen: false, title: "" });
+    }
+  };
+
+  const handleDragStart = (e: React.DragEvent, key: string, type: "folder" | "file", id: string) => {
+    e.stopPropagation();
+
+    let files: string[] = [];
+    let foldersToMove: string[] = [];
+
+    if (!selectedKeys.has(key)) {
+      setSelectedKeys(new Set([key]));
+      setLastSelectedKey(key);
+      if (type === "file") {
+        files = [id];
+      } else {
+        foldersToMove = [id];
+      }
+    } else {
+      selectedKeys.forEach((k) => {
+        const [kType, kId] = k.split("_");
+        if (kType === "file") {
+          files.push(kId);
+        } else if (kType === "folder") {
+          foldersToMove.push(kId);
+        }
+      });
+    }
+
+    setActiveDragItem({ key, type, id });
+    e.dataTransfer.setData("application/my-drive-items", JSON.stringify({ files, folders: foldersToMove }));
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleDragEnd = (e: React.DragEvent) => {
+    setActiveDragItem(null);
+    setActiveDragOverId(null);
+    setHoveredCrumbId(null);
+  };
+
+  const handleDragOverFolder = (e: React.DragEvent, folderId: string) => {
+    if (activeDragItem) {
+      const isTargetDragged = selectedKeys.has(`folder_${folderId}`);
+      if (!isTargetDragged) {
+        e.preventDefault();
+        e.stopPropagation();
+        setActiveDragOverId(folderId);
+      }
+    }
+  };
+
+  const handleDragLeaveFolder = (e: React.DragEvent) => {
+    setActiveDragOverId(null);
+  };
+
+  const handleDropOnFolder = (e: React.DragEvent, targetFolderId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setActiveDragOverId(null);
+    setHoveredCrumbId(null);
+
+    const dragData = e.dataTransfer.getData("application/my-drive-items");
+    if (dragData) {
+      try {
+        const { files, folders } = JSON.parse(dragData);
+        executeMoveItems(targetFolderId, { files, folders });
+      } catch (err) {
+        console.error("Failed to parse drag data:", err);
+      }
+    }
+  };
+
   // Drag-and-drop to upload files
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    setIsDragOver(true);
+    
+    // Only show file upload overlay if physical files are being dragged from outside,
+    // not when dragging our internal files/folders
+    if (e.dataTransfer.types.includes("Files") && !activeDragItem) {
+      setIsDragOver(true);
+    }
   };
 
   const handleDragLeave = (e: React.DragEvent) => {
@@ -1272,28 +1440,172 @@ export const GoogleDriveExplorer: React.FC<GoogleDriveExplorerProps> = ({
       <div className="sticky top-0 z-20 shadow-xs transition-all" onClick={(e) => e.stopPropagation()}>
         {/* 1. PERMANENT BREADCRUMBS TOOLBAR (Always present and never replaced) */}
         <div className="bg-white/95 backdrop-blur-md border-b border-slate-200/80 px-3 sm:px-6 py-2 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5 text-xs sm:text-sm font-medium overflow-x-auto py-0.5 max-w-full">
+          <div className={`flex items-center gap-1.5 text-xs sm:text-sm font-medium py-0.5 max-w-full ${activeDragItem ? "overflow-visible" : "overflow-x-auto"}`}>
             {breadcrumbs.map((crumb, idx) => {
               const isLast = idx === breadcrumbs.length - 1;
+              const isCurrent = crumb.id === currentFolderId;
+              const isHovered = hoveredCrumbId === crumb.id && !isCurrent && !!activeDragItem;
+              
+              // Find all subfolders of this breadcrumb folder to display in popover
+              const availableFoldersForCrumb = isHovered
+                ? folders.filter((f) => {
+                    const matchesParent = (crumb.id === null)
+                      ? (f.parentId === null || f.parentId === undefined)
+                      : (f.parentId === crumb.id);
+                    // Exclude folders that are currently selected/dragged
+                    const isBeingDragged = selectedKeys.has(`folder_${f.id}`);
+                    return matchesParent && !isBeingDragged;
+                  })
+                : [];
+
               return (
-                <React.Fragment key={crumb.id || "root"}>
-                  {idx > 0 && <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />}
-                  <button
-                    onClick={() => onNavigateFolder(crumb.id)}
-                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg transition-colors shrink-0 ${
-                      isLast
-                        ? "text-slate-900 font-bold bg-slate-100"
-                        : "text-slate-600 hover:text-blue-600 hover:bg-slate-50 cursor-pointer"
-                    }`}
+                <div key={crumb.id || "root"} className="flex items-center">
+                  {idx > 0 && <ChevronRight className="w-4 h-4 text-slate-400 shrink-0 mr-1.5" />}
+                  
+                  <div
+                    className="relative"
+                    onDragOver={(e) => {
+                      if (activeDragItem && !isCurrent) {
+                        e.preventDefault();
+                        if (hoverTimeoutRef.current) {
+                          clearTimeout(hoverTimeoutRef.current);
+                          hoverTimeoutRef.current = null;
+                        }
+                        setHoveredCrumbId(crumb.id);
+                      }
+                    }}
+                    onDragLeave={() => {
+                      if (hoverTimeoutRef.current) {
+                        clearTimeout(hoverTimeoutRef.current);
+                      }
+                      hoverTimeoutRef.current = setTimeout(() => {
+                        setHoveredCrumbId(null);
+                        setHoveredSubfolderId(null);
+                      }, 150);
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      if (hoverTimeoutRef.current) {
+                        clearTimeout(hoverTimeoutRef.current);
+                        hoverTimeoutRef.current = null;
+                      }
+                      setHoveredCrumbId(null);
+                      setHoveredSubfolderId(null);
+                      if (activeDragItem && !isCurrent) {
+                        const dragData = e.dataTransfer.getData("application/my-drive-items");
+                        if (dragData) {
+                          try {
+                            const { files, folders: fids } = JSON.parse(dragData);
+                            executeMoveItems(crumb.id, { files, folders: fids });
+                          } catch (err) {
+                            executeMoveItems(crumb.id);
+                          }
+                        } else {
+                          executeMoveItems(crumb.id);
+                        }
+                      }
+                    }}
                   >
-                    {idx === 0 ? (
-                      <Home className="w-4 h-4 text-blue-600" />
-                    ) : (
-                      <FolderIcon className="w-4 h-4 text-amber-500" />
+                    <button
+                      onClick={() => onNavigateFolder(crumb.id)}
+                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg transition-all shrink-0 select-none ${
+                        isLast
+                          ? "text-slate-900 font-bold bg-slate-100"
+                          : "text-slate-600 hover:text-indigo-600 hover:bg-slate-50 cursor-pointer"
+                      } ${
+                        isHovered
+                          ? "ring-2 ring-indigo-500 bg-indigo-50 text-indigo-700 font-bold border-indigo-200 shadow-xs"
+                          : ""
+                      }`}
+                    >
+                      {idx === 0 ? (
+                        <Home className="w-4 h-4 text-indigo-600" />
+                      ) : (
+                        <FolderIcon className="w-4 h-4 text-amber-500" />
+                      )}
+                      <span>{crumb.name}</span>
+                    </button>
+
+                    {/* Beautiful Dropdown popup positioned directly under the hovered breadcrumb button */}
+                    {isHovered && availableFoldersForCrumb.length > 0 && (
+                      <div
+                        className="absolute top-full left-0 mt-2 z-50 min-w-[240px] max-w-[320px] bg-white border border-slate-200/80 rounded-2xl shadow-xl p-2.5 flex flex-col gap-1.5 text-xs text-slate-700 animate-fadeIn"
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          if (hoverTimeoutRef.current) {
+                            clearTimeout(hoverTimeoutRef.current);
+                            hoverTimeoutRef.current = null;
+                          }
+                        }}
+                        onDragLeave={() => {
+                          if (hoverTimeoutRef.current) {
+                            clearTimeout(hoverTimeoutRef.current);
+                          }
+                          hoverTimeoutRef.current = setTimeout(() => {
+                            setHoveredCrumbId(null);
+                            setHoveredSubfolderId(null);
+                          }, 150);
+                        }}
+                      >
+                        <div className="px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100/80 mb-1 flex items-center justify-between">
+                          <span>Subfolder dari "{crumb.name}"</span>
+                          <span className="bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded text-[9px] font-medium capitalize">Tujuan</span>
+                        </div>
+                        <div className="max-h-[200px] overflow-y-auto flex flex-col gap-0.5 custom-scrollbar">
+                          {availableFoldersForCrumb.map((subFolder) => {
+                            const isSubFolderHovered = hoveredSubfolderId === subFolder.id;
+                            return (
+                              <button
+                                key={subFolder.id}
+                                onDragOver={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setHoveredSubfolderId(subFolder.id);
+                                  if (hoverTimeoutRef.current) {
+                                    clearTimeout(hoverTimeoutRef.current);
+                                    hoverTimeoutRef.current = null;
+                                  }
+                                }}
+                                onDragLeave={() => {
+                                  setHoveredSubfolderId(null);
+                                }}
+                                onDrop={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  if (hoverTimeoutRef.current) {
+                                    clearTimeout(hoverTimeoutRef.current);
+                                    hoverTimeoutRef.current = null;
+                                  }
+                                  setHoveredCrumbId(null);
+                                  setHoveredSubfolderId(null);
+                                  const dragData = e.dataTransfer.getData("application/my-drive-items");
+                                  if (dragData) {
+                                    try {
+                                      const { files, folders: fids } = JSON.parse(dragData);
+                                      executeMoveItems(subFolder.id, { files, folders: fids });
+                                    } catch (err) {
+                                      executeMoveItems(subFolder.id);
+                                    }
+                                  } else {
+                                    executeMoveItems(subFolder.id);
+                                  }
+                                }}
+                                className={`w-full text-left px-2.5 py-2 rounded-xl flex items-center gap-2.5 transition-all cursor-pointer font-semibold border ${
+                                  isSubFolderHovered
+                                    ? "bg-indigo-50 border-indigo-200 text-indigo-900 scale-[1.02] shadow-xs"
+                                    : "border-transparent text-slate-700 hover:bg-slate-50"
+                                }`}
+                              >
+                                <FolderIcon className="w-4 h-4 text-amber-400 shrink-0 fill-amber-300" />
+                                <span className="truncate">{subFolder.name}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
                     )}
-                    <span>{crumb.name}</span>
-                  </button>
-                </React.Fragment>
+                  </div>
+                </div>
               );
             })}
           </div>
@@ -1434,6 +1746,28 @@ export const GoogleDriveExplorer: React.FC<GoogleDriveExplorerProps> = ({
                       )}
                     </>
                   )}
+                </>
+              )}
+
+              {/* Copy and Move Actions for Files */}
+              {selectedFiles.length > 0 && (
+                <>
+                  <button
+                    onClick={() => setShowMoveCopyModal("copy")}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition-all cursor-pointer shadow-xs"
+                    title="Salin berkas terpilih ke folder lain"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>Salin</span>
+                  </button>
+                  <button
+                    onClick={() => setShowMoveCopyModal("move")}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition-all cursor-pointer shadow-xs"
+                    title="Pindahkan berkas terpilih ke folder lain"
+                  >
+                    <Move className="w-3.5 h-3.5" />
+                    <span>Pindahkan</span>
+                  </button>
                 </>
               )}
 
@@ -1777,8 +2111,16 @@ export const GoogleDriveExplorer: React.FC<GoogleDriveExplorerProps> = ({
                               onNavigateFolder(folder.id);
                             }}
                             onContextMenu={(e) => handleContextMenu(e, "folder", folder)}
+                            draggable="true"
+                            onDragStart={(e) => handleDragStart(e, itemKey, "folder", folder.id)}
+                            onDragEnd={handleDragEnd}
+                            onDragOver={(e) => handleDragOverFolder(e, folder.id)}
+                            onDragLeave={handleDragLeaveFolder}
+                            onDrop={(e) => handleDropOnFolder(e, folder.id)}
                             className={`bg-white border rounded-2xl p-4 transition-all duration-200 group relative flex flex-col justify-between cursor-pointer select-none ${
-                              isSelected
+                              activeDragOverId === folder.id
+                                ? "border-indigo-500 ring-2 ring-indigo-500/50 bg-indigo-50/40 shadow-md scale-[1.02]"
+                                : isSelected
                                 ? "border-blue-500 ring-2 ring-blue-500/50 bg-blue-50/40 shadow-md"
                                 : "border-slate-200 hover:border-blue-300 hover:shadow-md"
                             }`}
@@ -1918,6 +2260,9 @@ export const GoogleDriveExplorer: React.FC<GoogleDriveExplorerProps> = ({
                               setPreviewFile(file);
                             }}
                             onContextMenu={(e) => handleContextMenu(e, "file", undefined, file)}
+                            draggable="true"
+                            onDragStart={(e) => handleDragStart(e, itemKey, "file", file.id)}
+                            onDragEnd={handleDragEnd}
                             className={`bg-white border rounded-2xl overflow-hidden transition-all duration-200 group flex flex-col justify-between cursor-pointer select-none relative ${
                               isSelected
                                 ? "border-blue-500 ring-2 ring-blue-500/50 bg-blue-50/30 shadow-md"
@@ -2100,8 +2445,16 @@ export const GoogleDriveExplorer: React.FC<GoogleDriveExplorerProps> = ({
                                     onNavigateFolder(folder.id);
                                   }}
                                   onContextMenu={(e) => handleContextMenu(e, "folder", folder)}
-                                  className={`cursor-pointer transition-colors select-none ${
-                                    isSelected
+                                  draggable="true"
+                                  onDragStart={(e) => handleDragStart(e, itemKey, "folder", folder.id)}
+                                  onDragEnd={handleDragEnd}
+                                  onDragOver={(e) => handleDragOverFolder(e, folder.id)}
+                                  onDragLeave={handleDragLeaveFolder}
+                                  onDrop={(e) => handleDropOnFolder(e, folder.id)}
+                                  className={`cursor-pointer transition-all select-none ${
+                                    activeDragOverId === folder.id
+                                      ? "bg-indigo-50 text-indigo-950 font-bold border-l-4 border-l-indigo-600 shadow-xs"
+                                      : isSelected
                                       ? "bg-blue-50/90 text-blue-900 font-semibold border-l-4 border-l-blue-600"
                                       : "hover:bg-slate-50"
                                   }`}
@@ -2277,6 +2630,9 @@ export const GoogleDriveExplorer: React.FC<GoogleDriveExplorerProps> = ({
                                     setPreviewFile(file);
                                   }}
                                   onContextMenu={(e) => handleContextMenu(e, "file", undefined, file)}
+                                  draggable="true"
+                                  onDragStart={(e) => handleDragStart(e, itemKey, "file", file.id)}
+                                  onDragEnd={handleDragEnd}
                                   className={`cursor-pointer transition-colors select-none ${
                                     isSelected
                                       ? "bg-blue-50/90 text-blue-900 font-semibold border-l-4 border-l-blue-600"
@@ -2558,6 +2914,14 @@ export const GoogleDriveExplorer: React.FC<GoogleDriveExplorerProps> = ({
           link.download = file.originalName;
           link.click();
         }}
+        onCopyFile={(file) => {
+          setSelectedKeys(new Set([`file_${file.id}`]));
+          setShowMoveCopyModal("copy");
+        }}
+        onMoveFile={(file) => {
+          setSelectedKeys(new Set([`file_${file.id}`]));
+          setShowMoveCopyModal("move");
+        }}
         onRenameFile={(file) => setRenameItem({ type: "file", data: file })}
         onOpenInGoogleDrive={(file) => {
           if (file.googleDriveWebViewLink) window.open(file.googleDriveWebViewLink, "_blank");
@@ -2665,8 +3029,23 @@ export const GoogleDriveExplorer: React.FC<GoogleDriveExplorerProps> = ({
             if (fileInputRef.current) {
               fileInputRef.current.value = "";
             }
+            refreshCurrentView();
           }}
           onUploadComplete={handleChunkUploadComplete}
+        />
+      )}
+
+      {/* MOVE & COPY FILES MODAL */}
+      {showMoveCopyModal && (
+        <MoveCopyModal
+          files={selectedFiles}
+          mode={showMoveCopyModal}
+          onClose={() => setShowMoveCopyModal(null)}
+          onSuccess={(msg) => {
+            setSelectedKeys(new Set());
+            showToast(msg, "success");
+            refreshCurrentView();
+          }}
         />
       )}
 

@@ -574,26 +574,6 @@ export const ChunkUploadModal: React.FC<ChunkUploadModalProps> = ({
               </button>
             </div>
           )}
-
-          {/* Compact Footer Action Bar */}
-          <div className="flex items-center justify-between pt-1 border-t border-slate-100 text-xs">
-            <button
-              onClick={() => setViewMode("full")}
-              className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors cursor-pointer py-0.5"
-            >
-              <Maximize2 className="w-3.5 h-3.5" />
-              <span>Lihat Rincian Lengkap ({tasks.length} Berkas)</span>
-            </button>
-
-            {isAllDone && (
-              <button
-                onClick={onClose}
-                className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold text-xs transition-colors cursor-pointer shadow-xs"
-              >
-                Selesai
-              </button>
-            )}
-          </div>
         </div>
       </div>
     );
@@ -859,34 +839,6 @@ export const ChunkUploadModal: React.FC<ChunkUploadModalProps> = ({
               </div>
             );
           })}
-        </div>
-
-        {/* Modal Footer */}
-        <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
-          <div className="text-xs text-slate-500">
-            {isAllDone ? (
-              <span className="text-emerald-700 font-semibold flex items-center gap-1.5">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Seluruh berkas berhasil diunggah dan diverifikasi!
-              </span>
-            ) : (
-              <span>Dukungan otomatis jeda &amp; lanjutkan saat koneksi internet terputus.</span>
-            )}
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setViewMode("compact")}
-              className="px-3.5 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors cursor-pointer"
-            >
-              Mode Kompak
-            </button>
-            <button
-              onClick={onClose}
-              className="px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors cursor-pointer"
-            >
-              {isAllDone ? "Selesai" : "Tutup Jendela"}
-            </button>
-          </div>
         </div>
 
       </div>

@@ -19,6 +19,8 @@ import {
   RefreshCw,
   Eye,
   CheckCircle2,
+  Copy,
+  Move,
 } from "lucide-react";
 
 export interface ContextMenuState {
@@ -43,6 +45,8 @@ interface ContextMenuProps {
   onDeleteFolder?: (folder: Folder) => void;
   onPreviewFile?: (file: FileItem) => void;
   onDownloadFile?: (file: FileItem) => void;
+  onCopyFile?: (file: FileItem) => void;
+  onMoveFile?: (file: FileItem) => void;
   onRenameFile?: (file: FileItem) => void;
   onOpenInGoogleDrive?: (file: FileItem) => void;
   onSyncFile?: (file: FileItem) => void;
@@ -64,6 +68,8 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   onDeleteFolder,
   onPreviewFile,
   onDownloadFile,
+  onCopyFile,
+  onMoveFile,
   onRenameFile,
   onOpenInGoogleDrive,
   onSyncFile,
@@ -250,6 +256,32 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
             <Download className="w-4 h-4 text-blue-600" />
             <span>Unduh Berkas</span>
           </button>
+
+          {onCopyFile && (
+            <button
+              onClick={() => {
+                onCopyFile?.(state.file!);
+                onClose();
+              }}
+              className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl hover:bg-blue-50 hover:text-blue-700 transition-colors text-left font-medium"
+            >
+              <Copy className="w-4 h-4 text-indigo-600" />
+              <span>Salin Berkas</span>
+            </button>
+          )}
+
+          {onMoveFile && (
+            <button
+              onClick={() => {
+                onMoveFile?.(state.file!);
+                onClose();
+              }}
+              className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl hover:bg-blue-50 hover:text-blue-700 transition-colors text-left font-medium"
+            >
+              <Move className="w-4 h-4 text-indigo-600" />
+              <span>Pindahkan Berkas</span>
+            </button>
+          )}
 
           <button
             onClick={() => {

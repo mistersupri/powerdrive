@@ -72,6 +72,8 @@ storageRouter.use(requireAuth);
 storageRouter.post("/files/bulk-delete", StorageController.bulkDeleteFiles);
 storageRouter.post("/files/bulk-restore", StorageController.bulkRestoreFiles);
 storageRouter.post("/files/bulk-sync", StorageController.bulkSyncFiles);
+storageRouter.post("/files/bulk-move", StorageController.bulkMoveFiles);
+storageRouter.post("/files/bulk-copy", StorageController.bulkCopyFiles);
 
 // File management routes
 storageRouter.get("/stats", StorageController.getStorageStats);

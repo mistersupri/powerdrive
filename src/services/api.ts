@@ -376,6 +376,7 @@ export const api = {
       permission?: string;
       targetFolderPath?: string;
       syncToGoogleDrive?: boolean;
+      parentId?: string | null;
     }
   ): Promise<{ folder: Folder }> {
     const res = await fetch(`${BASE_URL}/folders/${id}`, {
@@ -633,6 +634,24 @@ export const api = {
       method: "POST",
       headers: getHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ fileIds }),
+    });
+    return handleResponse(res);
+  },
+
+  async bulkMoveFiles(fileIds: string[], targetFolderId: string): Promise<{ success: boolean; message: string; movedCount: number; failedCount: number; failed: string[] }> {
+    const res = await fetch(`${BASE_URL}/storage/files/bulk-move`, {
+      method: "POST",
+      headers: getHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ fileIds, targetFolderId }),
+    });
+    return handleResponse(res);
+  },
+
+  async bulkCopyFiles(fileIds: string[], targetFolderId: string): Promise<{ success: boolean; message: string; copiedCount: number }> {
+    const res = await fetch(`${BASE_URL}/storage/files/bulk-copy`, {
+      method: "POST",
+      headers: getHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ fileIds, targetFolderId }),
     });
     return handleResponse(res);
   },

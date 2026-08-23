@@ -1498,4 +1498,124 @@ export class StorageController {
       }
     }
   }
+
+  public static async bulkMoveFiles(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const { fileIds, targetFolderId } = req.body;
+      if (!Array.isArray(fileIds) || fileIds.length === 0) {
+        res.status(400).json({
+          success: false,
+          error: "fileIds array is required",
+        });
+        return;
+      }
+      if (!targetFolderId) {
+        res.status(400).json({
+          success: false,
+          error: "targetFolderId is required",
+        });
+        return;
+      }
+
+      const allowedFileIds: string[] = [];
+      const failedFileIds: string[] = [];
+
+      for (const id of fileIds) {
+        const file = await db.file.findUnique({ where: { id } });
+        if (!file) continue;
+
+        if (req.user?.role !== "ADMIN" && file.userId !== req.user?.id) {
+          failedFileIds.push(id);
+          continue;
+        }
+        allowedFileIds.push(id);
+      }
+
+      if (allowedFileIds.length === 0) {
+        res.status(403).json({
+          success: false,
+          error: "Anda tidak memiliki izin untuk memindahkan berkas-berkas ini.",
+          failed: failedFileIds,
+        });
+        return;
+      }
+
+      const moved = await StorageService.bulkMoveFiles({
+        fileIds: allowedFileIds,
+        targetFolderId,
+        user: req.user,
+        ipAddress: req.ip || req.socket.remoteAddress || "127.0.0.1",
+        userAgent: req.headers["user-agent"] || "unknown",
+      });
+
+      res.json({
+        success: true,
+        message: `${moved.length} berkas berhasil dipindahkan.`,
+        movedCount: moved.length,
+        failedCount: failedFileIds.length,
+        failed: failedFileIds,
+      });
+    } catch (err: any) {
+      console.error("[StorageController] bulkMoveFiles error:", err);
+      res.status(500).json({
+        success: false,
+        error: err.message || "Gagal memindahkan berkas.",
+      });
+    }
+  }
+
+  public static async bulkCopyFiles(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const { fileIds, targetFolderId } = req.body;
+      if (!Array.isArray(fileIds) || fileIds.length === 0) {
+        res.status(400).json({
+          success: false,
+          error: "fileIds array is required",
+        });
+        return;
+      }
+      if (!targetFolderId) {
+        res.status(400).json({
+          success: false,
+          error: "targetFolderId is required",
+        });
+        return;
+      }
+
+      const allowedFileIds: string[] = [];
+      for (const id of fileIds) {
+        const file = await db.file.findUnique({ where: { id } });
+        if (!file) continue;
+        allowedFileIds.push(id);
+      }
+
+      if (allowedFileIds.length === 0) {
+        res.status(404).json({
+          success: false,
+          error: "Tidak ada berkas valid yang ditemukan untuk disalin.",
+        });
+        return;
+      }
+
+      const copied = await StorageService.bulkCopyFiles({
+        fileIds: allowedFileIds,
+        targetFolderId,
+        user: req.user,
+        ipAddress: req.ip || req.socket.remoteAddress || "127.0.0.1",
+        userAgent: req.headers["user-agent"] || "unknown",
+      });
+
+      res.json({
+        success: true,
+        message: `${copied.length} berkas berhasil disalin.`,
+        copiedCount: copied.length,
+      });
+    } catch (err: any) {
+      console.error("[StorageController] bulkCopyFiles error:", err);
+      res.status(500).json({
+        success: false,
+        error: err.message || "Gagal menyalin berkas.",
+      });
+    }
+  }
 }

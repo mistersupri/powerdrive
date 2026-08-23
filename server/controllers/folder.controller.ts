@@ -126,7 +126,7 @@ export class FolderController {
   public static async updateFolder(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const { id } = req.params;
-      const { name, description, permission, targetFolderPath, targetPath, targetDriveType, targetDriveId, targetDriveName, googleDriveFolderId, syncToGoogleDrive } = req.body;
+      const { name, description, permission, targetFolderPath, targetPath, targetDriveType, targetDriveId, targetDriveName, googleDriveFolderId, syncToGoogleDrive, parentId } = req.body;
       const ipAddress = req.ip || req.socket.remoteAddress || "127.0.0.1";
       const userAgent = req.headers["user-agent"] || "unknown";
 
@@ -141,6 +141,7 @@ export class FolderController {
         targetDriveName,
         googleDriveFolderId,
         syncToGoogleDrive: syncToGoogleDrive !== undefined ? syncToGoogleDrive === true || syncToGoogleDrive === "true" : undefined,
+        parentId,
         user: req.user,
         ipAddress,
         userAgent,

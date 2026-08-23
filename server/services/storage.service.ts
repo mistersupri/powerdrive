@@ -906,6 +906,218 @@ export class StorageService {
     };
   }
 
+
+  public static async bulkMoveFiles({
+    fileIds,
+    targetFolderId,
+    user,
+    ipAddress,
+    userAgent,
+  }: {
+    fileIds: string[];
+    targetFolderId: string;
+    user?: UserRecord;
+    ipAddress?: string;
+    userAgent?: string;
+  }): Promise<FileRecord[]> {
+    const targetFolder = await db.folder.findUnique({ where: { id: targetFolderId } });
+    if (!targetFolder) {
+      throw new Error(`Target folder with id ${targetFolderId} does not exist`);
+    }
+
+    const movedFiles: FileRecord[] = [];
+    const isSyncEnabled = targetFolder.syncToGoogleDrive !== false || !!targetFolder.googleDriveFolderId;
+    const initialSyncStatus = isSyncEnabled ? SyncStatus.PENDING : SyncStatus.LOCAL_ONLY;
+
+    for (const fileId of fileIds) {
+      const file = await db.file.findUnique({ where: { id: fileId } });
+      if (!file) continue;
+
+      if (file.folderId === targetFolderId) {
+        movedFiles.push(file);
+        continue;
+      }
+
+      let finalName = file.originalName;
+      const existingFile = await db.file.findFirst({
+        where: { folderId: targetFolderId, originalName: file.originalName },
+      });
+      if (existingFile) {
+        finalName = await this.getAvailableFileName(targetFolderId, file.originalName);
+      }
+
+      const updatedFile = await db.file.update({
+        where: { id: fileId },
+        data: {
+          folderId: targetFolderId,
+          originalName: finalName,
+          syncStatus: initialSyncStatus,
+          googleDriveFileId: isSyncEnabled ? null : file.googleDriveFileId,
+          googleDriveFolderId: targetFolder.googleDriveFolderId || null,
+          googleDriveWebViewLink: isSyncEnabled ? null : file.googleDriveWebViewLink,
+          lastError: null,
+          syncedAt: null,
+        },
+      });
+
+      if (isSyncEnabled) {
+        const existingJob = await db.syncJob.findFirst({ where: { fileId } });
+        if (existingJob) {
+          await db.syncJob.update({
+            where: { id: existingJob.id },
+            data: {
+              status: SyncStatus.PENDING,
+              attempts: 0,
+              scheduledAt: new Date(),
+              startedAt: null,
+              completedAt: null,
+              lastError: null,
+            },
+          });
+        } else {
+          await db.syncJob.create({
+            data: {
+              fileId,
+              status: SyncStatus.PENDING,
+              attempts: 0,
+              maxAttempts: 5,
+              scheduledAt: new Date(),
+            },
+          });
+        }
+      } else {
+        const existingJob = await db.syncJob.findFirst({ where: { fileId } });
+        if (existingJob) {
+          await db.syncJob.delete({ where: { id: existingJob.id } });
+        }
+      }
+
+      await AuditService.log({
+        userId: user?.id,
+        action: ActivityAction.FILE_MOVED,
+        resourceType: "FILE",
+        resourceId: file.id,
+        details: {
+          fileName: file.originalName,
+          newFileName: finalName === file.originalName ? undefined : finalName,
+          targetFolderId,
+          targetFolderName: targetFolder.name,
+        },
+        ipAddress,
+        userAgent,
+        result: "SUCCESS",
+      });
+
+      movedFiles.push(updatedFile);
+    }
+
+    return movedFiles;
+  }
+
+  public static async bulkCopyFiles({
+    fileIds,
+    targetFolderId,
+    user,
+    ipAddress,
+    userAgent,
+  }: {
+    fileIds: string[];
+    targetFolderId: string;
+    user?: UserRecord;
+    ipAddress?: string;
+    userAgent?: string;
+  }): Promise<FileRecord[]> {
+    const targetFolder = await db.folder.findUnique({ where: { id: targetFolderId } });
+    if (!targetFolder) {
+      throw new Error(`Target folder with id ${targetFolderId} does not exist`);
+    }
+
+    const copiedFiles: FileRecord[] = [];
+    const isSyncEnabled = targetFolder.syncToGoogleDrive !== false || !!targetFolder.googleDriveFolderId;
+    const initialSyncStatus = isSyncEnabled ? SyncStatus.PENDING : SyncStatus.LOCAL_ONLY;
+
+    for (const fileId of fileIds) {
+      const file = await db.file.findUnique({ where: { id: fileId } });
+      if (!file) continue;
+
+      const srcPath = this.resolveStoragePath(file.storagePath);
+      if (!srcPath || !fs.existsSync(srcPath)) {
+        console.warn(`[StorageService] Source file missing for copy: ${file.storagePath}`);
+        continue;
+      }
+
+      const { absoluteDir, relativeDir } = this.getPartitionedPath();
+      const sanitizedName = file.originalName.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const storedName = `${Date.now()}_${crypto.randomBytes(4).toString("hex")}_${sanitizedName}`;
+      const absoluteFilePath = path.join(absoluteDir, storedName);
+      const relativeFilePath = path.join(relativeDir, storedName);
+
+      fs.copyFileSync(srcPath, absoluteFilePath);
+
+      let finalName = file.originalName;
+      const existingFile = await db.file.findFirst({
+        where: { folderId: targetFolderId, originalName: file.originalName },
+      });
+      if (existingFile) {
+        finalName = await this.getAvailableFileName(targetFolderId, file.originalName);
+      }
+
+      const newFile = await db.file.create({
+        data: {
+          userId: user?.id || "usr_anonymous",
+          folderId: targetFolderId,
+          originalName: finalName,
+          storedName,
+          storagePath: relativeFilePath,
+          mimeType: file.mimeType,
+          size: file.size,
+          checksumSha256: file.checksumSha256,
+          version: 1,
+          versionHistory: [],
+          syncStatus: initialSyncStatus,
+          googleDriveFileId: null,
+          googleDriveFolderId: targetFolder.googleDriveFolderId || null,
+          googleDriveWebViewLink: null,
+          syncAttempts: 0,
+          lastError: null,
+          syncedAt: null,
+        },
+      });
+
+      if (isSyncEnabled) {
+        await db.syncJob.create({
+          data: {
+            fileId: newFile.id,
+            status: SyncStatus.PENDING,
+            attempts: 0,
+            maxAttempts: 5,
+            scheduledAt: new Date(),
+          },
+        });
+      }
+
+      await AuditService.log({
+        userId: user?.id,
+        action: ActivityAction.FILE_COPIED,
+        resourceType: "FILE",
+        resourceId: newFile.id,
+        details: {
+          fileName: file.originalName,
+          copiedFileName: finalName,
+          targetFolderId,
+          targetFolderName: targetFolder.name,
+        },
+        ipAddress,
+        userAgent,
+        result: "SUCCESS",
+      });
+
+      copiedFiles.push(newFile);
+    }
+
+    return copiedFiles;
+  }
+
   public static formatBytes(bytes: number, decimals: number = 2): string {
     if (bytes === 0) return "0 Bytes";
     const k = 1024;

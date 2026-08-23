@@ -211,6 +211,7 @@ export class FolderService {
     targetFolderPath,
     googleDriveFolderId,
     syncToGoogleDrive,
+    parentId,
     user,
     ipAddress,
     userAgent,
@@ -225,6 +226,7 @@ export class FolderService {
     targetDriveName?: string | null;
     googleDriveFolderId?: string;
     syncToGoogleDrive?: boolean;
+    parentId?: string | null;
     user?: UserRecord;
     ipAddress?: string;
     userAgent?: string;
@@ -244,6 +246,13 @@ export class FolderService {
     if (description !== undefined) updatePayload.description = description ? description.trim() : null;
     if (permission) updatePayload.permission = permission;
     if (syncToGoogleDrive !== undefined) updatePayload.syncToGoogleDrive = syncToGoogleDrive;
+
+    if (parentId !== undefined) {
+      if (parentId === id) {
+        throw new Error("Folder tidak dapat dipindahkan ke dalam dirinya sendiri.");
+      }
+      updatePayload.parentId = parentId;
+    }
 
     if (targetFolderPath && targetFolderPath !== existing.targetFolderPath) {
       updatePayload.targetFolderPath = targetFolderPath.trim();
