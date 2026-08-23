@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: centralized-upload-gateway
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - NODE_ENV=production
+      - SESSION_SECRET=${SESSION_SECRET:-your-super-secret-jwt-key-change-in-production}
+      - APP_URL=${APP_URL:-http://localhost:3000}
+      - MAX_FILE_SIZE_MB=${MAX_FILE_SIZE_MB:-200}
+      - STORAGE_DIR=${STORAGE_DIR:-/app/uploads}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+    volumes:
+      # Persist local uploads across container restarts
+      - uploads_data:/app/uploads
+      # Mount external storage if required for mount checking
+      - mnt_data:/mnt
+
+volumes:
+  uploads_data:
+    driver: local
+  mnt_data:
+    driver: local

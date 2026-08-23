@@ -1,0 +1,8 @@
+{
+  "name": "Remix Remix Remix Centralized File Upload \u0026 Google Drive Sync",
+  "description": "Centralized file upload gateway and asynchronous Google Drive synchronization platform with server storage buffer, PostgreSQL tracking, and automatic folder hierarchy management.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

@@ -1,0 +1,196 @@
+# Database Architecture & Schema Specification
+# Centralized File Upload & Google Drive Synchronization Application
+
+## 1. Overview
+The application utilizes **PostgreSQL** as its relational database management system, interfaced via **Prisma ORM**. All database structural modifications are strictly version-controlled through Prisma Migrations.
+
+---
+
+## 2. Prisma Schema Specification
+
+```prisma
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum SyncStatus {
+  PENDING
+  PROCESSING
+  SYNCED
+  FAILED
+  RETRYING
+}
+
+enum DriveType {
+  MY_DRIVE
+  SHARED_DRIVE
+}
+
+enum ActivityAction {
+  LOGIN
+  LOGOUT
+  USER_CREATED
+  USER_UPDATED
+  USER_DELETED
+  GOOGLE_CONNECTED
+  GOOGLE_DISCONNECTED
+  DRIVE_SELECTED
+  FOLDER_CREATED
+  FOLDER_UPDATED
+  FOLDER_DELETED
+  FILE_UPLOAD_STARTED
+  FILE_UPLOAD_COMPLETED
+  SYNC_STARTED
+  SYNC_COMPLETED
+  SYNC_FAILED
+  SYNC_RETRY
+  FILE_DOWNLOADED
+  FILE_DELETED
+}
+
+model User {
+  id           String        @id @default(uuid())
+  email        String        @unique
+  name         String
+  passwordHash String
+  role         Role          @default(USER)
+  isActive     Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  files        File[]
+  activityLogs ActivityLog[]
+
+  @@index([email])
+}
+
+model Folder {
+  id                  String     @id @default(uuid())
+  name                String
+  description         String?
+  targetDriveType     DriveType  @default(MY_DRIVE)
+  targetDriveId       String?    // Nullable for My Drive root, or Shared Drive ID
+  targetDriveName     String?
+  targetFolderPath    String     // e.g. "2026/Pendataan/KJP"
+  googleDriveFolderId String?    // Resolved System-Managed Folder ID
+  lastSyncedAt        DateTime?
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+
+  files               File[]
+
+  @@index([targetFolderPath])
+}
+
+model File {
+  id                  String      @id @default(uuid())
+  userId              String
+  folderId            String
+  originalName        String
+  storedName          String      // Physical filename: e.g. "uuid.bin"
+  storagePath         String      // e.g. "/storage/uploads/2026/08/17/uuid.bin"
+  mimeType            String
+  size                BigInt
+  checksumSha256      String      // For idempotency & duplicate checks
+  googleDriveFileId   String?     // System-Managed Google Drive File ID
+  googleDriveFolderId String?     // System-Managed Destination Folder ID
+  googleDriveWebViewLink String?
+  syncStatus          SyncStatus  @default(PENDING)
+  syncAttempts        Int         @default(0)
+  lastError           String?     @db.Text
+  syncedAt            DateTime?
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+
+  user                User        @relation(fields: [userId], references: [id], onDelete: Restrict)
+  folder              Folder      @relation(fields: [folderId], references: [id], onDelete: Restrict)
+  syncJobs            SyncJob[]
+
+  @@index([userId])
+  @@index([folderId])
+  @@index([syncStatus])
+  @@index([checksumSha256])
+  @@index([googleDriveFileId])
+}
+
+model SyncJob {
+  id           String      @id @default(uuid())
+  fileId       String
+  status       SyncStatus  @default(PENDING)
+  attempts     Int         @default(0)
+  maxAttempts  Int         @default(5)
+  lastError    String?     @db.Text
+  scheduledAt  DateTime    @default(now())
+  startedAt    DateTime?
+  completedAt  DateTime?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  file         File        @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@index([fileId])
+  @@index([status, scheduledAt])
+}
+
+model GoogleDriveConnection {
+  id             String    @id @default(uuid())
+  accountEmail   String
+  accountName    String?
+  accessToken    String    @db.Text
+  refreshToken   String    @db.Text
+  tokenExpiry    DateTime
+  scope          String
+  isConnected    Boolean   @default(true)
+  selectedDriveId String?
+  selectedDriveName String?
+  selectedDriveType DriveType @default(MY_DRIVE)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+}
+
+model ActivityLog {
+  id           String         @id @default(uuid())
+  userId       String?
+  action       ActivityAction
+  resourceType String         // "FILE", "FOLDER", "GOOGLE_AUTH", "USER", "SYNC"
+  resourceId   String?
+  details      Json?
+  ipAddress    String?
+  userAgent    String?
+  result       String         // "SUCCESS" | "FAILURE"
+  errorMessage String?        @db.Text
+  createdAt    DateTime       @default(now())
+
+  user         User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+model SystemSetting {
+  key         String   @id
+  value       String   @db.Text
+  description String?
+  updatedAt   DateTime @updatedAt
+}
+```
+
+---
+
+## 3. Key Relationships & Integrity Constraints
+- `File -> User`: Enforces referential integrity (`onDelete: Restrict`). Users cannot be deleted if active file records exist.
+- `File -> Folder`: Files belong to an application folder (`onDelete: Restrict`).
+- `SyncJob -> File`: Cascades deletion if a file record is expunged.
+- `ActivityLog -> User`: Nullified on user removal to preserve audit history (`onDelete: SetNull`).
+- Indexes are strategically applied on search columns: `syncStatus`, `checksumSha256`, `googleDriveFileId`, and `scheduledAt`.
