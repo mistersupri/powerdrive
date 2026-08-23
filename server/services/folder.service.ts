@@ -502,4 +502,30 @@ export class FolderService {
       result: "SUCCESS",
     });
   }
+
+  /**
+   * Get activity logs & audit history related to a specific folder and its contents
+   */
+  public static async getFolderActivities(folderId: string, limit: number = 50): Promise<any[]> {
+    const folder = await db.folder.findUnique({ where: { id: folderId } });
+    if (!folder) {
+      throw new Error("Folder tidak ditemukan");
+    }
+
+    // Get all file IDs inside this folder (including trashed ones)
+    const files = await db.file.findMany({ where: { folderId }, includeTrashed: true });
+    const fileIds = files.map((f) => f.id);
+
+    const resourceIds = [folderId, ...fileIds];
+
+    // Fetch activity logs for this folder or any file belonging to it
+    const logs = await db.activityLog.findMany({
+      where: {
+        resourceIds,
+      },
+      take: limit,
+    });
+
+    return logs;
+  }
 }

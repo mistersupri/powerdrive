@@ -31,14 +31,12 @@ interface AuthViewProps {
 }
 
 type AuthMode = "login" | "register" | "forgot_password" | "reset_password";
-type LoginMethod = "password" | "google";
 
 export const AuthView: React.FC<AuthViewProps> = ({ onSuccess, onBackToSharedFolder }) => {
   const { login, register, loginWithGoogle, forgotPassword, resetPassword } = useAuth();
 
   // Mode state
   const [mode, setMode] = useState<AuthMode>("login");
-  const [loginMethod, setLoginMethod] = useState<LoginMethod>("password");
 
   // System Auth Configuration (Public)
   const [allowRegistration, setAllowRegistration] = useState<boolean>(true);
@@ -222,7 +220,6 @@ export const AuthView: React.FC<AuthViewProps> = ({ onSuccess, onBackToSharedFol
       setSuccessMessage(`${res.message} Silakan masuk dengan kata sandi baru Anda.`);
       setTimeout(() => {
         setMode("login");
-        setLoginMethod("password");
         setLoginEmail(forgotEmail || "");
         setLoginPassword("");
         setGeneratedResetToken(null);
@@ -310,56 +307,11 @@ export const AuthView: React.FC<AuthViewProps> = ({ onSuccess, onBackToSharedFol
           
           {/* Top Mode Header / Navigation */}
           {mode === "login" && (
-            <div className="mb-6">
-              {/* Login Method Segmented Control */}
-              <div className="grid grid-cols-2 p-1 bg-slate-900/90 rounded-xl border border-slate-700/80 mb-4">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setLoginMethod("password");
-                    clearMessages();
-                  }}
-                  className={`flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                    loginMethod === "password"
-                      ? "bg-blue-600 text-white shadow-sm"
-                      : "text-slate-400 hover:text-slate-200"
-                  }`}
-                >
-                  <KeyRound className="w-3.5 h-3.5" />
-                  <span>Email &amp; Sandi</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setLoginMethod("google");
-                    clearMessages();
-                  }}
-                  className={`flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                    loginMethod === "google"
-                      ? "bg-blue-600 text-white shadow-sm"
-                      : "text-slate-400 hover:text-slate-200"
-                  }`}
-                >
-                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24">
-                    <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z" />
-                    <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z" />
-                    <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z" />
-                    <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z" />
-                  </svg>
-                  <span>Google SSO</span>
-                </button>
-              </div>
-
-              <div className="text-center">
-                <h3 className="text-base font-bold text-slate-100">
-                  {loginMethod === "password" ? "Masuk dengan Email & Kata Sandi" : "Masuk dengan Akun Google"}
-                </h3>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  {loginMethod === "password"
-                    ? "Gunakan akun resmi yang terdaftar di sistem"
-                    : "Autentikasi aman melalui Single Sign-On (SSO) Google"}
-                </p>
-              </div>
+            <div className="mb-6 text-center">
+              <h3 className="text-base font-bold text-slate-100">Masuk ke Akun</h3>
+              <p className="text-xs text-slate-400 mt-1">
+                Akses portal Power Drive melalui Google SSO atau email &amp; kata sandi
+              </p>
             </div>
           )}
 
@@ -415,123 +367,128 @@ export const AuthView: React.FC<AuthViewProps> = ({ onSuccess, onBackToSharedFol
           )}
 
           {/* ========================================================================= */}
-          {/* 1. LOGIN MODE */}
+          {/* 1. LOGIN MODE (UNIFIED SINGLE PAGE) */}
           {/* ========================================================================= */}
           {mode === "login" && (
-            <>
-              {loginMethod === "password" ? (
-                /* Email & Password Form */
-                <form onSubmit={handlePasswordLogin} className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center justify-between">
-                      <span>Alamat Email</span>
-                      <span className="text-[10px] text-slate-500 font-normal">Wajib diisi</span>
-                    </label>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
-                        <Mail className="w-4 h-4" />
-                      </div>
-                      <input
-                        id="input-login-email"
-                        type="email"
-                        required
-                        value={loginEmail}
-                        onChange={(e) => setLoginEmail(e.target.value)}
-                        placeholder="contoh: admin@clouddrive.local"
-                        className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-10 pr-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all"
-                      />
-                    </div>
-                  </div>
+            <div className="space-y-4">
+              {/* Google SSO Button */}
+              <button
+                id="btn-google-login"
+                type="button"
+                onClick={handleGoogleApiLogin}
+                disabled={isSubmitting}
+                className="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-xl bg-white text-slate-900 hover:bg-slate-100 font-semibold text-xs transition-all shadow-md active:scale-[0.99] border border-slate-300 disabled:opacity-60 cursor-pointer"
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+                    <span>Menghubungkan Google SSO...</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                      <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z" />
+                      <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z" />
+                      <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z" />
+                      <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z" />
+                    </svg>
+                    <span>Lanjutkan dengan Akun Google</span>
+                  </>
+                )}
+              </button>
 
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label className="block text-xs font-semibold text-slate-300">
-                        Kata Sandi
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setMode("forgot_password");
-                          clearMessages();
-                          setForgotEmail(loginEmail);
-                        }}
-                        className="text-[11px] text-blue-400 hover:text-blue-300 transition-colors font-medium cursor-pointer"
-                      >
-                        Lupa kata sandi?
-                      </button>
-                    </div>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
-                        <Lock className="w-4 h-4" />
-                      </div>
-                      <input
-                        id="input-login-password"
-                        type={showLoginPassword ? "text" : "password"}
-                        required
-                        value={loginPassword}
-                        onChange={(e) => setLoginPassword(e.target.value)}
-                        placeholder="Masukkan kata sandi akun"
-                        className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-10 pr-10 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowLoginPassword(!showLoginPassword)}
-                        className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-500 hover:text-slate-300 transition-colors cursor-pointer"
-                      >
-                        {showLoginPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                    </div>
-                  </div>
+              {/* Visual Divider */}
+              <div className="relative py-1 flex items-center justify-center">
+                <div className="border-t border-slate-700/80 w-full" />
+                <span className="bg-slate-800/95 px-3 text-[11px] font-medium text-slate-400 uppercase tracking-wider shrink-0">
+                  atau masuk dengan email
+                </span>
+                <div className="border-t border-slate-700/80 w-full" />
+              </div>
 
-                  {/* Submit Button */}
-                  <button
-                    id="btn-login-submit"
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="w-full mt-2 py-2.5 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-blue-500/20 active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
-                  >
-                    {isSubmitting ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        <span>Memverifikasi Akun...</span>
-                      </>
-                    ) : (
-                      <>
-                        <LogIn className="w-4 h-4" />
-                        <span>Masuk ke Akun</span>
-                      </>
-                    )}
-                  </button>
-                </form>
-              ) : (
-                /* Google SSO Button & Flow */
-                <div className="space-y-4">
-                  <button
-                    id="btn-google-login"
-                    type="button"
-                    onClick={handleGoogleApiLogin}
-                    disabled={isSubmitting}
-                    className="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-xl bg-white text-slate-900 hover:bg-slate-100 font-semibold text-xs transition-all shadow-md active:scale-[0.99] border border-slate-300 disabled:opacity-60 cursor-pointer"
-                  >
-                    {isSubmitting ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
-                        <span>Menghubungkan Google SSO...</span>
-                      </>
-                    ) : (
-                      <>
-                        <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
-                          <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z" />
-                          <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z" />
-                          <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z" />
-                          <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z" />
-                        </svg>
-                        <span>Lanjutkan dengan Akun Google</span>
-                      </>
-                    )}
-                  </button>
+              {/* Email & Password Form */}
+              <form onSubmit={handlePasswordLogin} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center justify-between">
+                    <span>Alamat Email</span>
+                    <span className="text-[10px] text-slate-500 font-normal">Wajib diisi</span>
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
+                      <Mail className="w-4 h-4" />
+                    </div>
+                    <input
+                      id="input-login-email"
+                      type="email"
+                      required
+                      value={loginEmail}
+                      onChange={(e) => setLoginEmail(e.target.value)}
+                      placeholder="contoh: admin@clouddrive.local"
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-10 pr-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all"
+                    />
+                  </div>
                 </div>
-              )}
+
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs font-semibold text-slate-300">
+                      Kata Sandi
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMode("forgot_password");
+                        clearMessages();
+                        setForgotEmail(loginEmail);
+                      }}
+                      className="text-[11px] text-blue-400 hover:text-blue-300 transition-colors font-medium cursor-pointer"
+                    >
+                      Lupa kata sandi?
+                    </button>
+                  </div>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
+                      <Lock className="w-4 h-4" />
+                    </div>
+                    <input
+                      id="input-login-password"
+                      type={showLoginPassword ? "text" : "password"}
+                      required
+                      value={loginPassword}
+                      onChange={(e) => setLoginPassword(e.target.value)}
+                      placeholder="Masukkan kata sandi akun"
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-10 pr-10 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowLoginPassword(!showLoginPassword)}
+                      className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-500 hover:text-slate-300 transition-colors cursor-pointer"
+                    >
+                      {showLoginPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Submit Button */}
+                <button
+                  id="btn-login-submit"
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="w-full mt-2 py-2.5 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-blue-500/20 active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Memverifikasi Akun...</span>
+                    </>
+                  ) : (
+                    <>
+                      <LogIn className="w-4 h-4" />
+                      <span>Masuk ke Akun</span>
+                    </>
+                  )}
+                </button>
+              </form>
 
               {/* Registration Link / Status footer */}
               <div className="mt-6 pt-4 border-t border-slate-700/60 text-center text-xs text-slate-400">
@@ -556,7 +513,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onSuccess, onBackToSharedFol
                   </div>
                 )}
               </div>
-            </>
+            </div>
           )}
 
           {/* ========================================================================= */}
@@ -593,8 +550,42 @@ export const AuthView: React.FC<AuthViewProps> = ({ onSuccess, onBackToSharedFol
                   </button>
                 </div>
               ) : (
-                /* Registration Form */
-                <form onSubmit={handleRegister} className="space-y-3.5">
+                /* Registration Form with Google SSO Option */
+                <div className="space-y-4">
+                  <button
+                    id="btn-google-register"
+                    type="button"
+                    onClick={handleGoogleApiLogin}
+                    disabled={isSubmitting}
+                    className="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-xl bg-white text-slate-900 hover:bg-slate-100 font-semibold text-xs transition-all shadow-md active:scale-[0.99] border border-slate-300 disabled:opacity-60 cursor-pointer"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+                        <span>Menghubungkan Google SSO...</span>
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                          <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z" />
+                          <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z" />
+                          <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z" />
+                          <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z" />
+                        </svg>
+                        <span>Daftar Cepat dengan Akun Google</span>
+                      </>
+                    )}
+                  </button>
+
+                  <div className="relative py-1 flex items-center justify-center">
+                    <div className="border-t border-slate-700/80 w-full" />
+                    <span className="bg-slate-800/95 px-3 text-[11px] font-medium text-slate-400 uppercase tracking-wider shrink-0">
+                      atau daftar dengan email
+                    </span>
+                    <div className="border-t border-slate-700/80 w-full" />
+                  </div>
+
+                  <form onSubmit={handleRegister} className="space-y-3.5">
                   <div>
                     <label className="block text-xs font-semibold text-slate-300 mb-1">
                       Nama Lengkap
@@ -715,6 +706,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onSuccess, onBackToSharedFol
                     </button>
                   </div>
                 </form>
+              </div>
               )}
             </div>
           )}

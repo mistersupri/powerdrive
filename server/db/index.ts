@@ -1197,27 +1197,50 @@ class DatabaseService {
       return prisma.activityLog.create({
         data: {
           ...createData,
-          details: data.details as any || undefined,
+          details: (data.details as any) || undefined,
         } as any,
       });
     },
     findMany: async (options?: {
-      where?: { userId?: string; action?: ActivityAction };
+      where?: {
+        userId?: string;
+        action?: ActivityAction;
+        resourceType?: string;
+        resourceId?: string;
+        resourceIds?: string[];
+        folderId?: string;
+      };
       take?: number;
     }) => {
+      const whereClause: any = {};
+
+      if (options?.where?.userId) {
+        whereClause.userId = options.where.userId;
+      }
+      if (options?.where?.action) {
+        whereClause.action = options.where.action as any;
+      }
+      if (options?.where?.resourceType) {
+        whereClause.resourceType = options.where.resourceType;
+      }
+
+      if (options?.where?.resourceIds && Array.isArray(options.where.resourceIds)) {
+        whereClause.resourceId = { in: options.where.resourceIds };
+      } else if (options?.where?.resourceId) {
+        whereClause.resourceId = options.where.resourceId;
+      }
+
       const logs = await prisma.activityLog.findMany({
-        where: {
-          userId: options?.where?.userId,
-          action: options?.where?.action as any,
-        },
+        where: whereClause,
         include: {
           user: true,
         },
         orderBy: {
           createdAt: "desc",
         },
-        take: options?.take,
+        take: options?.take || 100,
       });
+
       return logs.map((log) => ({
         ...log,
         action: log.action as ActivityAction,

@@ -9,6 +9,7 @@ folderRouter.use(authenticate);
 
 // Public / Shared folder verification and read endpoints
 folderRouter.post("/verify-share-token", FolderController.verifyShareToken);
+folderRouter.get("/:id/activities", FolderController.getFolderActivities);
 folderRouter.get("/:id", FolderController.getFolder);
 folderRouter.get("/", FolderController.listFolders);
 

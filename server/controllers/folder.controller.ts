@@ -458,5 +458,26 @@ export class FolderController {
       });
     }
   }
+
+  public static async getFolderActivities(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const { id } = req.params;
+      const limit = parseInt(req.query.limit as string, 10) || 50;
+
+      const activities = await FolderService.getFolderActivities(id, limit);
+
+      res.status(200).json({
+        success: true,
+        data: {
+          activities,
+        },
+      });
+    } catch (error: any) {
+      res.status(500).json({
+        success: false,
+        error: error.message || "Gagal mengambil riwayat aktivitas folder",
+      });
+    }
+  }
 }
 

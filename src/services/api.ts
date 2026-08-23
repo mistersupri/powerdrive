@@ -316,6 +316,13 @@ export const api = {
     return handleResponse(res);
   },
 
+  async getFolderActivities(folderId: string, limit: number = 50): Promise<{ activities: AuditLog[] }> {
+    const res = await fetch(`${BASE_URL}/folders/${encodeURIComponent(folderId)}/activities?limit=${limit}`, {
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
   async listFolders(
     params?:
       | {

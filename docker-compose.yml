@@ -1,32 +1,81 @@
 version: '3.8'
-
+ 
 services:
+  # PostgreSQL Database Service
+  db:
+    image: postgres:16-alpine
+    container_name: clouddrive-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_NAME:-file_upload_db}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-file_upload_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - clouddrive-net
+
+  # Web Application & API Service
   app:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: centralized-upload-gateway
+    container_name: clouddrive-app
     restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
     ports:
-      - "3000:3000"
+      - "${PORT:-3000}:3000"
     environment:
       - PORT=3000
       - NODE_ENV=production
-      - SESSION_SECRET=${SESSION_SECRET:-your-super-secret-jwt-key-change-in-production}
+      # Database connection string pointing to internal PostgreSQL container
+      - DATABASE_URL=postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@db:5432/${DB_NAME:-file_upload_db}?schema=public
       - APP_URL=${APP_URL:-http://localhost:3000}
-      - MAX_FILE_SIZE_MB=${MAX_FILE_SIZE_MB:-200}
-      - STORAGE_DIR=${STORAGE_DIR:-/app/uploads}
+      - SESSION_SECRET=${SESSION_SECRET:-your-super-secret-jwt-key-change-in-production}
+      # Google Cloud OAuth 2.0 Credentials
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      # Gemini AI Model Key
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      # Storage & File Configuration
+      - STORAGE_DIR=${STORAGE_DIR:-/app/uploads}
+      - MAX_FILE_SIZE_MB=${MAX_FILE_SIZE_MB:-200}
+      # Initial Admin Seed Credentials
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@clouddrive.local}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-AdminPassword2026!}
+      # SMTP Mail Server Configuration (Optional)
+      - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_SECURE=${SMTP_SECURE:-false}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASS=${SMTP_PASS:-}
+      - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL:-no-reply@clouddrive.local}
+      - SMTP_FROM_NAME=${SMTP_FROM_NAME:-Power Drive Cloud}
     volumes:
       # Persist local uploads across container restarts
       - uploads_data:/app/uploads
-      # Mount external storage if required for mount checking
+      # Mount external storage partitions (/mnt)
       - mnt_data:/mnt
+    networks:
+      - clouddrive-net
 
 volumes:
+  postgres_data:
+    driver: local
   uploads_data:
     driver: local
   mnt_data:
     driver: local
+
+networks:
+  clouddrive-net:
+    driver: bridge

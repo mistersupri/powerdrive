@@ -1499,8 +1499,8 @@ export const GoogleDriveExplorer: React.FC<GoogleDriveExplorerProps> = ({
                 </button>
               </div>
 
-              {/* Import from Google Drive - directly available for Google accounts without separate setup */}
-              {(user?.authProvider === "GOOGLE" || googleStatus?.isConnected || (user as any)?.isGoogleConnected) && (
+              {/* Import from Google Drive - directly available for Google accounts without separate setup - ONLY SHOW AT ROOT DRIVE */}
+              {currentFolderId === null && (user?.authProvider === "GOOGLE" || googleStatus?.isConnected || (user as any)?.isGoogleConnected) && (
                 <button
                   id="btn-import-gdrive-folder"
                   onClick={() => setShowImportGoogleDriveModal(true)}
