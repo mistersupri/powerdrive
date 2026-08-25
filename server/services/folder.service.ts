@@ -89,6 +89,34 @@ export class FolderService {
   }
 
   /**
+   * Get full breadcrumb trail from root to the specified folder
+   */
+  public static async getFolderBreadcrumbs(
+    folderId: string,
+    user?: UserRecord
+  ): Promise<{ id: string; name: string; parentId: string | null }[]> {
+    const trail: { id: string; name: string; parentId: string | null }[] = [];
+    const visited = new Set<string>();
+    let currentId: string | null = folderId;
+
+    while (currentId && !visited.has(currentId)) {
+      visited.add(currentId);
+      const folder: FolderRecord | null = await db.folder.findUnique({
+        where: { id: currentId },
+      });
+      if (!folder) break;
+      trail.unshift({
+        id: folder.id,
+        name: folder.name,
+        parentId: folder.parentId,
+      });
+      currentId = folder.parentId;
+    }
+
+    return trail;
+  }
+
+  /**
    * Create application folder and auto-provision its Google Drive target path if synced
    */
   public static async createFolder({

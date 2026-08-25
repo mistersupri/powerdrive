@@ -61,7 +61,8 @@ services:
       - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL:-no-reply@clouddrive.local}
       - SMTP_FROM_NAME=${SMTP_FROM_NAME:-Power Drive Cloud}
     volumes:
-      # Persist local uploads across container restarts
+      # Persist local uploads and storage data across container restarts
+      - storage_data:/app/storage
       - uploads_data:/app/uploads
       # Mount external storage partitions (/mnt)
       - mnt_data:/mnt
@@ -70,6 +71,8 @@ services:
 
 volumes:
   postgres_data:
+    driver: local
+  storage_data:
     driver: local
   uploads_data:
     driver: local

@@ -225,6 +225,7 @@ export interface MountDrive {
   createdAt: string;
   updatedAt: string;
   isWritable: boolean;
+  isIndexing?: boolean;
 }
 
 export interface MountFileItem {
@@ -253,7 +254,11 @@ export interface MountBrowseResult {
   subPath: string;
   items: MountFileItem[];
   totalItems: number;
+  page?: number;
+  limit?: number;
+  totalPages?: number;
   breadcrumbs: { name: string; subPath: string }[];
+  isIndexing?: boolean;
 }
 
 export interface ArchivePartManifest {

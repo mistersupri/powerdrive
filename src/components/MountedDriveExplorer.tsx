@@ -62,6 +62,7 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
   const [isCreatingFolder, setIsCreatingFolder] = useState<boolean>(false);
   const [newFolderName, setNewFolderName] = useState<string>("");
   const [isUploading, setIsUploading] = useState<boolean>(false);
+  const [isSyncingMetadata, setIsSyncingMetadata] = useState<boolean>(false);
   const [importingItem, setImportingItem] = useState<MountFileItem | null>(null);
   const [selectedTargetFolderId, setSelectedTargetFolderId] = useState<string>(folders[0]?.id || "");
   const [isImporting, setIsImporting] = useState<boolean>(false);
@@ -252,6 +253,28 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
     }
   };
 
+  // Handle Manual Metadata Sync / Re-index
+  const handleSyncMetadata = async () => {
+    setIsSyncingMetadata(true);
+    try {
+      const res = await api.syncMount(mount.id);
+      showToast(res.message || "Sinkronisasi metadata PostgreSQL dimulai", "info");
+      // Poll briefly and refresh
+      setTimeout(() => {
+        loadDirectory(subPath);
+        onRefreshMounts();
+        setIsSyncingMetadata(false);
+      }, 1500);
+    } catch (err: any) {
+      setIsSyncingMetadata(false);
+      showAlert({
+        title: "Gagal Memulai Sinkronisasi",
+        message: err.message || "Tidak dapat memicu sinkronisasi metadata.",
+        type: "error",
+      });
+    }
+  };
+
   // Convert MountFileItem to FileItem for preview modal
   const handleOpenPreview = (item: MountFileItem) => {
     const viewUrl = api.getMountFileViewUrl(mount.id, item.relativePath);
@@ -369,6 +392,16 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
             >
               <FolderPlus className="w-4 h-4 text-slate-600" />
               <span>Folder Baru</span>
+            </button>
+
+            <button
+              onClick={handleSyncMetadata}
+              disabled={isSyncingMetadata || browseData?.isIndexing}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 active:scale-95 transition-all cursor-pointer"
+              title="Pindai ulang dan sinkronkan struktur direktori /mnt ke database PostgreSQL"
+            >
+              <RefreshCw className={`w-4 h-4 ${isSyncingMetadata || browseData?.isIndexing ? "animate-spin text-emerald-600" : "text-emerald-600"}`} />
+              <span>{isSyncingMetadata || browseData?.isIndexing ? "Mengindeks DB..." : "Sinkronkan DB"}</span>
             </button>
 
             <button

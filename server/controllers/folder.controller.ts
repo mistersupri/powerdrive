@@ -55,14 +55,32 @@ export class FolderController {
         return;
       }
 
+      const breadcrumbs = await FolderService.getFolderBreadcrumbs(id, req.user);
+
       res.status(200).json({
         success: true,
-        data: { folder },
+        data: { folder, breadcrumbs },
       });
     } catch (error: any) {
       res.status(500).json({
         success: false,
         error: error.message || "Failed to retrieve folder",
+      });
+    }
+  }
+
+  public static async getBreadcrumbs(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const { id } = req.params;
+      const breadcrumbs = await FolderService.getFolderBreadcrumbs(id, req.user);
+      res.status(200).json({
+        success: true,
+        data: { breadcrumbs },
+      });
+    } catch (error: any) {
+      res.status(500).json({
+        success: false,
+        error: error.message || "Failed to retrieve folder breadcrumbs",
       });
     }
   }

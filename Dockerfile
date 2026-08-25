@@ -44,7 +44,7 @@ RUN npm install --omit=dev && npx prisma generate
 COPY --from=builder /app/dist ./dist
 
 # Create storage directories and mount targets with full write permissions
-RUN mkdir -p /app/uploads /app/storage/uploads /mnt && chmod -R 777 /app/uploads /app/storage /mnt
+RUN mkdir -p /app/uploads /app/storage/uploads /app/storage/temp_chunks /mnt && chmod -R 777 /app/uploads /app/storage /mnt
 
 # Expose the default application port
 EXPOSE 3000

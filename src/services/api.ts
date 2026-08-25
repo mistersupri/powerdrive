@@ -309,8 +309,15 @@ export const api = {
   },
 
   // --- FOLDERS ---
-  async getFolder(id: string): Promise<{ folder: Folder }> {
-    const res = await fetch(`${BASE_URL}/folders/${id}`, {
+  async getFolder(id: string): Promise<{ folder: Folder; breadcrumbs?: Array<{ id: string; name: string; parentId: string | null }> }> {
+    const res = await fetch(`${BASE_URL}/folders/${encodeURIComponent(id)}`, {
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
+  async getFolderBreadcrumbs(id: string): Promise<{ breadcrumbs: Array<{ id: string; name: string; parentId: string | null }> }> {
+    const res = await fetch(`${BASE_URL}/folders/${encodeURIComponent(id)}/breadcrumbs`, {
       headers: getHeaders(),
     });
     return handleResponse(res);
@@ -338,7 +345,9 @@ export const api = {
     if (typeof params === "string") {
       if (params) query.set("parentId", params);
     } else if (params && typeof params === "object") {
-      if (params.parentId !== undefined && params.parentId !== null) query.set("parentId", params.parentId);
+      if (params.parentId !== undefined) {
+        query.set("parentId", params.parentId === null ? "root" : params.parentId);
+      }
       if (params.page !== undefined) query.set("page", String(params.page));
       if (params.limit !== undefined) query.set("limit", String(params.limit));
       if (params.search) query.set("search", params.search);
@@ -882,10 +891,39 @@ export const api = {
     return handleResponse(res);
   },
 
-  async browseMountDirectory(mountId: string, subPath: string = ""): Promise<MountBrowseResult> {
+  async browseMountDirectory(
+    mountId: string,
+    subPath: string = "",
+    options?: { page?: number; limit?: number; search?: string }
+  ): Promise<MountBrowseResult> {
     const params = new URLSearchParams();
     if (subPath) params.set("subPath", subPath);
+    if (options?.page) params.set("page", String(options.page));
+    if (options?.limit) params.set("limit", String(options.limit));
+    if (options?.search) params.set("search", options.search);
     const res = await fetch(`${BASE_URL}/mounts/${mountId}/browse?${params.toString()}`, {
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
+  async syncMount(mountId: string): Promise<{ message: string }> {
+    const res = await fetch(`${BASE_URL}/mounts/${mountId}/sync`, {
+      method: "POST",
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
+  async getMountSyncStatus(mountId: string): Promise<{
+    isIndexing: boolean;
+    lastIndexedAt: string | null;
+    totalIndexedFiles: number;
+    totalIndexedFolders: number;
+    lastError: string | null;
+    reconciliationCount: number;
+  }> {
+    const res = await fetch(`${BASE_URL}/mounts/${mountId}/sync-status`, {
       headers: getHeaders(),
     });
     return handleResponse(res);

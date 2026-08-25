@@ -101,10 +101,14 @@ model Folder {
   lastSyncedAt        DateTime?
   createdAt           DateTime   @default(now())
   updatedAt           DateTime   @updatedAt
+  storageId           String?    // Associated storage mount ID
 
   files               File[]
 
   @@index([targetFolderPath])
+  @@index([parentId])
+  @@index([storageId])
+  @@index([name])
 }
 
 model File {
@@ -131,6 +135,8 @@ model File {
   syncedAt               DateTime?
   createdAt              DateTime    @default(now())
   updatedAt              DateTime    @updatedAt
+  storageId              String?     // Associated storage mount ID
+  storageKey             String?     // Storage reference key
 
   user                   User        @relation(fields: [userId], references: [id], onDelete: Restrict)
   folder                 Folder      @relation(fields: [folderId], references: [id], onDelete: Restrict)
@@ -141,6 +147,9 @@ model File {
   @@index([syncStatus])
   @@index([checksumSha256])
   @@index([googleDriveFileId])
+  @@index([storageId])
+  @@index([storageKey])
+  @@index([originalName])
 }
 
 model SyncJob {

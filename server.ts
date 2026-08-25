@@ -5,6 +5,8 @@ import { createServer as createViteServer } from "vite";
 import { apiRouter } from "./server/routes/index.ts";
 import { db } from "./server/db/index.ts";
 import { SyncEngineService } from "./server/services/sync-engine.service.ts";
+import { mountIndexerService } from "./server/services/mount-indexer.service.ts";
+import { mountWatcherService } from "./server/services/mount-watcher.service.ts";
 
 const PORT = 3000;
 
@@ -14,6 +16,10 @@ async function startServer() {
 
   // Start background Google Drive sync queue worker
   SyncEngineService.startWorker(5000);
+
+  // Start background Storage Mount Indexer and Filesystem Watcher
+  mountIndexerService.startPeriodicReconciliation(180000);
+  mountWatcherService.startWatcher();
 
   const app = express();
 
