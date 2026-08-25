@@ -32,7 +32,7 @@ import {
   X,
   FileUp,
 } from "lucide-react";
-import { MountDrive, MountFileItem, MountBrowseResult, Folder, FileItem, SyncStatus } from "../types/frontend.ts";
+import { MountDrive, MountFileItem, MountBrowseResult, Folder, FileItem, SyncStatus, IndexerStatus, IndexingState } from "../types/frontend.ts";
 import { api } from "../services/api.ts";
 import { useDialog } from "../context/DialogContext.tsx";
 import { FilePreviewModal } from "./FilePreviewModal.tsx";
@@ -54,6 +54,7 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
   // Navigation state
   const [subPath, setSubPath] = useState<string>("");
   const [browseData, setBrowseData] = useState<MountBrowseResult | null>(null);
+  const [indexerStatus, setIndexerStatus] = useState<IndexerStatus | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
@@ -81,13 +82,16 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Load directory contents
+  // Load directory contents (progressive & instant on-demand)
   const loadDirectory = useCallback(
     async (path: string = "") => {
       setIsLoading(true);
       try {
         const data = await api.browseMountDirectory(mount.id, path);
         setBrowseData(data);
+        if (data.indexingStatus) {
+          setIndexerStatus(data.indexingStatus);
+        }
       } catch (err: any) {
         showAlert({
           title: "Gagal Membaca Direktori",
@@ -106,6 +110,30 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
     setSearchTerm("");
     loadDirectory("");
   }, [mount.id, loadDirectory]);
+
+  // Polling indexer status when background indexing is running
+  useEffect(() => {
+    let timer: NodeJS.Timeout | null = null;
+    const fetchStatus = async () => {
+      try {
+        const status = await api.getMountSyncStatus(mount.id);
+        setIndexerStatus(status);
+        if (status.isIndexing || status.state === "indexing") {
+          timer = setTimeout(fetchStatus, 2500);
+        }
+      } catch {
+        // Silent catch for background polling
+      }
+    };
+
+    if (indexerStatus?.isIndexing || indexerStatus?.state === "indexing" || isSyncingMetadata) {
+      timer = setTimeout(fetchStatus, 2000);
+    }
+
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [mount.id, indexerStatus?.isIndexing, indexerStatus?.state, isSyncingMetadata]);
 
   // Navigate into subfolder
   const handleNavigate = (newSubPath: string) => {
@@ -347,17 +375,46 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-indigo-100 text-indigo-800 border border-indigo-200">
                   {mount.mountPoint}
                 </span>
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                  <CheckCircle2 className="w-3 h-3" />
-                  Sistem Lokal Terpasang
-                </span>
+
+                {/* Real-time Indexing Status Badge */}
+                {(!indexerStatus || indexerStatus.state === "ready" || (!indexerStatus.isIndexing && indexerStatus.state !== "error")) ? (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                    Tersinkronisasi DB
+                  </span>
+                ) : indexerStatus.state === "indexing" || indexerStatus.isIndexing ? (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200 animate-pulse">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600" />
+                    Mengindeks Latar Belakang ({indexerStatus.queueLength || 0} antrean)
+                  </span>
+                ) : indexerStatus.state === "pending" ? (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                    <Clock className="w-3.5 h-3.5 text-amber-600" />
+                    Menunggu Antrean
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                    <AlertCircle className="w-3.5 h-3.5 text-rose-600" />
+                    Perlu Sinkronisasi
+                  </span>
+                )}
               </div>
-              <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-2">
-                <span>{mount.filesCount || 0} berkas</span>
+              <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-2 flex-wrap">
+                <span>{browseData?.totalItems ?? (mount.filesCount || 0)} item dalam direktori</span>
                 <span>•</span>
-                <span>{mount.dirsCount || 0} subfolder</span>
-                <span>•</span>
-                <span>Total: {formatBytes(mount.totalBytes || 0)}</span>
+                <span>Total Kapasitas: {formatBytes(mount.totalBytes || 0)}</span>
+                {indexerStatus?.totalIndexedFolders !== undefined && indexerStatus.totalIndexedFolders > 0 && (
+                  <>
+                    <span>•</span>
+                    <span className="text-indigo-600 font-medium">{indexerStatus.totalIndexedFolders} folder terindeks</span>
+                  </>
+                )}
+                {indexerStatus?.lastIndexedAt && (
+                  <>
+                    <span>•</span>
+                    <span>Pembaruan: {formatDate(indexerStatus.lastIndexedAt)}</span>
+                  </>
+                )}
               </p>
             </div>
           </div>

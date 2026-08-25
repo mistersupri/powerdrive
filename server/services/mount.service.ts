@@ -5,7 +5,7 @@ import crypto from "crypto";
 import { execSync } from "child_process";
 import { db, prisma } from "../db/index.ts";
 import { ActivityAction, FileRecord, SyncStatus } from "../types/index.ts";
-import { mountIndexerService } from "./mount-indexer.service.ts";
+import { mountIndexerService, IndexerStatus, IndexingState } from "./mount-indexer.service.ts";
 
 export interface MountInfo {
   id: string;
@@ -22,6 +22,7 @@ export interface MountInfo {
   updatedAt: string;
   isWritable: boolean;
   isIndexing?: boolean;
+  indexingState?: IndexingState;
 }
 
 export interface MountFileItem {
@@ -195,6 +196,7 @@ export class MountService {
             updatedAt: stat.mtime.toISOString(),
             isWritable,
             isIndexing: indexerStatus.isIndexing,
+            indexingState: indexerStatus.state,
           });
         }
       }
@@ -267,13 +269,17 @@ export class MountService {
     totalPages: number;
     breadcrumbs: { name: string; subPath: string }[];
     isIndexing: boolean;
+    indexingStatus: IndexerStatus;
   }> {
     const targetPath = this.resolveSafePath(mountPoint, subPath);
 
     const mountFolder = this.listMounts().find((m) => m.mountPoint === mountPoint);
     const mountId = mountFolder?.id || "mount-default";
 
-    // Identify current directory folder ID in DB
+    // 1. Perform immediate on-demand indexing of this folder and its direct children
+    await mountIndexerService.indexFolderOnDemand(targetPath, mountPoint, mountId);
+
+    // 2. Identify current directory folder ID in DB
     const currentFolderId =
       subPath === ""
         ? mountId
@@ -430,6 +436,7 @@ export class MountService {
       totalPages,
       breadcrumbs,
       isIndexing: indexerStatus.isIndexing,
+      indexingStatus: indexerStatus,
     };
   }
 

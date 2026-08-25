@@ -7,6 +7,8 @@ import {
   Folder,
   GoogleDriveNode,
   GoogleDriveStatus,
+  IndexerStatus,
+  IndexingState,
   MountBrowseResult,
   MountDrive,
   MountFileItem,
@@ -915,14 +917,7 @@ export const api = {
     return handleResponse(res);
   },
 
-  async getMountSyncStatus(mountId: string): Promise<{
-    isIndexing: boolean;
-    lastIndexedAt: string | null;
-    totalIndexedFiles: number;
-    totalIndexedFolders: number;
-    lastError: string | null;
-    reconciliationCount: number;
-  }> {
+  async getMountSyncStatus(mountId: string): Promise<IndexerStatus> {
     const res = await fetch(`${BASE_URL}/mounts/${mountId}/sync-status`, {
       headers: getHeaders(),
     });

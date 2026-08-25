@@ -401,10 +401,13 @@ export const GoogleDriveLayout: React.FC<GoogleDriveLayoutProps> = ({
                         }`}
                       >
                         <div className="flex items-center gap-2.5 min-w-0">
-                          <div className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 ${
+                          <div className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 relative ${
                             isTabActive ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-500"
                           }`}>
                             <HardDrive className="w-3.5 h-3.5" />
+                            {(mount.isIndexing || mount.indexingState === "indexing") && (
+                              <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-blue-500 rounded-full border-2 border-white animate-pulse" title="Sedang mengindeks latar belakang (On-demand aktif)" />
+                            )}
                           </div>
                           <div className="min-w-0">
                             <div className="truncate text-xs font-bold leading-tight">
@@ -415,13 +418,20 @@ export const GoogleDriveLayout: React.FC<GoogleDriveLayoutProps> = ({
                             </div>
                           </div>
                         </div>
-                        {mount.filesCount !== undefined && (
-                          <span className={`px-1.5 py-0.5 rounded-full text-[10px] shrink-0 ${
-                            isTabActive ? "bg-indigo-200/80 text-indigo-900" : "bg-slate-200/80 text-slate-600"
-                          }`}>
-                            {mount.filesCount}
-                          </span>
-                        )}
+                        <div className="flex items-center gap-1 shrink-0">
+                          {(mount.isIndexing || mount.indexingState === "indexing") && (
+                            <span className="text-[10px] text-blue-600 font-bold px-1.5 py-0.5 rounded-md bg-blue-50">
+                              Index
+                            </span>
+                          )}
+                          {mount.filesCount !== undefined && mount.filesCount > 0 && (
+                            <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${
+                              isTabActive ? "bg-indigo-200/80 text-indigo-900" : "bg-slate-200/80 text-slate-600"
+                            }`}>
+                              {mount.filesCount}
+                            </span>
+                          )}
+                        </div>
                       </button>
                     );
                   })}

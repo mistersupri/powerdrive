@@ -4,24 +4,52 @@ import crypto from "crypto";
 import mime from "mime-types";
 import { prisma } from "../db/index.ts";
 
+export type IndexingState = "pending" | "indexing" | "ready" | "error";
+
 export interface IndexerStatus {
+  state: IndexingState;
   isIndexing: boolean;
   lastIndexedAt: string | null;
   totalIndexedFiles: number;
   totalIndexedFolders: number;
+  currentlyIndexingFolder: string | null;
+  queueLength: number;
   lastError: string | null;
   reconciliationCount: number;
 }
 
+interface IndexTask {
+  folderPath: string;
+  mountPoint: string;
+  mountId: string;
+  priority: number; // 1 = high (user accessed), 2 = background deep scan
+}
+
+interface FolderCacheEntry {
+  lastIndexedAt: number;
+  mtimeMs: number;
+  filesCount: number;
+  subfoldersCount: number;
+}
+
 export class MountIndexerService {
   private baseMountPath: string = "/mnt";
+  private state: IndexingState = "ready";
   private isIndexing: boolean = false;
   private lastIndexedAt: string | null = null;
   private totalIndexedFiles: number = 0;
   private totalIndexedFolders: number = 0;
+  private currentlyIndexingFolder: string | null = null;
   private lastError: string | null = null;
   private reconciliationCount: number = 0;
   private reconciliationTimer: NodeJS.Timeout | null = null;
+
+  // In-memory cache to prevent redundant re-indexing of unchanged folders
+  private folderCache: Map<string, FolderCacheEntry> = new Map();
+  // Queue for progressive background indexing
+  private taskQueue: IndexTask[] = [];
+  private queuedPaths: Set<string> = new Set();
+  private isWorkerRunning: boolean = false;
 
   constructor() {
     this.ensureMountBaseDir();
@@ -37,19 +65,25 @@ export class MountIndexerService {
     }
   }
 
+  /**
+   * Get overall real-time indexing status
+   */
   public getStatus(): IndexerStatus {
     return {
+      state: this.state,
       isIndexing: this.isIndexing,
       lastIndexedAt: this.lastIndexedAt,
       totalIndexedFiles: this.totalIndexedFiles,
       totalIndexedFolders: this.totalIndexedFolders,
+      currentlyIndexingFolder: this.currentlyIndexingFolder,
+      queueLength: this.taskQueue.length,
       lastError: this.lastError,
       reconciliationCount: this.reconciliationCount,
     };
   }
 
   /**
-   * Resolve mount ID from a folder/file system path
+   * Resolve mount ID and mount point from a folder or file system path
    */
   public getMountPointByFullPath(fullPath: string): { mountPoint: string; mountId: string } {
     const normalized = path.resolve(fullPath);
@@ -63,35 +97,336 @@ export class MountIndexerService {
   }
 
   /**
-   * Asynchronously indexes all mounts in the background without blocking API requests
+   * Fast On-Demand Folder Indexing:
+   * Prioritizes indexing the exact folder the user opened and its direct children.
+   * Upserts metadata to PostgreSQL immediately in parallel batches so UI displays items instantly.
+   * Discovered child directories are enqueued for background indexing.
    */
-  public async indexAllMounts(): Promise<void> {
-    if (this.isIndexing) {
-      console.log("[MountIndexer] Indexing already in progress. Skipping concurrent run.");
-      return;
+  public async indexFolderOnDemand(
+    targetPath: string,
+    mountPoint: string,
+    mountId: string
+  ): Promise<{ filesCount: number; foldersCount: number }> {
+    const normalizedTarget = path.resolve(targetPath);
+    const normalizedMount = path.resolve(mountPoint);
+
+    if (!fs.existsSync(normalizedTarget)) {
+      return { filesCount: 0, foldersCount: 0 };
     }
 
-    this.isIndexing = true;
-    this.lastError = null;
-    console.log("[MountIndexer] Starting background indexing of mounted storage...");
-
     try {
-      this.ensureMountBaseDir();
-      if (!fs.existsSync(this.baseMountPath)) {
-        this.isIndexing = false;
-        return;
+      const stat = await fs.promises.stat(normalizedTarget);
+      if (!stat.isDirectory()) {
+        return { filesCount: 0, foldersCount: 0 };
       }
 
-      const entries = fs.readdirSync(this.baseMountPath, { withFileTypes: true });
-      const visitedFolderIds = new Set<string>();
-      const visitedFileIds = new Set<string>();
+      // Check cache: if indexed within 15 seconds and mtime hasn't changed, skip heavy I/O
+      const cached = this.folderCache.get(normalizedTarget);
+      const now = Date.now();
+      if (cached && now - cached.lastIndexedAt < 15000 && cached.mtimeMs === stat.mtimeMs) {
+        return { filesCount: cached.filesCount, foldersCount: cached.subfoldersCount };
+      }
 
-      // Loop subdirectories under /mnt
+      // Index the single directory direct children
+      const result = await this.indexDirectFolderContents(normalizedTarget, normalizedMount, mountId);
+
+      // Cache result
+      this.folderCache.set(normalizedTarget, {
+        lastIndexedAt: now,
+        mtimeMs: stat.mtimeMs,
+        filesCount: result.filesCount,
+        subfoldersCount: result.foldersCount,
+      });
+
+      // Update aggregate metrics
+      this.totalIndexedFiles = Math.max(this.totalIndexedFiles, this.folderCache.size);
+
+      return result;
+    } catch (err: any) {
+      console.warn(`[MountIndexer] Warning during on-demand indexing of ${targetPath}:`, err.message);
+      return { filesCount: 0, foldersCount: 0 };
+    }
+  }
+
+  /**
+   * Directly indexes one directory's immediate files and folders with batch database operations
+   */
+  private async indexDirectFolderContents(
+    targetDir: string,
+    mountPoint: string,
+    mountId: string
+  ): Promise<{ filesCount: number; foldersCount: number }> {
+    const isRoot = targetDir === mountPoint;
+    const currentFolderId = isRoot
+      ? mountId
+      : "folder-" + crypto.createHash("md5").update(targetDir).digest("hex");
+
+    const parentPath = path.dirname(targetDir);
+    const parentId = isRoot
+      ? null
+      : parentPath === mountPoint
+      ? mountId
+      : "folder-" + crypto.createHash("md5").update(parentPath).digest("hex");
+
+    const folderName = path.basename(targetDir) || "Storage Mount";
+
+    // 1. Ensure current folder metadata exists in PostgreSQL
+    await prisma.folder.upsert({
+      where: { id: currentFolderId },
+      update: {
+        name: folderName,
+        targetFolderPath: targetDir,
+        storageId: mountId,
+        parentId,
+      },
+      create: {
+        id: currentFolderId,
+        name: folderName,
+        parentId,
+        targetFolderPath: targetDir,
+        storageId: mountId,
+        ownerId: "usr_admin_001",
+      },
+    });
+
+    // 2. Read direct directory entries
+    const entries = await fs.promises.readdir(targetDir, { withFileTypes: true });
+
+    const dirEntries: fs.Dirent[] = [];
+    const fileEntries: fs.Dirent[] = [];
+
+    for (const entry of entries) {
+      if (entry.name.startsWith(".")) continue; // Skip hidden system files (.DS_Store, etc.)
+      if (entry.isDirectory()) {
+        dirEntries.push(entry);
+      } else if (entry.isFile()) {
+        fileEntries.push(entry);
+      }
+    }
+
+    const childFolderIds = new Set<string>();
+    const childFolderPaths: string[] = [];
+
+    // 3. Process direct subfolders in parallel
+    const subfolderPromises = dirEntries.map(async (entry) => {
+      const fullPath = path.join(targetDir, entry.name);
+      const subFolderId = "folder-" + crypto.createHash("md5").update(fullPath).digest("hex");
+      childFolderIds.add(subFolderId);
+      childFolderPaths.push(fullPath);
+
+      return prisma.folder.upsert({
+        where: { id: subFolderId },
+        update: {
+          name: entry.name,
+          parentId: currentFolderId,
+          targetFolderPath: fullPath,
+          storageId: mountId,
+        },
+        create: {
+          id: subFolderId,
+          name: entry.name,
+          parentId: currentFolderId,
+          targetFolderPath: fullPath,
+          storageId: mountId,
+          ownerId: "usr_admin_001",
+        },
+      });
+    });
+
+    await Promise.all(subfolderPromises);
+
+    // 4. Gather file stats in parallel chunks with bounded concurrency
+    const childFileIds = new Set<string>();
+    const CHUNK_SIZE = 30;
+
+    for (let i = 0; i < fileEntries.length; i += CHUNK_SIZE) {
+      const chunk = fileEntries.slice(i, i + CHUNK_SIZE);
+      const filePromises = chunk.map(async (entry) => {
+        try {
+          const fullPath = path.join(targetDir, entry.name);
+          const stat = await fs.promises.stat(fullPath);
+          const fileId = "file-" + crypto.createHash("md5").update(fullPath).digest("hex");
+          childFileIds.add(fileId);
+
+          const relativePath = path.relative(mountPoint, fullPath).replace(/\\/g, "/");
+          const checksum = crypto
+            .createHash("sha256")
+            .update(fullPath + stat.size + stat.mtime.toISOString())
+            .digest("hex");
+          const mimeType = String(mime.lookup(entry.name) || "application/octet-stream");
+
+          return prisma.file.upsert({
+            where: { id: fileId },
+            update: {
+              originalName: entry.name,
+              storedName: entry.name,
+              storagePath: fullPath,
+              mimeType,
+              size: BigInt(stat.size),
+              checksumSha256: checksum,
+              storageId: mountId,
+              storageKey: relativePath,
+              folderId: currentFolderId,
+              updatedAt: new Date(),
+            },
+            create: {
+              id: fileId,
+              userId: "usr_admin_001",
+              folderId: currentFolderId,
+              originalName: entry.name,
+              storedName: entry.name,
+              storagePath: fullPath,
+              mimeType,
+              size: BigInt(stat.size),
+              checksumSha256: checksum,
+              storageId: mountId,
+              storageKey: relativePath,
+            },
+          });
+        } catch (err: any) {
+          console.warn(`[MountIndexer] Warning statting file ${entry.name}:`, err.message);
+          return null;
+        }
+      });
+
+      await Promise.all(filePromises);
+    }
+
+    // 5. Delta reconciliation for removed direct files / subfolders in this folder
+    try {
+      // Find deleted files in DB for this folder
+      const dbFiles = await prisma.file.findMany({
+        where: { folderId: currentFolderId, storageId: mountId },
+        select: { id: true },
+      });
+      const orphanedFileIds = dbFiles.filter((f) => !childFileIds.has(f.id)).map((f) => f.id);
+      if (orphanedFileIds.length > 0) {
+        await prisma.file.deleteMany({ where: { id: { in: orphanedFileIds } } });
+      }
+
+      // Find deleted subfolders in DB for this folder
+      const dbFolders = await prisma.folder.findMany({
+        where: { parentId: currentFolderId, storageId: mountId },
+        select: { id: true },
+      });
+      const orphanedFolderIds = dbFolders.filter((f) => !childFolderIds.has(f.id)).map((f) => f.id);
+      if (orphanedFolderIds.length > 0) {
+        await prisma.file.deleteMany({ where: { folderId: { in: orphanedFolderIds } } });
+        for (const orphanId of orphanedFolderIds) {
+          await prisma.folder.delete({ where: { id: orphanId } }).catch(() => {});
+        }
+      }
+    } catch (cleanupErr) {
+      console.warn("[MountIndexer] Minor cleanup warning:", cleanupErr);
+    }
+
+    // 6. Enqueue discovered subfolders for progressive background indexing
+    for (const subPath of childFolderPaths) {
+      this.enqueueTask(subPath, mountPoint, mountId, 1);
+    }
+
+    return {
+      filesCount: fileEntries.length,
+      foldersCount: dirEntries.length,
+    };
+  }
+
+  /**
+   * Enqueue a folder for background progressive indexing
+   */
+  public enqueueTask(folderPath: string, mountPoint: string, mountId: string, priority: number = 2): void {
+    const normalized = path.resolve(folderPath);
+    if (this.queuedPaths.has(normalized)) return;
+
+    this.queuedPaths.add(normalized);
+    if (priority === 1) {
+      // High priority: insert at front
+      this.taskQueue.unshift({ folderPath: normalized, mountPoint, mountId, priority });
+    } else {
+      // Normal background priority: insert at back
+      this.taskQueue.push({ folderPath: normalized, mountPoint, mountId, priority });
+    }
+
+    if (this.state !== "indexing") {
+      this.state = "indexing";
+      this.isIndexing = true;
+    }
+
+    this.triggerWorker();
+  }
+
+  /**
+   * Asynchronous background worker loop
+   */
+  private async triggerWorker(): Promise<void> {
+    if (this.isWorkerRunning) return;
+    this.isWorkerRunning = true;
+
+    while (this.taskQueue.length > 0) {
+      const task = this.taskQueue.shift();
+      if (!task) break;
+
+      this.queuedPaths.delete(task.folderPath);
+      this.currentlyIndexingFolder = task.folderPath;
+      this.state = "indexing";
+      this.isIndexing = true;
+
+      try {
+        if (fs.existsSync(task.folderPath)) {
+          const stat = await fs.promises.stat(task.folderPath);
+          if (stat.isDirectory()) {
+            await this.indexDirectFolderContents(task.folderPath, task.mountPoint, task.mountId);
+            this.totalIndexedFolders++;
+          }
+        }
+      } catch (err: any) {
+        console.warn(`[MountIndexer] Background indexing error on ${task.folderPath}:`, err.message);
+        this.lastError = err.message;
+      }
+
+      // Cooperative delay to yield event loop and keep CPU/IO ultra-responsive
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+
+    this.currentlyIndexingFolder = null;
+    this.isWorkerRunning = false;
+    this.isIndexing = false;
+    this.state = this.lastError ? "ready" : "ready";
+    this.lastIndexedAt = new Date().toISOString();
+  }
+
+  /**
+   * Trigger initial or manual background scan for a single mount
+   */
+  public async indexSingleMount(mountPoint: string, mountId: string): Promise<void> {
+    this.state = "indexing";
+    this.isIndexing = true;
+    this.lastError = null;
+
+    console.log(`[MountIndexer] Queuing progressive background scan for mount ${mountPoint}...`);
+    // Immediately index root folder on-demand so root files show up right away
+    await this.indexFolderOnDemand(mountPoint, mountPoint, mountId);
+  }
+
+  /**
+   * Trigger scan for all mounts under /mnt
+   */
+  public async indexAllMounts(): Promise<void> {
+    this.ensureMountBaseDir();
+    if (!fs.existsSync(this.baseMountPath)) return;
+
+    this.state = "indexing";
+    this.isIndexing = true;
+    this.lastError = null;
+
+    try {
+      const entries = await fs.promises.readdir(this.baseMountPath, { withFileTypes: true });
       for (const entry of entries) {
         if (entry.isDirectory()) {
           const mountPath = path.join(this.baseMountPath, entry.name);
           const mountId = "mount-" + Buffer.from(entry.name).toString("hex").substring(0, 16);
-          await this.indexSingleMount(mountPath, mountId, visitedFolderIds, visitedFileIds);
+          // On-demand index root of this mount point
+          await this.indexFolderOnDemand(mountPath, mountPath, mountId);
         }
       }
 
@@ -99,226 +434,28 @@ export class MountIndexerService {
       const directFiles = entries.filter((e) => !e.isDirectory());
       if (directFiles.length > 0) {
         const rootMountId = "mnt-root";
-        await this.indexSingleMount(this.baseMountPath, rootMountId, visitedFolderIds, visitedFileIds);
+        await this.indexFolderOnDemand(this.baseMountPath, this.baseMountPath, rootMountId);
       }
-
-      const filesCount = visitedFileIds.size;
-      const foldersCount = visitedFolderIds.size;
-
-      this.totalIndexedFiles = filesCount;
-      this.totalIndexedFolders = foldersCount;
-      this.lastIndexedAt = new Date().toISOString();
-
-      // Run reconciliation to remove deleted files from PostgreSQL metadata
-      await this.reconcileDatabase(visitedFolderIds, visitedFileIds);
-
-      console.log(
-        `[MountIndexer] Indexing complete. Indexed ${foldersCount} folders and ${filesCount} files into PostgreSQL.`
-      );
     } catch (err: any) {
-      console.error("[MountIndexer] Error during background mount indexing:", err);
-      this.lastError = err.message || "Unknown indexing error";
-    } finally {
-      this.isIndexing = false;
+      console.error("[MountIndexer] Error during initial indexing loop:", err);
+      this.lastError = err.message;
     }
   }
 
   /**
-   * Recursively scan a specific mount point and upsert metadata to PostgreSQL
-   */
-  public async indexSingleMount(
-    mountPoint: string,
-    mountId: string,
-    visitedFolderIds: Set<string> = new Set(),
-    visitedFileIds: Set<string> = new Set()
-  ): Promise<void> {
-    const mountName = path.basename(mountPoint) || "Storage Mount";
-
-    // Ensure root folder entry for this mount in DB
-    await prisma.folder.upsert({
-      where: { id: mountId },
-      update: {
-        name: mountName,
-        targetFolderPath: mountPoint,
-        storageId: mountId,
-      },
-      create: {
-        id: mountId,
-        name: mountName,
-        parentId: null,
-        targetFolderPath: mountPoint,
-        storageId: mountId,
-        ownerId: "usr_admin_001",
-      },
-    });
-    visitedFolderIds.add(mountId);
-
-    // Recursively scan subdirectories and files
-    await this.recursiveScan(mountPoint, mountPoint, mountId, visitedFolderIds, visitedFileIds);
-  }
-
-  private async recursiveScan(
-    currentDir: string,
-    mountPoint: string,
-    mountId: string,
-    visitedFolderIds: Set<string>,
-    visitedFileIds: Set<string>
-  ): Promise<void> {
-    try {
-      if (!fs.existsSync(currentDir)) return;
-      const entries = await fs.promises.readdir(currentDir, { withFileTypes: true });
-
-      for (const entry of entries) {
-        // Ignore hidden system dotfiles (.DS_Store, .git, etc.)
-        if (entry.name.startsWith(".")) continue;
-
-        const fullPath = path.join(currentDir, entry.name);
-        const md5 = crypto.createHash("md5").update(fullPath).digest("hex");
-
-        const parentPath = path.dirname(fullPath);
-        const parentId =
-          parentPath === path.resolve(mountPoint)
-            ? mountId
-            : "folder-" + crypto.createHash("md5").update(parentPath).digest("hex");
-
-        if (entry.isDirectory()) {
-          const folderId = "folder-" + md5;
-          await prisma.folder.upsert({
-            where: { id: folderId },
-            update: {
-              name: entry.name,
-              parentId,
-              targetFolderPath: fullPath,
-              storageId: mountId,
-            },
-            create: {
-              id: folderId,
-              name: entry.name,
-              parentId,
-              targetFolderPath: fullPath,
-              storageId: mountId,
-              ownerId: "usr_admin_001",
-            },
-          });
-          visitedFolderIds.add(folderId);
-
-          // Recurse into subfolder
-          await this.recursiveScan(fullPath, mountPoint, mountId, visitedFolderIds, visitedFileIds);
-        } else if (entry.isFile()) {
-          const fileId = "file-" + md5;
-          const stat = await fs.promises.stat(fullPath);
-          const size = stat.size;
-          const mtime = stat.mtime.toISOString();
-          const relativePath = path.relative(mountPoint, fullPath).replace(/\\/g, "/");
-          const checksum = crypto.createHash("sha256").update(fullPath + size + mtime).digest("hex");
-
-          await prisma.file.upsert({
-            where: { id: fileId },
-            update: {
-              originalName: entry.name,
-              storedName: entry.name,
-              storagePath: fullPath,
-              mimeType: String(mime.lookup(entry.name) || "application/octet-stream"),
-              size: BigInt(size),
-              checksumSha256: checksum,
-              storageId: mountId,
-              storageKey: relativePath,
-            },
-            create: {
-              id: fileId,
-              userId: "usr_admin_001",
-              folderId: parentId,
-              originalName: entry.name,
-              storedName: entry.name,
-              storagePath: fullPath,
-              mimeType: String(mime.lookup(entry.name) || "application/octet-stream"),
-              size: BigInt(size),
-              checksumSha256: checksum,
-              storageId: mountId,
-              storageKey: relativePath,
-            },
-          });
-          visitedFileIds.add(fileId);
-        }
-      }
-    } catch (err) {
-      console.warn(`[MountIndexer] Warning scanning directory ${currentDir}:`, err);
-    }
-  }
-
-  /**
-   * Periodic reconciliation: removes orphaned DB records if files or folders were deleted from disk
-   */
-  private async reconcileDatabase(visitedFolderIds: Set<string>, visitedFileIds: Set<string>): Promise<void> {
-    try {
-      this.reconciliationCount++;
-
-      // 1. Remove orphaned files
-      const orphanedFiles = await prisma.file.findMany({
-        where: {
-          storageId: { not: null },
-          id: { notIn: Array.from(visitedFileIds) },
-        },
-        select: { id: true },
-      });
-
-      if (orphanedFiles.length > 0) {
-        const ids = orphanedFiles.map((f) => f.id);
-        console.log(`[MountIndexer] Removing ${ids.length} orphaned files from PostgreSQL metadata...`);
-        await prisma.file.deleteMany({
-          where: { id: { in: ids } },
-        });
-      }
-
-      // 2. Remove orphaned folders
-      const orphanedFolders = await prisma.folder.findMany({
-        where: {
-          storageId: { not: null },
-          id: { notIn: Array.from(visitedFolderIds) },
-        },
-        select: { id: true, parentId: true },
-      });
-
-      if (orphanedFolders.length > 0) {
-        console.log(`[MountIndexer] Removing ${orphanedFolders.length} orphaned folders from PostgreSQL metadata...`);
-        let remaining = [...orphanedFolders];
-        let loopLimit = 10;
-        while (remaining.length > 0 && loopLimit > 0) {
-          const parentIds = new Set(remaining.map((f) => f.parentId).filter(Boolean));
-          const leafFolders = remaining.filter((f) => !parentIds.has(f.id));
-          if (leafFolders.length === 0) {
-            for (const f of remaining) {
-              await prisma.folder.delete({ where: { id: f.id } }).catch(() => {});
-            }
-            break;
-          }
-          for (const f of leafFolders) {
-            await prisma.folder.delete({ where: { id: f.id } }).catch(() => {});
-          }
-          remaining = remaining.filter((f) => !leafFolders.some((lf) => lf.id === f.id));
-          loopLimit--;
-        }
-      }
-    } catch (err) {
-      console.warn("[MountIndexer] Warning during database reconciliation:", err);
-    }
-  }
-
-  /**
-   * Starts automatic periodic reconciliation job in the background (default: every 3 minutes)
+   * Periodic reconciliation job in background
    */
   public startPeriodicReconciliation(intervalMs: number = 180000): void {
-    if (this.reconciliationTimer) {
-      return;
-    }
+    if (this.reconciliationTimer) return;
 
     console.log(`[MountIndexer] Periodic reconciliation scheduled every ${Math.round(intervalMs / 1000)}s.`);
-    // Trigger first indexing run after 3 seconds startup delay
+
+    // Quick initial indexing run after 2 seconds
     setTimeout(() => {
       this.indexAllMounts().catch((err) => {
         console.error("[MountIndexer] Initial background index failed:", err);
       });
-    }, 3000);
+    }, 2000);
 
     this.reconciliationTimer = setInterval(() => {
       this.indexAllMounts().catch((err) => {

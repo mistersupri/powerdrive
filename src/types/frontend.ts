@@ -211,6 +211,20 @@ export interface SelfTestResult {
   sync: { success: boolean; details: Record<string, unknown> };
 }
 
+export type IndexingState = "pending" | "indexing" | "ready" | "error";
+
+export interface IndexerStatus {
+  state: IndexingState;
+  isIndexing: boolean;
+  lastIndexedAt: string | null;
+  totalIndexedFiles: number;
+  totalIndexedFolders: number;
+  currentlyIndexingFolder: string | null;
+  queueLength: number;
+  lastError: string | null;
+  reconciliationCount: number;
+}
+
 export interface MountDrive {
   id: string;
   name: string;
@@ -226,6 +240,7 @@ export interface MountDrive {
   updatedAt: string;
   isWritable: boolean;
   isIndexing?: boolean;
+  indexingState?: IndexingState;
 }
 
 export interface MountFileItem {
@@ -259,6 +274,7 @@ export interface MountBrowseResult {
   totalPages?: number;
   breadcrumbs: { name: string; subPath: string }[];
   isIndexing?: boolean;
+  indexingStatus?: IndexerStatus;
 }
 
 export interface ArchivePartManifest {
