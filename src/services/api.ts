@@ -478,14 +478,26 @@ export const api = {
   // --- STORAGE & FILES ---
   async checkConflicts(
     folderId: string,
-    fileNames: string[]
+    fileNames: string[],
+    timeoutMs: number = 3000
   ): Promise<{ conflicts: Array<{ fileName: string; existingFile: FileItem }> }> {
-    const res = await fetch(`${BASE_URL}/storage/conflicts/check`, {
-      method: "POST",
-      headers: getHeaders({ "Content-Type": "application/json" }),
-      body: JSON.stringify({ folderId, fileNames }),
-    });
-    return handleResponse(res);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const res = await fetch(`${BASE_URL}/storage/conflicts/check`, {
+        method: "POST",
+        headers: getHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ folderId, fileNames }),
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      return await handleResponse(res);
+    } catch (err) {
+      clearTimeout(timer);
+      console.warn("[checkConflicts] Timeout or request aborted, skipping pre-check:", err);
+      return { conflicts: [] };
+    }
   },
 
   async uploadFiles(
