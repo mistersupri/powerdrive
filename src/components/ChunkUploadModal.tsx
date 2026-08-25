@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState } from "react";
 import {
   UploadCloud,
   Pause,
@@ -22,378 +22,63 @@ import {
   Minimize2,
   ChevronUp,
 } from "lucide-react";
-import { FileItem } from "../types/frontend.ts";
-import { api } from "../services/api.ts";
-
-export interface UploadTask {
-  id: string;
-  file: globalThis.File;
-  uploadId: string | null;
-  status: "pending" | "uploading" | "paused" | "error" | "assembling" | "completed" | "cancelled";
-  bytesSent: number;
-  totalBytes: number;
-  currentChunkIndex: number;
-  totalChunks: number;
-  speedBytesPerSec: number;
-  etaSeconds: number;
-  errorMessage: string | null;
-  completedRecord?: FileItem;
-}
+import { useTransfer, UploadTask } from "../context/TransferContext.tsx";
 
 interface ChunkUploadModalProps {
-  isOpen: boolean;
-  targetFolderId: string;
-  targetFolderName: string;
-  files: globalThis.File[];
+  isOpen?: boolean;
+  targetFolderId?: string;
+  targetFolderName?: string;
+  files?: globalThis.File[];
   fileConflictModes?: Map<string, "create_version" | "overwrite" | "rename" | "skip">;
-  onClose: () => void;
-  onUploadComplete: (completedFiles: FileItem[]) => void;
+  onClose?: () => void;
+  onUploadComplete?: (completedFiles: any[]) => void;
 }
 
-const CHUNK_SIZE = 1024 * 1024 * 2; // 2MB chunk for optimal throughput and quick pause/resume
-const MAX_CONCURRENT_UPLOADS = 3; // Support up to 3 files uploading concurrently in parallel
+export const ChunkUploadModal: React.FC<ChunkUploadModalProps> = () => {
+  const {
+    chunkSession,
+    setChunkSessionViewMode,
+    closeChunkSession,
+    pauseChunkTask,
+    resumeChunkTask,
+    retryChunkTask,
+    cancelChunkTask,
+    pauseAllChunkTasks,
+    resumeAllChunkTasks,
+    retryAllFailedChunkTasks,
+  } = useTransfer();
 
-export const ChunkUploadModal: React.FC<ChunkUploadModalProps> = ({
-  isOpen,
-  targetFolderId,
-  targetFolderName,
-  files,
-  fileConflictModes,
-  onClose,
-  onUploadComplete,
-}) => {
-  const [viewMode, setViewMode] = useState<"compact" | "full">("compact");
-  const [tasks, setTasks] = useState<UploadTask[]>([]);
-  const [isAllPaused, setIsAllPaused] = useState<boolean>(false);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
 
-  // References to keep track of active upload loops and cancellation flags
-  const abortFlagsRef = useRef<Map<string, boolean>>(new Map());
-  const completedRecordsRef = useRef<FileItem[]>([]);
-  const isRunningRef = useRef<boolean>(false);
-  const startedTasksRef = useRef<Set<string>>(new Set());
+  if (!chunkSession || !chunkSession.isOpen || chunkSession.tasks.length === 0) {
+    return null;
+  }
 
-  // Initialize upload tasks when files are provided
-  useEffect(() => {
-    if (!isOpen || files.length === 0) return;
+  const { viewMode, targetFolderName, tasks, isAllPaused } = chunkSession;
 
-    const initialTasks: UploadTask[] = files.map((file, index) => {
-      const mode = fileConflictModes?.get(file.name);
-      return {
-        id: `task_${Date.now()}_${index}_${file.name}`,
-        file,
-        uploadId: null,
-        status: mode === "skip" ? "completed" : "pending",
-        bytesSent: mode === "skip" ? file.size : 0,
-        totalBytes: file.size,
-        currentChunkIndex: 0,
-        totalChunks: Math.ceil(file.size / CHUNK_SIZE) || 1,
-        speedBytesPerSec: 0,
-        etaSeconds: 0,
-        errorMessage: null,
-      };
-    });
-
-    setTasks(initialTasks);
-    completedRecordsRef.current = [];
-    abortFlagsRef.current.clear();
-    startedTasksRef.current.clear();
-    setIsAllPaused(false);
-    setViewMode("compact");
-  }, [isOpen, files, fileConflictModes]);
-
-  // Parallel Queue runner
-  useEffect(() => {
-    if (!isOpen || tasks.length === 0) return;
-
-    const runQueue = () => {
-      // Count currently active/running tasks (uploading or assembling)
-      const activeCount = tasks.filter(
-        (t) => t.status === "uploading" || t.status === "assembling"
-      ).length;
-
-      if (activeCount >= MAX_CONCURRENT_UPLOADS) return;
-
-      // Find pending tasks that have not started processing yet
-      const pendingTasks = tasks.filter(
-        (t) =>
-          t.status === "pending" &&
-          !abortFlagsRef.current.get(t.id) &&
-          !startedTasksRef.current.has(t.id)
-      );
-
-      if (pendingTasks.length === 0) return;
-
-      // Determine how many tasks we can start concurrently
-      const availableSlots = MAX_CONCURRENT_UPLOADS - activeCount;
-      const tasksToStart = pendingTasks.slice(0, availableSlots);
-
-      tasksToStart.forEach((task) => {
-        startedTasksRef.current.add(task.id);
-        // Start processing the upload task in the background (no await)
-        processUploadTask(task.id);
-      });
-    };
-
-    runQueue();
-  }, [isOpen, tasks]);
-
-  const processUploadTask = async (taskId: string) => {
-    let currentTask = tasks.find((t) => t.id === taskId);
-    if (!currentTask) return;
-
-    const file = currentTask.file;
-    const conflictMode = fileConflictModes?.get(file.name) || "create_version";
-
-    if (conflictMode === "skip") {
-      updateTask(taskId, { status: "completed", bytesSent: file.size });
-      return;
-    }
-
-    const totalChunks = Math.ceil(file.size / CHUNK_SIZE) || 1;
-    let uploadId = currentTask.uploadId;
-    let uploadedChunks = new Set<number>();
-
-    // 1. Initialize upload session if not initialized
-    if (!uploadId) {
-      updateTask(taskId, { status: "uploading", errorMessage: null });
-      try {
-        const initRes = await api.initChunkUpload({
-          fileName: file.name,
-          fileSize: file.size,
-          mimeType: file.type || "application/octet-stream",
-          folderId: targetFolderId,
-          chunkSize: CHUNK_SIZE,
-          totalChunks,
-          conflictMode,
-        });
-        uploadId = initRes.uploadId;
-        uploadedChunks = new Set(initRes.uploadedChunks || []);
-        updateTask(taskId, { uploadId });
-      } catch (err: any) {
-        updateTask(taskId, {
-          status: "error",
-          errorMessage: err.message || "Gagal menginisialisasi sesi unggah",
-        });
-        return;
-      }
-    } else {
-      // Check server for existing chunks (in case of resume)
-      try {
-        const statusRes = await api.getChunkUploadStatus(uploadId);
-        uploadedChunks = new Set(statusRes.uploadedChunks || []);
-      } catch {
-        // If session was lost, restart init
-        try {
-          const initRes = await api.initChunkUpload({
-            fileName: file.name,
-            fileSize: file.size,
-            mimeType: file.type || "application/octet-stream",
-            folderId: targetFolderId,
-            chunkSize: CHUNK_SIZE,
-            totalChunks,
-            conflictMode,
-          });
-          uploadId = initRes.uploadId;
-          uploadedChunks = new Set(initRes.uploadedChunks || []);
-          updateTask(taskId, { uploadId });
-        } catch (err: any) {
-          updateTask(taskId, {
-            status: "error",
-            errorMessage: err.message || "Gagal memperbarui status chunk",
-          });
-          return;
-        }
-      }
-    }
-
-    updateTask(taskId, { status: "uploading", errorMessage: null });
-
-    let lastTime = Date.now();
-    let lastBytesSent = Array.from(uploadedChunks).reduce((acc, idx) => {
-      const start = idx * CHUNK_SIZE;
-      const end = Math.min(start + CHUNK_SIZE, file.size);
-      return acc + (end - start);
-    }, 0);
-
-    // 2. Upload chunks sequentially
-    for (let chunkIdx = 0; chunkIdx < totalChunks; chunkIdx++) {
-      // Check if paused or cancelled
-      if (abortFlagsRef.current.get(taskId)) {
-        updateTask(taskId, { status: "paused", speedBytesPerSec: 0, etaSeconds: 0 });
-        return;
-      }
-
-      // Skip already uploaded chunk
-      if (uploadedChunks.has(chunkIdx)) {
-        continue;
-      }
-
-      const start = chunkIdx * CHUNK_SIZE;
-      const end = Math.min(start + CHUNK_SIZE, file.size);
-      const chunkBlob = file.slice(start, end);
-
-      try {
-        let chunkLoadedBytes = 0;
-        await api.uploadSingleChunk(
-          uploadId,
-          chunkIdx,
-          chunkBlob,
-          (loaded) => {
-            if (abortFlagsRef.current.get(taskId)) return;
-            chunkLoadedBytes = loaded;
-            const currentTotalSent = lastBytesSent + chunkLoadedBytes;
-            const now = Date.now();
-            const timeDiff = (now - lastTime) / 1000;
-            let speed = 0;
-            let eta = 0;
-            if (timeDiff > 0.4) {
-              speed = chunkLoadedBytes / timeDiff;
-              const remainingBytes = file.size - currentTotalSent;
-              eta = speed > 0 ? Math.ceil(remainingBytes / speed) : 0;
-            }
-
-            updateTask(taskId, {
-              bytesSent: Math.min(currentTotalSent, file.size),
-              currentChunkIndex: chunkIdx + 1,
-              speedBytesPerSec: speed,
-              etaSeconds: eta,
-            });
-          }
-        );
-
-        uploadedChunks.add(chunkIdx);
-        lastBytesSent += (end - start);
-        lastTime = Date.now();
-
-        updateTask(taskId, {
-          bytesSent: lastBytesSent,
-          currentChunkIndex: chunkIdx + 1,
-        });
-      } catch (err: any) {
-        if (abortFlagsRef.current.get(taskId)) {
-          updateTask(taskId, { status: "paused" });
-          return;
-        }
-        updateTask(taskId, {
-          status: "error",
-          errorMessage: err.message || `Gagal mengirim bagian ${chunkIdx + 1}/${totalChunks}. Tekan Lanjutkan untuk mencoba lagi.`,
-          speedBytesPerSec: 0,
-          etaSeconds: 0,
-        });
-        return;
-      }
-    }
-
-    // 3. Assemble and complete file
-    if (abortFlagsRef.current.get(taskId)) {
-      updateTask(taskId, { status: "paused" });
-      return;
-    }
-
-    updateTask(taskId, {
-      status: "assembling",
-      bytesSent: file.size,
-      speedBytesPerSec: 0,
-      etaSeconds: 0,
-    });
-
-    try {
-      const completeRes = await api.completeChunkUpload(uploadId);
-      completedRecordsRef.current.push(completeRes.file);
-      updateTask(taskId, {
-        status: "completed",
-        completedRecord: completeRes.file,
-        bytesSent: file.size,
-      });
-
-      onUploadComplete(completedRecordsRef.current);
-    } catch (err: any) {
-      updateTask(taskId, {
-        status: "error",
-        errorMessage: err.message || "Gagal menggabungkan berkas",
-      });
-    }
-  };
-
-  const updateTask = (taskId: string, patch: Partial<UploadTask>) => {
-    setTasks((prev) =>
-      prev.map((t) => (t.id === taskId ? { ...t, ...patch } : t))
-    );
-  };
-
-  const handlePause = (taskId: string) => {
-    abortFlagsRef.current.set(taskId, true);
-    updateTask(taskId, { status: "paused", speedBytesPerSec: 0, etaSeconds: 0 });
-  };
-
-  const handleResume = (taskId: string) => {
-    abortFlagsRef.current.set(taskId, false);
-    startedTasksRef.current.delete(taskId);
-    updateTask(taskId, { status: "pending", errorMessage: null });
-  };
-
-  const handleRetry = (taskId: string) => {
-    abortFlagsRef.current.set(taskId, false);
-    startedTasksRef.current.delete(taskId);
-    updateTask(taskId, { status: "pending", errorMessage: null });
-  };
-
-  const handleCancelTask = async (taskId: string) => {
-    abortFlagsRef.current.set(taskId, true);
-    const task = tasks.find((t) => t.id === taskId);
-    if (task?.uploadId) {
-      try {
-        await api.cancelChunkUpload(task.uploadId);
-      } catch (e) {
-        console.warn("Error cancelling session:", e);
-      }
-    }
-    setTasks((prev) => prev.filter((t) => t.id !== taskId));
-  };
-
-  const handlePauseAll = () => {
-    setIsAllPaused(true);
-    tasks.forEach((t) => {
-      if (t.status === "uploading" || t.status === "pending") {
-        handlePause(t.id);
-      }
-    });
-  };
-
-  const handleResumeAll = () => {
-    setIsAllPaused(false);
-    tasks.forEach((t) => {
-      if (t.status === "paused" || t.status === "error") {
-        handleResume(t.id);
-      }
-    });
-  };
-
-  const handleRetryAllFailed = () => {
-    tasks.forEach((t) => {
-      if (t.status === "error" || t.status === "cancelled") {
-        handleRetry(t.id);
-      }
-    });
-  };
-
-  if (!isOpen) return null;
-
-  // Aggregate stats
+  // Aggregate statistics
   const totalBatchBytes = tasks.reduce((acc, t) => acc + t.totalBytes, 0);
   const totalBatchSent = tasks.reduce((acc, t) => acc + t.bytesSent, 0);
-  const overallPercentage = totalBatchBytes > 0 ? Math.min(100, (totalBatchSent / totalBatchBytes) * 100) : 0;
-  const activeSpeed = tasks.reduce((acc, t) => acc + (t.status === "uploading" ? t.speedBytesPerSec : 0), 0);
+  const overallPercentage =
+    totalBatchBytes > 0 ? Math.min(100, (totalBatchSent / totalBatchBytes) * 100) : 0;
+  const activeSpeed = tasks.reduce(
+    (acc, t) => acc + (t.status === "uploading" ? t.speedBytesPerSec : 0),
+    0
+  );
   const completedCount = tasks.filter((t) => t.status === "completed").length;
   const errorCount = tasks.filter((t) => t.status === "error").length;
   const isAllDone = tasks.length > 0 && completedCount === tasks.length;
-  const currentActiveTask = tasks.find((t) => t.status === "uploading" || t.status === "assembling") || tasks.find((t) => t.status === "pending") || tasks[0];
+  const currentActiveTask =
+    tasks.find((t) => t.status === "uploading" || t.status === "assembling") ||
+    tasks.find((t) => t.status === "pending") ||
+    tasks[0];
 
   const formatFileSize = (bytes: number) => {
+    if (!bytes || bytes === 0) return "0 B";
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
   };
 
   const formatSpeed = (bytesPerSec: number) => {
@@ -413,16 +98,21 @@ export const ChunkUploadModal: React.FC<ChunkUploadModalProps> = ({
   const getFileIcon = (fileName: string) => {
     const ext = fileName.split(".").pop()?.toLowerCase();
     if (ext === "pdf") return <FileText className="w-4 h-4 sm:w-5 sm:h-5 text-rose-500 shrink-0" />;
-    if (["xls", "xlsx", "csv"].includes(ext || "")) return <FileSpreadsheet className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-500 shrink-0" />;
-    if (["jpg", "jpeg", "png", "webp", "svg"].includes(ext || "")) return <Image className="w-4 h-4 sm:w-5 sm:h-5 text-purple-500 shrink-0" />;
-    if (["zip", "rar", "7z", "tar", "gz"].includes(ext || "")) return <Archive className="w-4 h-4 sm:w-5 sm:h-5 text-amber-500 shrink-0" />;
-    if (["mp4", "mkv", "avi", "mov"].includes(ext || "")) return <Film className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-500 shrink-0" />;
-    if (["mp3", "wav"].includes(ext || "")) return <Music className="w-4 h-4 sm:w-5 sm:h-5 text-pink-500 shrink-0" />;
+    if (["xls", "xlsx", "csv"].includes(ext || ""))
+      return <FileSpreadsheet className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-500 shrink-0" />;
+    if (["jpg", "jpeg", "png", "webp", "svg"].includes(ext || ""))
+      return <Image className="w-4 h-4 sm:w-5 sm:h-5 text-purple-500 shrink-0" />;
+    if (["zip", "rar", "7z", "tar", "gz"].includes(ext || ""))
+      return <Archive className="w-4 h-4 sm:w-5 sm:h-5 text-amber-500 shrink-0" />;
+    if (["mp4", "mkv", "avi", "mov"].includes(ext || ""))
+      return <Film className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-500 shrink-0" />;
+    if (["mp3", "wav"].includes(ext || ""))
+      return <Music className="w-4 h-4 sm:w-5 sm:h-5 text-pink-500 shrink-0" />;
     return <FileIcon className="w-4 h-4 sm:w-5 sm:h-5 text-slate-400 shrink-0" />;
   };
 
   // ==========================================
-  // 1. COMPACT PROGRESS DIALOG (Default)
+  // 1. COMPACT PROGRESS DIALOG (Floating Dock - Resilient to Navigation)
   // Desktop: bottom-right (md:bottom-4 md:right-4)
   // Mobile: bottom above nav bar (bottom-16 left-3 right-3)
   // ==========================================
@@ -449,35 +139,36 @@ export const ChunkUploadModal: React.FC<ChunkUploadModalProps> = ({
                 </span>
               </h4>
               <p className="text-[10px] text-slate-400 truncate">
-                Folder: {targetFolderName} • {completedCount}/{tasks.length} selesai
+                Folder: <span className="text-slate-200 font-medium">{targetFolderName}</span>
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 shrink-0">
-            {/* Detail Button to switch to Full Dialog */}
+          <div className="flex items-center gap-1 shrink-0">
+            {/* Expand to Full Detail Modal Button */}
             <button
-              onClick={() => setViewMode("full")}
-              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-medium border border-slate-700 transition-colors cursor-pointer"
-              title="Buka dialog penuh dengan rincian lengkap per bagian berkas"
+              onClick={() => setChunkSessionViewMode("full")}
+              className="px-2.5 py-1 text-[11px] font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+              title="Buka rincian lengkap chunk upload"
             >
-              <Maximize2 className="w-3.5 h-3.5 text-indigo-400" />
-              <span className="font-semibold">Detail</span>
+              <Maximize2 className="w-3 h-3" />
+              <span className="hidden sm:inline">Rincian</span>
             </button>
 
+            {/* Quick Pause/Resume All */}
             {!isAllDone && (
               isAllPaused ? (
                 <button
-                  onClick={handleResumeAll}
-                  className="p-1 text-slate-300 hover:text-emerald-400 rounded transition-colors cursor-pointer"
+                  onClick={resumeAllChunkTasks}
+                  className="p-1 text-emerald-400 hover:text-emerald-300 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
                   title="Lanjutkan Semua"
                 >
                   <Play className="w-3.5 h-3.5 fill-current" />
                 </button>
               ) : (
                 <button
-                  onClick={handlePauseAll}
-                  className="p-1 text-slate-300 hover:text-amber-400 rounded transition-colors cursor-pointer"
+                  onClick={pauseAllChunkTasks}
+                  className="p-1 text-amber-400 hover:text-amber-300 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
                   title="Jeda Semua"
                 >
                   <Pause className="w-3.5 h-3.5 fill-current" />
@@ -485,20 +176,20 @@ export const ChunkUploadModal: React.FC<ChunkUploadModalProps> = ({
               )
             )}
 
+            {/* Close or dismiss */}
             <button
-              onClick={onClose}
-              className="p-1 text-slate-400 hover:text-white rounded transition-colors cursor-pointer"
-              title="Tutup Jendela"
+              onClick={closeChunkSession}
+              className="p-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+              title={isAllDone ? "Tutup" : "Sembunyikan / Batal"}
             >
               <X className="w-4 h-4" />
             </button>
           </div>
         </div>
 
-        {/* Compact Body */}
-        <div className="p-3.5 space-y-3 bg-white">
-          {/* Real-time Aggregate Progress Bar */}
-          <div className="space-y-1.5">
+        {/* Compact Progress Bar */}
+        <div className="p-3 bg-white space-y-2">
+          <div className="space-y-1">
             <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
               <div
                 className={`h-full transition-all duration-300 rounded-full ${
@@ -506,87 +197,86 @@ export const ChunkUploadModal: React.FC<ChunkUploadModalProps> = ({
                     ? "bg-emerald-500"
                     : isAllPaused
                     ? "bg-amber-400"
-                    : "bg-indigo-600 bg-[linear-gradient(45deg,rgba(255,255,255,0.2)_25%,transparent_25%,transparent_50%,rgba(255,255,255,0.2)_50%,rgba(255,255,255,0.2)_75%,transparent_75%,transparent)] bg-[length:1rem_1rem] animate-[move-bg_1s_linear_infinite]"
+                    : errorCount > 0
+                    ? "bg-rose-500"
+                    : "bg-indigo-600"
                 }`}
                 style={{ width: `${overallPercentage}%` }}
               />
             </div>
 
-            <div className="flex items-center justify-between text-[11px] text-slate-500 font-mono">
-              <span>
-                {formatFileSize(totalBatchSent)} / {formatFileSize(totalBatchBytes)} ({overallPercentage.toFixed(1)}%)
+            <div className="flex items-center justify-between text-[10px] text-slate-500 font-mono">
+              <span className="truncate">
+                {formatFileSize(totalBatchSent)} / {formatFileSize(totalBatchBytes)}
               </span>
-              <span>
-                {activeSpeed > 0 ? (
-                  `${formatSpeed(activeSpeed)} • sisa ${formatEta(currentActiveTask?.etaSeconds || 0)}`
-                ) : isAllDone ? (
-                  "100% Selesai"
-                ) : (
-                  "Resumable Chunk"
+              <div className="flex items-center gap-2 shrink-0">
+                {!isAllDone && activeSpeed > 0 && (
+                  <span className="text-indigo-600 font-semibold">{formatSpeed(activeSpeed)}</span>
                 )}
-              </span>
+                <span>
+                  {completedCount}/{tasks.length} selesai
+                </span>
+              </div>
             </div>
           </div>
 
-          {/* Current Active File Preview */}
-          {currentActiveTask && (
-            <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 min-w-0 flex-1">
+          {/* Currently Uploading File Line */}
+          {currentActiveTask && !isAllDone && (
+            <div className="flex items-center justify-between gap-2 p-2 bg-slate-50 rounded-xl text-[11px] border border-slate-100">
+              <div className="flex items-center gap-2 min-w-0">
                 {getFileIcon(currentActiveTask.file.name)}
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-semibold text-slate-800 truncate" title={currentActiveTask.file.name}>
+                <div className="min-w-0">
+                  <p className="font-semibold text-slate-800 truncate" title={currentActiveTask.file.name}>
                     {currentActiveTask.file.name}
                   </p>
-                  <p className="text-[10px] text-slate-400 font-mono truncate">
-                    {currentActiveTask.status === "completed"
-                      ? "Unggahan berhasil diverifikasi"
-                      : currentActiveTask.status === "assembling"
-                      ? "Menyusun potongan berkas..."
-                      : `Bagian ${currentActiveTask.currentChunkIndex}/${currentActiveTask.totalChunks} chunk • ${formatFileSize(currentActiveTask.bytesSent)} / ${formatFileSize(currentActiveTask.totalBytes)}`}
+                  <p className="text-[10px] text-slate-400">
+                    Chunk {currentActiveTask.currentChunkIndex}/{currentActiveTask.totalChunks}
+                    {currentActiveTask.etaSeconds > 0 && ` • Sisa ${formatEta(currentActiveTask.etaSeconds)}`}
                   </p>
                 </div>
               </div>
 
-              <div className="shrink-0">
-                {currentActiveTask.status === "completed" ? (
-                  <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                    <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Selesai
-                  </span>
-                ) : currentActiveTask.status === "uploading" ? (
-                  <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-200 animate-pulse">
-                    <Zap className="w-3 h-3 text-indigo-600" /> Mengunggah
-                  </span>
-                ) : currentActiveTask.status === "assembling" ? (
-                  <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
-                    Menyusun
-                  </span>
-                ) : currentActiveTask.status === "paused" ? (
-                  <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
-                    Dijeda
-                  </span>
-                ) : currentActiveTask.status === "error" ? (
-                  <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200">
-                    Galat
-                  </span>
-                ) : (
-                  <span className="text-[10px] text-slate-500 font-semibold bg-slate-100 px-2 py-0.5 rounded-full">
-                    Antrean
-                  </span>
+              <div className="flex items-center gap-1 shrink-0">
+                {currentActiveTask.status === "uploading" && (
+                  <button
+                    onClick={() => pauseChunkTask(currentActiveTask.id)}
+                    className="p-1 text-slate-400 hover:text-amber-600 rounded transition-colors cursor-pointer"
+                    title="Jeda berkas ini"
+                  >
+                    <Pause className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                {currentActiveTask.status === "paused" && (
+                  <button
+                    onClick={() => resumeChunkTask(currentActiveTask.id)}
+                    className="p-1 text-slate-400 hover:text-emerald-600 rounded transition-colors cursor-pointer"
+                    title="Lanjutkan berkas ini"
+                  >
+                    <Play className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                {currentActiveTask.status === "error" && (
+                  <button
+                    onClick={() => retryChunkTask(currentActiveTask.id)}
+                    className="p-1 text-slate-400 hover:text-indigo-600 rounded transition-colors cursor-pointer"
+                    title="Coba lagi berkas ini"
+                  >
+                    <RotateCw className="w-3.5 h-3.5" />
+                  </button>
                 )}
               </div>
             </div>
           )}
 
-          {/* Error Notice in Compact View */}
           {errorCount > 0 && (
-            <div className="p-2 rounded-xl bg-rose-50 border border-rose-200 flex items-center justify-between text-xs text-rose-700">
-              <div className="flex items-center gap-1.5 truncate">
-                <AlertCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
-                <span className="truncate">{errorCount} berkas gagal diunggah</span>
-              </div>
+            <div className="flex items-center justify-between text-[11px] text-rose-600 bg-rose-50 px-2.5 py-1.5 rounded-lg border border-rose-200">
+              <span className="flex items-center gap-1 font-medium">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                {errorCount} berkas gagal diunggah
+              </span>
               <button
-                onClick={handleRetryAllFailed}
-                className="px-2 py-1 rounded bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-bold shrink-0 transition-colors cursor-pointer"
+                onClick={retryAllFailedChunkTasks}
+                className="text-xs font-bold underline hover:text-rose-800 cursor-pointer"
               >
                 Coba Lagi
               </button>
@@ -598,13 +288,11 @@ export const ChunkUploadModal: React.FC<ChunkUploadModalProps> = ({
   }
 
   // ==========================================
-  // 2. FULL PROGRESS DIALOG (When Detail is opened)
-  // Replaces the compact dialog with the comprehensive full view
+  // 2. FULL PROGRESS DIALOG (Modal View)
   // ==========================================
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn">
       <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh] animate-scaleUp">
-        
         {/* Modal Header */}
         <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
           <div className="flex items-center gap-3 min-w-0">
@@ -613,7 +301,7 @@ export const ChunkUploadModal: React.FC<ChunkUploadModalProps> = ({
             </div>
             <div className="min-w-0">
               <h3 className="text-sm font-bold text-slate-900 tracking-tight truncate">
-                Pengunggahan Berkas Chunk Resumable
+                Pengunggahan Berkas Resumable (Chunked)
               </h3>
               <p className="text-xs text-slate-500 truncate">
                 Target Folder: <strong className="text-slate-700">{targetFolderName}</strong>
@@ -624,9 +312,9 @@ export const ChunkUploadModal: React.FC<ChunkUploadModalProps> = ({
           <div className="flex items-center gap-2 shrink-0">
             {/* Button to minimize back to compact mode */}
             <button
-              onClick={() => setViewMode("compact")}
+              onClick={() => setChunkSessionViewMode("compact")}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors cursor-pointer"
-              title="Kecilkan ke mode compact di pojok kanan bawah"
+              title="Kecilkan ke mode floating dock di pojok kanan bawah"
             >
               <Minimize2 className="w-3.5 h-3.5 text-slate-600" />
               <span>Kecilkan</span>
@@ -634,7 +322,7 @@ export const ChunkUploadModal: React.FC<ChunkUploadModalProps> = ({
 
             {errorCount > 0 && (
               <button
-                onClick={handleRetryAllFailed}
+                onClick={retryAllFailedChunkTasks}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-colors cursor-pointer"
                 title="Coba lagi semua berkas yang gagal"
               >
@@ -646,7 +334,7 @@ export const ChunkUploadModal: React.FC<ChunkUploadModalProps> = ({
             {!isAllDone && (
               isAllPaused ? (
                 <button
-                  onClick={handleResumeAll}
+                  onClick={resumeAllChunkTasks}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition-colors cursor-pointer"
                 >
                   <Play className="w-3.5 h-3.5 fill-current" />
@@ -654,7 +342,7 @@ export const ChunkUploadModal: React.FC<ChunkUploadModalProps> = ({
                 </button>
               ) : (
                 <button
-                  onClick={handlePauseAll}
+                  onClick={pauseAllChunkTasks}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg transition-colors cursor-pointer"
                 >
                   <Pause className="w-3.5 h-3.5 fill-current" />
@@ -664,7 +352,7 @@ export const ChunkUploadModal: React.FC<ChunkUploadModalProps> = ({
             )}
 
             <button
-              onClick={onClose}
+              onClick={closeChunkSession}
               className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded-lg transition-colors cursor-pointer"
               title="Tutup Jendela"
             >
@@ -713,7 +401,7 @@ export const ChunkUploadModal: React.FC<ChunkUploadModalProps> = ({
           <div className="mt-2 flex items-center justify-between text-[11px] text-slate-400">
             <span className="flex items-center gap-1">
               <Layers className="w-3 h-3 text-slate-400" />
-              Potongan chunk 2MB otomatis dengan integritas SHA-256
+              Potongan chunk 2MB otomatis dengan integritas data SHA-256
             </span>
             <span>
               {completedCount} dari {tasks.length} berkas selesai
@@ -814,7 +502,7 @@ export const ChunkUploadModal: React.FC<ChunkUploadModalProps> = ({
                   <div className="flex items-center gap-1">
                     {task.status === "uploading" && (
                       <button
-                        onClick={() => handlePause(task.id)}
+                        onClick={() => pauseChunkTask(task.id)}
                         className="p-1.5 text-slate-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
                         title="Jeda Pengunggahan"
                       >
@@ -824,7 +512,7 @@ export const ChunkUploadModal: React.FC<ChunkUploadModalProps> = ({
 
                     {task.status === "paused" && (
                       <button
-                        onClick={() => handleResume(task.id)}
+                        onClick={() => resumeChunkTask(task.id)}
                         className="p-1.5 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
                         title="Lanjutkan Pengunggahan"
                       >
@@ -834,7 +522,7 @@ export const ChunkUploadModal: React.FC<ChunkUploadModalProps> = ({
 
                     {task.status === "error" && (
                       <button
-                        onClick={() => handleRetry(task.id)}
+                        onClick={() => retryChunkTask(task.id)}
                         className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition-colors cursor-pointer"
                         title="Coba Lagi Pengunggahan"
                       >
@@ -845,7 +533,7 @@ export const ChunkUploadModal: React.FC<ChunkUploadModalProps> = ({
 
                     {task.status !== "completed" && (
                       <button
-                        onClick={() => handleCancelTask(task.id)}
+                        onClick={() => cancelChunkTask(task.id)}
                         className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                         title="Batalkan Berkas"
                       >
@@ -858,7 +546,6 @@ export const ChunkUploadModal: React.FC<ChunkUploadModalProps> = ({
             );
           })}
         </div>
-
       </div>
     </div>
   );

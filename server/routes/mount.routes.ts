@@ -15,6 +15,7 @@ mountRouter.get("/:mountId/browse", authenticate, (req, res) => mountController.
 mountRouter.post("/:mountId/sync", authenticate, (req, res) => mountController.syncMount(req, res));
 mountRouter.get("/:mountId/sync-status", authenticate, (req, res) => mountController.getSyncStatus(req, res));
 mountRouter.post("/:mountId/mkdir", authenticate, (req, res) => mountController.createFolder(req, res));
+mountRouter.post("/:mountId/rename", authenticate, (req, res) => mountController.renameItem(req, res));
 mountRouter.post("/:mountId/delete", authenticate, (req, res) => mountController.deleteItem(req, res));
 mountRouter.post("/:mountId/upload", authenticate, uploadMiddleware.array("files", 10), (req, res) =>
   mountController.uploadToMount(req, res)

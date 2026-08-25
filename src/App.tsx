@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from "./context/AuthContext.tsx";
 import { DialogProvider } from "./context/DialogContext.tsx";
 import { TransferProvider } from "./context/TransferContext.tsx";
 import { TransferHUD } from "./components/TransferHUD.tsx";
+import { ChunkUploadModal } from "./components/ChunkUploadModal.tsx";
 import { GoogleDriveLayout } from "./components/GoogleDriveLayout.tsx";
 import { AuthView } from "./components/AuthView.tsx";
 import { PublicSharedFolderView } from "./components/PublicSharedFolderView.tsx";
@@ -76,16 +77,18 @@ function MainApp() {
     }
   }, [user, fetchGlobalData]);
 
-  // Periodic polling for sync updates (every 4 seconds)
-  // useEffect(() => {
-  //   if (!user) return;
-  //   const interval = setInterval(() => {
-  //     api.listFiles().then((res) => setFiles(res.files)).catch(() => {});
-  //     api.getSyncStats().then((res) => setSyncStats(res)).catch(() => {});
-  //     api.getStorageStats().then((res) => setStorageStats(res)).catch(() => {});
-  //   }, 4000);
-  //   return () => clearInterval(interval);
-  // }, [user]);
+  // Global listener for automatic background refresh upon upload/sync completion
+  useEffect(() => {
+    const handleGlobalRefresh = () => {
+      if (user) {
+        fetchGlobalData();
+      }
+    };
+    window.addEventListener("powerdrive:refresh-data", handleGlobalRefresh);
+    return () => {
+      window.removeEventListener("powerdrive:refresh-data", handleGlobalRefresh);
+    };
+  }, [user, fetchGlobalData]);
 
   if (isAuthLoading) {
     return (
@@ -109,6 +112,7 @@ function MainApp() {
           onGoToLogin={() => setForceShowLogin(true)}
         />
         <TransferHUD />
+        <ChunkUploadModal />
       </>
     );
   }
@@ -137,6 +141,7 @@ function MainApp() {
         isInitialLoading={isInitialLoading}
       />
       <TransferHUD />
+      <ChunkUploadModal />
     </>
   );
 }

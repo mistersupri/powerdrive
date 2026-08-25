@@ -190,6 +190,19 @@ export const PublicSharedFolderView: React.FC<PublicSharedFolderViewProps> = ({
     }
   }, [currentFolder, loadFolderContents]);
 
+  // Listen for global background upload completion events
+  useEffect(() => {
+    const handleRefresh = (e: any) => {
+      if (currentFolder) {
+        loadFolderContents(currentFolder.id);
+      }
+    };
+    window.addEventListener("powerdrive:refresh-data", handleRefresh);
+    return () => {
+      window.removeEventListener("powerdrive:refresh-data", handleRefresh);
+    };
+  }, [currentFolder, loadFolderContents]);
+
   // Folder navigation inside the shared subtree
   const handleEnterSubfolder = (subfolder: Folder) => {
     setCurrentFolder(subfolder);

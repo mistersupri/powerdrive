@@ -82,10 +82,32 @@ export class FolderService {
   }
 
   /**
-   * Get folder details by ID
+   * Get folder details by ID (supports standard folders and mounted storage points)
    */
   public static async getFolderById(id: string): Promise<FolderRecord | null> {
-    return await db.folder.findUnique({ where: { id } });
+    const existing = await db.folder.findUnique({ where: { id } });
+    if (existing) return existing;
+
+    // Check if ID belongs to a mounted storage point or subfolder in /mnt
+    try {
+      const { mountService } = await import("./mount.service.ts");
+      const { mountIndexerService } = await import("./mount-indexer.service.ts");
+      const mounts = mountService.listMounts();
+      
+      const matchedMount = mounts.find((m) => m.id === id || m.mountPoint === id);
+      if (matchedMount) {
+        await mountIndexerService.indexFolderOnDemand(
+          matchedMount.mountPoint,
+          matchedMount.mountPoint,
+          matchedMount.id
+        );
+        return await db.folder.findUnique({ where: { id } });
+      }
+    } catch (err) {
+      console.warn("[FolderService] Mount fallback resolution notice:", err);
+    }
+
+    return null;
   }
 
   /**

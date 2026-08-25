@@ -12,6 +12,7 @@ import {
 import { api } from "../services/api.ts";
 import { useAuth } from "../context/AuthContext.tsx";
 import { useDialog } from "../context/DialogContext.tsx";
+import { useTransfer } from "../context/TransferContext.tsx";
 import { ContextMenu, ContextMenuState } from "./ContextMenu.tsx";
 import { ShareFolderModal } from "./ShareFolderModal.tsx";
 import { InlineRenameModal } from "./InlineRenameModal.tsx";
@@ -92,6 +93,7 @@ export const GoogleDriveExplorer: React.FC<GoogleDriveExplorerProps> = ({
 }) => {
   const { user, isAdmin } = useAuth();
   const { showAlert, showConfirm, showToast } = useDialog();
+  const { startChunkUpload } = useTransfer();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const explorerRef = useRef<HTMLDivElement>(null);
   const contentAreaRef = useRef<HTMLDivElement>(null);
@@ -374,6 +376,18 @@ export const GoogleDriveExplorer: React.FC<GoogleDriveExplorerProps> = ({
     setCurrentPage(1);
     fetchPageData(1, false);
   }, [fetchPageData]);
+
+  // Listen for global background upload/sync completion events to refresh explorer view automatically
+  useEffect(() => {
+    const handleGlobalRefresh = () => {
+      fetchPageData(1, false);
+      onRefreshData();
+    };
+    window.addEventListener("powerdrive:refresh-data", handleGlobalRefresh);
+    return () => {
+      window.removeEventListener("powerdrive:refresh-data", handleGlobalRefresh);
+    };
+  }, [fetchPageData, onRefreshData]);
 
   // Derived lists for current view
   const isRootDriveView = currentFolderId === null && !searchQuery.trim();
@@ -897,18 +911,39 @@ export const GoogleDriveExplorer: React.FC<GoogleDriveExplorerProps> = ({
       console.warn("Could not check conflicts beforehand, proceeding to upload", err);
     }
 
-    // No conflict, proceed immediately with default create_version
-    setChunkUploadConflictModes(undefined);
-    setChunkUploadFiles(rawFiles);
-    setShowChunkUploadModal(true);
+    // No conflict, proceed immediately with default create_version via persistent global transfer manager
+    const targetFolderName = currentFolder?.name || "Drive Saya";
+    startChunkUpload({
+      targetFolderId,
+      targetFolderName,
+      files: rawFiles,
+      onUploadComplete: () => {
+        refreshCurrentView();
+      },
+    });
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
   };
 
   const handleConflictResolved = (resolutions: Map<string, ConflictResolutionMode>) => {
     setShowConflictModal(false);
     setConflictItems([]);
-    setChunkUploadConflictModes(resolutions);
-    setChunkUploadFiles(pendingRawFiles);
-    setShowChunkUploadModal(true);
+    const targetFolderId = currentFolderId || (folders.length > 0 ? folders[0].id : "");
+    const targetFolderName = currentFolder?.name || "Drive Saya";
+    startChunkUpload({
+      targetFolderId,
+      targetFolderName,
+      files: pendingRawFiles,
+      fileConflictModes: resolutions,
+      onUploadComplete: () => {
+        refreshCurrentView();
+      },
+    });
+    setPendingRawFiles([]);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
   };
 
   const handleChunkUploadComplete = () => {
@@ -3279,28 +3314,6 @@ export const GoogleDriveExplorer: React.FC<GoogleDriveExplorerProps> = ({
         }}
         onResolve={handleConflictResolved}
       />
-
-      {/* CHUNK UPLOAD MODAL */}
-      {showChunkUploadModal && (
-        <ChunkUploadModal
-          isOpen={showChunkUploadModal}
-          targetFolderId={currentFolderId || (folders.length > 0 ? folders[0].id : "")}
-          targetFolderName={currentFolder?.name || "Drive Saya"}
-          files={chunkUploadFiles}
-          fileConflictModes={chunkUploadConflictModes}
-          onClose={() => {
-            setShowChunkUploadModal(false);
-            setChunkUploadFiles([]);
-            setChunkUploadConflictModes(undefined);
-            setPendingRawFiles([]);
-            if (fileInputRef.current) {
-              fileInputRef.current.value = "";
-            }
-            refreshCurrentView();
-          }}
-          onUploadComplete={handleChunkUploadComplete}
-        />
-      )}
 
       {/* MOVE & COPY FILES MODAL */}
       {showMoveCopyModal && (

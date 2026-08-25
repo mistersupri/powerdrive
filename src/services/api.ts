@@ -937,6 +937,19 @@ export const api = {
     return handleResponse(res);
   },
 
+  async renameMountItem(
+    mountId: string,
+    itemRelativePath: string,
+    newName: string
+  ): Promise<{ oldPath: string; newPath: string; message: string }> {
+    const res = await fetch(`${BASE_URL}/mounts/${mountId}/rename`, {
+      method: "POST",
+      headers: getHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ itemRelativePath, newName }),
+    });
+    return handleResponse(res);
+  },
+
   async deleteMountItem(
     mountId: string,
     itemRelativePath: string
@@ -972,6 +985,88 @@ export const api = {
       body: formData,
     });
     return handleResponse(res);
+  },
+
+  async uploadToMountWithProgress(params: {
+    mountId: string;
+    subPath: string;
+    files: File[];
+    onProgress?: (progress: TransferProgress) => void;
+    signal?: AbortSignal;
+  }): Promise<{ savedFiles: string[]; count: number; message: string }> {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", `${BASE_URL}/mounts/${params.mountId}/upload`);
+
+      const token = localStorage.getItem("auth_token");
+      if (token) {
+        xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+      }
+
+      const startTime = Date.now();
+      const totalSize = params.files.reduce((acc, f) => acc + f.size, 0);
+
+      if (xhr.upload && params.onProgress) {
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            const elapsedSec = Math.max(0.1, (Date.now() - startTime) / 1000);
+            const speedBytesPerSec = e.loaded / elapsedSec;
+            const remainingBytes = Math.max(0, e.total - e.loaded);
+            const etaSeconds = speedBytesPerSec > 0 ? Math.round(remainingBytes / speedBytesPerSec) : 0;
+            const percentage = Math.min(100, Math.round((e.loaded / e.total) * 100));
+
+            params.onProgress!({
+              loadedBytes: e.loaded,
+              totalBytes: e.total,
+              percentage,
+              speedBytesPerSec,
+              etaSeconds,
+            });
+          }
+        };
+      }
+
+      if (params.signal) {
+        params.signal.addEventListener("abort", () => {
+          xhr.abort();
+          reject(new Error("Unggahan dibatalkan oleh pengguna"));
+        });
+      }
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const resp = JSON.parse(xhr.responseText);
+            resolve(resp.data !== undefined ? resp.data : resp);
+          } catch {
+            resolve({ savedFiles: [], count: 0, message: "Unggahan berhasil" });
+          }
+        } else {
+          try {
+            const err = JSON.parse(xhr.responseText);
+            reject(new Error(err.error || `HTTP error ${xhr.status}`));
+          } catch {
+            reject(new Error(`HTTP error ${xhr.status}`));
+          }
+        }
+      };
+
+      xhr.onerror = () => {
+        reject(new Error("Koneksi jaringan terputus saat mengunggah ke storage terpasang."));
+      };
+
+      xhr.ontimeout = () => {
+        reject(new Error("Waktu unggah habis (Timeout)."));
+      };
+
+      const formData = new FormData();
+      formData.append("subPath", params.subPath);
+      for (const file of params.files) {
+        formData.append("files", file);
+      }
+
+      xhr.send(formData);
+    });
   },
 
   async importMountFileToDrive(

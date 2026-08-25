@@ -487,6 +487,49 @@ export class MountService {
   }
 
   /**
+   * Rename a file or directory inside /mnt and re-index metadata
+   */
+  public async renameItem(
+    mountPoint: string,
+    itemRelativePath: string,
+    newName: string
+  ): Promise<{ oldPath: string; newPath: string }> {
+    const sourcePath = this.resolveSafePath(mountPoint, itemRelativePath);
+    if (!fs.existsSync(sourcePath)) {
+      throw new Error("Item tidak ditemukan pada penyimpanan fisik");
+    }
+    const dir = path.dirname(sourcePath);
+    const sanitized = newName.replace(/[\/\\:*?"<>|]/g, "_").trim();
+    if (!sanitized) {
+      throw new Error("Nama baru tidak valid");
+    }
+    const destPath = path.join(dir, sanitized);
+    if (fs.existsSync(destPath)) {
+      throw new Error(`Item dengan nama "${sanitized}" sudah ada`);
+    }
+
+    const stat = fs.statSync(sourcePath);
+    await fs.promises.rename(sourcePath, destPath);
+
+    const mount = this.listMounts().find((m) => m.mountPoint === mountPoint);
+    const mountId = mount?.id || "mount-default";
+
+    // Clean old metadata
+    if (stat.isDirectory()) {
+      const oldFolderId = "folder-" + crypto.createHash("md5").update(sourcePath).digest("hex");
+      await prisma.folder.delete({ where: { id: oldFolderId } }).catch(() => {});
+    } else {
+      const oldFileId = "file-" + crypto.createHash("md5").update(sourcePath).digest("hex");
+      await prisma.file.delete({ where: { id: oldFileId } }).catch(() => {});
+    }
+
+    // Re-index parent folder
+    await mountIndexerService.indexFolderOnDemand(dir, mountPoint, mountId);
+
+    return { oldPath: sourcePath, newPath: destPath };
+  }
+
+  /**
    * Delete a file or directory inside /mnt and update PostgreSQL metadata
    */
   public async deleteItem(mountPoint: string, itemRelativePath: string): Promise<void> {

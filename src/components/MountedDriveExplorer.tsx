@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import {
   HardDrive,
   Folder as FolderIcon,
@@ -18,7 +18,7 @@ import {
   RefreshCw,
   Search,
   LayoutGrid,
-  List,
+  List as ListIcon,
   ChevronRight,
   ArrowLeft,
   UploadCloud,
@@ -31,12 +31,37 @@ import {
   Check,
   X,
   FileUp,
+  Share2,
+  Edit3,
+  Info,
+  Layers,
+  MoreVertical,
+  CheckSquare,
+  Square,
+  SearchX,
+  ShieldCheck,
 } from "lucide-react";
-import { MountDrive, MountFileItem, MountBrowseResult, Folder, FileItem, SyncStatus, IndexerStatus, IndexingState } from "../types/frontend.ts";
+import {
+  MountDrive,
+  MountFileItem,
+  MountBrowseResult,
+  Folder,
+  FileItem,
+  SyncStatus,
+  IndexerStatus,
+  IndexingState,
+  FolderPermission,
+  DriveType,
+} from "../types/frontend.ts";
 import { api } from "../services/api.ts";
 import { useDialog } from "../context/DialogContext.tsx";
+import { useTransfer } from "../context/TransferContext.tsx";
 import { FilePreviewModal } from "./FilePreviewModal.tsx";
 import { OperationLoadingModal, OperationType } from "./OperationLoadingModal.tsx";
+import { ShareFolderModal } from "./ShareFolderModal.tsx";
+import { InlineRenameModal } from "./InlineRenameModal.tsx";
+import { ItemDetailsDrawer } from "./ItemDetailsDrawer.tsx";
+import { ContextMenu, ContextMenuState } from "./ContextMenu.tsx";
 
 interface MountedDriveExplorerProps {
   mount: MountDrive;
@@ -50,26 +75,56 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
   onRefreshMounts,
 }) => {
   const { showAlert, showConfirm, showToast } = useDialog();
+  const { startFileDownload, startMountUploadWithProgress } = useTransfer();
 
-  // Navigation state
+  // Navigation & Data State
   const [subPath, setSubPath] = useState<string>("");
   const [browseData, setBrowseData] = useState<MountBrowseResult | null>(null);
   const [indexerStatus, setIndexerStatus] = useState<IndexerStatus | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [searchTerm, setSearchTerm] = useState<string>("");
+  const [categoryFilter, setCategoryFilter] = useState<string>("ALL");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [sortBy, setSortBy] = useState<"name" | "size" | "modified">("name");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
 
-  // Action states
+  // Selection & Multi-select State
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const [lastSelectedKey, setLastSelectedKey] = useState<string | null>(null);
+  const [isDragOver, setIsDragOver] = useState<boolean>(false);
+
+  // Marquee Rubberband Selection
+  const [marqueeBox, setMarqueeBox] = useState<{
+    startX: number;
+    startY: number;
+    currentX: number;
+    currentY: number;
+  } | null>(null);
+  const [dragStartSelection, setDragStartSelection] = useState<Set<string>>(new Set());
+  const hasDraggedMarqueeRef = useRef<boolean>(false);
+
+  // Modals & Drawers
   const [isCreatingFolder, setIsCreatingFolder] = useState<boolean>(false);
   const [newFolderName, setNewFolderName] = useState<string>("");
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [isSyncingMetadata, setIsSyncingMetadata] = useState<boolean>(false);
+  const [previewFile, setPreviewFile] = useState<FileItem | null>(null);
+  const [shareFolderModal, setShareFolderModal] = useState<Folder | null>(null);
+  const [renameItem, setRenameItem] = useState<{
+    type: "folder" | "file";
+    data: Folder | FileItem;
+    mountItem?: MountFileItem;
+  } | null>(null);
+  const [detailsItem, setDetailsItem] = useState<{
+    type: "folder" | "file";
+    data: Folder | FileItem;
+  } | null>(null);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+
+  // Import to Google Drive State
   const [importingItem, setImportingItem] = useState<MountFileItem | null>(null);
   const [selectedTargetFolderId, setSelectedTargetFolderId] = useState<string>(folders[0]?.id || "");
   const [isImporting, setIsImporting] = useState<boolean>(false);
-
-  // File Preview Modal State (converted to compatible FileItem interface)
-  const [previewFile, setPreviewFile] = useState<FileItem | null>(null);
 
   // Operation loading modal
   const [operationLoading, setOperationLoading] = useState<{
@@ -81,6 +136,74 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
   }>({ isOpen: false, title: "" });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const contentAreaRef = useRef<HTMLDivElement>(null);
+
+  // Helper: convert MountFileItem to Frontend Folder
+  const mountDirToFolder = useCallback(
+    (dir: MountFileItem): Folder => {
+      return {
+        id: dir.id,
+        name: dir.name,
+        description: `Folder lokal di ${dir.fullPath}`,
+        parentId: subPath === "" ? mount.id : "folder-parent",
+        ownerId: "system",
+        ownerName: "Mounted Storage /mnt",
+        permission: FolderPermission.EDIT,
+        targetDriveType: DriveType.MY_DRIVE,
+        targetDriveId: null,
+        targetFolderPath: dir.fullPath,
+        googleDriveFolderId: null,
+        syncToGoogleDrive: false,
+        createdAt: dir.modifiedAt,
+        updatedAt: dir.modifiedAt,
+      };
+    },
+    [mount.id, subPath]
+  );
+
+  // Helper: convert MountDrive to Root Folder
+  const mountToRootFolder = useCallback((): Folder => {
+    return {
+      id: mount.id,
+      name: mount.name,
+      description: `Titik pasang sistem lokal: ${mount.mountPoint}`,
+      parentId: null,
+      ownerId: "system",
+      ownerName: "Mounted Storage /mnt",
+      permission: FolderPermission.EDIT,
+      targetDriveType: DriveType.MY_DRIVE,
+      targetDriveId: null,
+      targetFolderPath: mount.mountPoint,
+      googleDriveFolderId: null,
+      syncToGoogleDrive: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+  }, [mount.id, mount.name, mount.mountPoint]);
+
+  // Helper: convert MountFileItem to FileItem
+  const mountFileToFileItem = useCallback(
+    (file: MountFileItem): FileItem => {
+      const viewUrl = api.getMountFileViewUrl(mount.id, file.relativePath);
+      const downloadUrl = api.getMountFileDownloadUrl(mount.id, file.relativePath);
+      return {
+        id: file.id,
+        folderId: mount.id,
+        userId: "system",
+        originalName: file.name,
+        storagePath: file.fullPath,
+        size: file.size,
+        mimeType: file.mimeType || "application/octet-stream",
+        checksumSha256: file.id,
+        syncStatus: SyncStatus.SYNCED,
+        syncAttempts: 0,
+        createdAt: file.modifiedAt,
+        updatedAt: file.modifiedAt,
+        googleDriveWebViewLink: viewUrl,
+      };
+    },
+    [mount.id]
+  );
 
   // Load directory contents (progressive & instant on-demand)
   const loadDirectory = useCallback(
@@ -108,6 +231,7 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
   useEffect(() => {
     setSubPath("");
     setSearchTerm("");
+    setSelectedKeys(new Set());
     loadDirectory("");
   }, [mount.id, loadDirectory]);
 
@@ -139,16 +263,8 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
   const handleNavigate = (newSubPath: string) => {
     setSubPath(newSubPath);
     setSearchTerm("");
+    setSelectedKeys(new Set());
     loadDirectory(newSubPath);
-  };
-
-  // Navigate up one level
-  const handleNavigateUp = () => {
-    if (!subPath) return;
-    const parts = subPath.split("/").filter(Boolean);
-    parts.pop();
-    const parentPath = parts.join("/");
-    handleNavigate(parentPath);
   };
 
   // Format bytes helper
@@ -176,29 +292,238 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
     }
   };
 
-  // Get matching icon based on file flags
-  const renderItemIcon = (item: MountFileItem) => {
-    if (item.isDirectory) {
-      return <FolderIcon className="w-5 h-5 text-amber-500 fill-amber-500/20" />;
+  // Filter items based on search query and category
+  const rawItems = browseData?.items || [];
+
+  const filteredItems = useMemo(() => {
+    return rawItems.filter((item) => {
+      const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase());
+      if (!matchesSearch) return false;
+
+      if (categoryFilter === "ALL") return true;
+      if (item.isDirectory) return true; // Keep folders visible or toggleable
+
+      if (categoryFilter === "IMAGE") return item.isImage;
+      if (categoryFilter === "VIDEO") return item.isVideo;
+      if (categoryFilter === "DOCUMENT") return item.isText || item.isOfficeDoc || item.isPdf;
+      if (categoryFilter === "SPREADSHEET") return item.isOfficeDoc;
+      if (categoryFilter === "PDF") return item.isPdf;
+      if (categoryFilter === "CODE") return item.isText;
+      if (categoryFilter === "ARCHIVE") return item.isArchive;
+      if (categoryFilter === "AUDIO") return item.isAudio;
+      return true;
+    });
+  }, [rawItems, searchTerm, categoryFilter]);
+
+  // Sort items
+  const sortedDirectories = useMemo(() => {
+    const dirs = filteredItems.filter((i) => i.isDirectory);
+    return dirs.sort((a, b) => {
+      if (sortBy === "name") {
+        return sortOrder === "asc"
+          ? a.name.localeCompare(b.name)
+          : b.name.localeCompare(a.name);
+      }
+      if (sortBy === "modified") {
+        return sortOrder === "asc"
+          ? new Date(a.modifiedAt).getTime() - new Date(b.modifiedAt).getTime()
+          : new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime();
+      }
+      return 0;
+    });
+  }, [filteredItems, sortBy, sortOrder]);
+
+  const sortedFiles = useMemo(() => {
+    const files = filteredItems.filter((i) => !i.isDirectory);
+    return files.sort((a, b) => {
+      if (sortBy === "name") {
+        return sortOrder === "asc"
+          ? a.name.localeCompare(b.name)
+          : b.name.localeCompare(a.name);
+      }
+      if (sortBy === "size") {
+        return sortOrder === "asc" ? a.size - b.size : b.size - a.size;
+      }
+      if (sortBy === "modified") {
+        return sortOrder === "asc"
+          ? new Date(a.modifiedAt).getTime() - new Date(b.modifiedAt).getTime()
+          : new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime();
+      }
+      return 0;
+    });
+  }, [filteredItems, sortBy, sortOrder]);
+
+  // Combined visible items for keyboard & multi-selection
+  const allVisibleItems = useMemo(() => {
+    const list: { key: string; type: "folder" | "file"; item: MountFileItem }[] = [];
+    sortedDirectories.forEach((d) => list.push({ key: `folder_${d.id}`, type: "folder", item: d }));
+    sortedFiles.forEach((f) => list.push({ key: `file_${f.id}`, type: "file", item: f }));
+    return list;
+  }, [sortedDirectories, sortedFiles]);
+
+  const selectedFolders = useMemo(() => {
+    return sortedDirectories.filter((d) => selectedKeys.has(`folder_${d.id}`));
+  }, [sortedDirectories, selectedKeys]);
+
+  const selectedFiles = useMemo(() => {
+    return sortedFiles.filter((f) => selectedKeys.has(`file_${f.id}`));
+  }, [sortedFiles, selectedKeys]);
+
+  const selectedCount = selectedKeys.size;
+
+  // Selection Click Handler
+  const handleItemClick = (
+    e: React.MouseEvent,
+    key: string,
+    type: "folder" | "file",
+    item: MountFileItem
+  ) => {
+    if (hasDraggedMarqueeRef.current) return;
+
+    if (e.shiftKey && lastSelectedKey) {
+      const lastIdx = allVisibleItems.findIndex((it) => it.key === lastSelectedKey);
+      const currIdx = allVisibleItems.findIndex((it) => it.key === key);
+      if (lastIdx !== -1 && currIdx !== -1) {
+        const start = Math.min(lastIdx, currIdx);
+        const end = Math.max(lastIdx, currIdx);
+        const rangeKeys = new Set(selectedKeys);
+        for (let i = start; i <= end; i++) {
+          rangeKeys.add(allVisibleItems[i].key);
+        }
+        setSelectedKeys(rangeKeys);
+        return;
+      }
     }
-    if (item.isImage) return <ImageIcon className="w-5 h-5 text-purple-500" />;
-    if (item.isVideo) return <Video className="w-5 h-5 text-rose-500" />;
-    if (item.isAudio) return <Music className="w-5 h-5 text-emerald-500" />;
-    if (item.isPdf) return <FileText className="w-5 h-5 text-red-500" />;
-    if (item.isText) return <FileCode className="w-5 h-5 text-indigo-500" />;
-    if (item.isOfficeDoc) return <FileSpreadsheet className="w-5 h-5 text-teal-500" />;
-    if (item.isArchive) return <FileArchive className="w-5 h-5 text-amber-600" />;
-    return <FileText className="w-5 h-5 text-slate-500" />;
+
+    if (e.ctrlKey || e.metaKey) {
+      setSelectedKeys((prev) => {
+        const next = new Set(prev);
+        if (next.has(key)) next.delete(key);
+        else next.add(key);
+        return next;
+      });
+      setLastSelectedKey(key);
+      return;
+    }
+
+    // Single item selection
+    setSelectedKeys(new Set([key]));
+    setLastSelectedKey(key);
   };
 
-  // Filter items based on search query
-  const rawItems = browseData?.items || [];
-  const filteredItems = rawItems.filter((item) =>
-    item.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const handleToggleSelectKey = (e: React.MouseEvent, key: string) => {
+    e.stopPropagation();
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+    setLastSelectedKey(key);
+  };
 
-  const directories = filteredItems.filter((i) => i.isDirectory);
-  const files = filteredItems.filter((i) => !i.isDirectory);
+  const handleSelectAll = () => {
+    const all = new Set<string>();
+    allVisibleItems.forEach((it) => all.add(it.key));
+    setSelectedKeys(all);
+  };
+
+  // Rubberband Marquee Drag Selection
+  const handleMouseDownOnContainer = (e: React.MouseEvent) => {
+    if (e.button !== 0) return;
+    const target = e.target as HTMLElement;
+    if (
+      target.closest(
+        "[data-selectable-key], button, a, input, select, textarea, [data-prevent-marquee]"
+      )
+    ) {
+      return;
+    }
+
+    const rect = contentAreaRef.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    const startX = e.clientX;
+    const startY = e.clientY;
+
+    const preserve = e.ctrlKey || e.metaKey || e.shiftKey;
+    setDragStartSelection(preserve ? new Set(selectedKeys) : new Set());
+
+    setMarqueeBox({
+      startX,
+      startY,
+      currentX: startX,
+      currentY: startY,
+    });
+  };
+
+  useEffect(() => {
+    if (!marqueeBox) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      setMarqueeBox((prev) =>
+        prev ? { ...prev, currentX: e.clientX, currentY: e.clientY } : null
+      );
+
+      const minX = Math.min(marqueeBox.startX, e.clientX);
+      const maxX = Math.max(marqueeBox.startX, e.clientX);
+      const minY = Math.min(marqueeBox.startY, e.clientY);
+      const maxY = Math.max(marqueeBox.startY, e.clientY);
+
+      if (Math.hypot(e.clientX - marqueeBox.startX, e.clientY - marqueeBox.startY) > 4) {
+        hasDraggedMarqueeRef.current = true;
+        const newSelected = new Set(dragStartSelection);
+        const elements = contentAreaRef.current?.querySelectorAll("[data-selectable-key]");
+        if (elements) {
+          elements.forEach((el) => {
+            const rect = el.getBoundingClientRect();
+            const intersects = !(
+              rect.right < minX ||
+              rect.left > maxX ||
+              rect.bottom < minY ||
+              rect.top > maxY
+            );
+            const key = el.getAttribute("data-selectable-key");
+            if (key) {
+              if (intersects) {
+                newSelected.add(key);
+              } else if (!dragStartSelection.has(key)) {
+                newSelected.delete(key);
+              }
+            }
+          });
+        }
+        setSelectedKeys(newSelected);
+      }
+    };
+
+    const handleMouseUp = () => {
+      setMarqueeBox(null);
+      setTimeout(() => {
+        hasDraggedMarqueeRef.current = false;
+      }, 120);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [marqueeBox, dragStartSelection]);
+
+  const handleContainerClick = (e: React.MouseEvent) => {
+    if (hasDraggedMarqueeRef.current) return;
+    const target = e.target as HTMLElement;
+    if (
+      !target.closest(
+        "[data-selectable-key], button, a, input, select, textarea, [data-prevent-marquee]"
+      )
+    ) {
+      setSelectedKeys(new Set());
+      setLastSelectedKey(null);
+    }
+  };
 
   // Handle Create Folder
   const handleCreateFolder = async (e: React.FormEvent) => {
@@ -222,49 +547,57 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
     }
   };
 
-  // Handle File Upload
-  const handleUploadFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFiles = e.target.files;
-    if (!selectedFiles || selectedFiles.length === 0) return;
-
-    setIsUploading(true);
-    try {
-      const fileList = Array.from(selectedFiles) as File[];
-      const res = await api.uploadToMount(mount.id, subPath, fileList);
-      showToast(res.message || "Berkas berhasil diunggah", "success");
+  // Listen for global background mount upload completion events
+  useEffect(() => {
+    const handleMountRefresh = () => {
       loadDirectory(subPath);
       onRefreshMounts();
-    } catch (err: any) {
-      showAlert({
-        title: "Gagal Mengunggah",
-        message: err.message || "Terjadi kesalahan saat mengunggah berkas.",
-        type: "error",
-      });
-    } finally {
-      setIsUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    }
+    };
+    window.addEventListener("powerdrive:refresh-mounts", handleMountRefresh);
+    return () => {
+      window.removeEventListener("powerdrive:refresh-mounts", handleMountRefresh);
+    };
+  }, [subPath, loadDirectory, onRefreshMounts]);
+
+  // Handle File Upload
+  const handleUploadFiles = async (fileList: File[]) => {
+    if (!fileList || fileList.length === 0) return;
+    if (fileInputRef.current) fileInputRef.current.value = "";
+
+    await startMountUploadWithProgress({
+      mountId: mount.id,
+      mountName: mount.name,
+      subPath: subPath,
+      files: fileList,
+      onComplete: () => {
+        loadDirectory(subPath);
+        onRefreshMounts();
+      },
+    });
   };
 
-  // Handle Delete Item
+  // Handle Delete Single Item
   const handleDeleteItem = async (item: MountFileItem) => {
     const isDir = item.isDirectory;
     const confirmed = await showConfirm({
-      title: isDir ? "Hapus Folder" : "Hapus Berkas",
-      message: `Yakin ingin menghapus ${isDir ? "folder" : "berkas"} "${item.name}" secara permanen dari sistem lokal /mnt?`,
-      confirmText: "Ya, Hapus",
-      cancelText: "Batal",
+      title: isDir ? "Hapus Folder Mount?" : "Hapus Berkas Mount?",
+      message: isDir
+        ? `Apakah Anda yakin ingin menghapus folder "${item.name}" beserta seluruh isinya secara permanen dari sistem penyimpanan lokal?`
+        : `Apakah Anda yakin ingin menghapus berkas "${item.name}" secara permanen dari sistem penyimpanan lokal?`,
       isDanger: true,
+      confirmText: "Hapus Permanen",
+      cancelText: "Batal",
     });
+
     if (!confirmed) return;
 
     setOperationLoading({
       isOpen: true,
-      title: isDir ? "Menghapus Folder Permanen" : "Menghapus Berkas Permanen",
-      message: item.name,
-      type: "permanent_delete",
-      subMessage: `Sedang menghapus ${isDir ? "folder" : "berkas"} dari sistem lokal...`,
+      title: isDir ? "Menghapus Folder" : "Menghapus Berkas",
+      message: `Menghapus "${item.name}" dari ${mount.name}...`,
+      type: "delete",
     });
+
     try {
       await api.deleteMountItem(mount.id, item.relativePath);
       showToast(`"${item.name}" berhasil dihapus`, "success");
@@ -272,66 +605,101 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
       onRefreshMounts();
     } catch (err: any) {
       showAlert({
-        title: "Gagal Menghapus",
+        title: "Gagal Menghapus Item",
         message: err.message || "Terjadi kesalahan saat menghapus item.",
         type: "error",
       });
     } finally {
-      setOperationLoading((prev) => ({ ...prev, isOpen: false }));
+      setOperationLoading({ isOpen: false, title: "" });
     }
   };
 
-  // Handle Manual Metadata Sync / Re-index
-  const handleSyncMetadata = async () => {
-    setIsSyncingMetadata(true);
+  // Handle Batch Delete
+  const handleBatchDelete = async () => {
+    if (selectedCount === 0) return;
+
+    const confirmed = await showConfirm({
+      title: `Hapus ${selectedCount} Item Terpilih?`,
+      message: `Apakah Anda yakin ingin menghapus ${selectedCount} item yang dipilih secara permanen dari penyimpanan ${mount.name}? Tindakan ini tidak dapat dibatalkan.`,
+      isDanger: true,
+      confirmText: "Hapus Semua",
+      cancelText: "Batal",
+    });
+
+    if (!confirmed) return;
+
+    setOperationLoading({
+      isOpen: true,
+      title: "Menghapus Item Terpilih",
+      message: `Menghapus ${selectedCount} item...`,
+      type: "delete",
+    });
+
     try {
-      const res = await api.syncMount(mount.id);
-      showToast(res.message || "Sinkronisasi metadata PostgreSQL dimulai", "info");
-      // Poll briefly and refresh
-      setTimeout(() => {
-        loadDirectory(subPath);
-        onRefreshMounts();
-        setIsSyncingMetadata(false);
-      }, 1500);
+      let successCount = 0;
+      for (const dir of selectedFolders) {
+        await api.deleteMountItem(mount.id, dir.relativePath).catch(() => {});
+        successCount++;
+      }
+      for (const file of selectedFiles) {
+        await api.deleteMountItem(mount.id, file.relativePath).catch(() => {});
+        successCount++;
+      }
+      showToast(`${successCount} item berhasil dihapus`, "success");
+      setSelectedKeys(new Set());
+      loadDirectory(subPath);
+      onRefreshMounts();
     } catch (err: any) {
-      setIsSyncingMetadata(false);
       showAlert({
-        title: "Gagal Memulai Sinkronisasi",
-        message: err.message || "Tidak dapat memicu sinkronisasi metadata.",
+        title: "Gagal Menghapus Batch",
+        message: err.message || "Terjadi kesalahan saat menghapus item terpilih.",
         type: "error",
       });
+    } finally {
+      setOperationLoading({ isOpen: false, title: "" });
     }
   };
 
-  // Convert MountFileItem to FileItem for preview modal
-  const handleOpenPreview = (item: MountFileItem) => {
-    const viewUrl = api.getMountFileViewUrl(mount.id, item.relativePath);
-    const downloadUrl = api.getMountFileDownloadUrl(mount.id, item.relativePath);
-
-    const syntheticFile: FileItem & { _mountId?: string; _mountRelativePath?: string; _customViewUrl?: string; _customDownloadUrl?: string } = {
-      id: item.id,
-      folderId: "mounted-drive",
-      userId: "local",
-      originalName: item.name,
-      storagePath: item.fullPath,
-      size: item.size,
-      mimeType: item.mimeType,
-      checksumSha256: item.id,
-      syncStatus: SyncStatus.SYNCED,
-      syncAttempts: 0,
-      createdAt: item.modifiedAt,
-      updatedAt: item.modifiedAt,
-      googleDriveWebViewLink: viewUrl,
-      _mountId: mount.id,
-      _mountRelativePath: item.relativePath,
-      _customViewUrl: viewUrl,
-      _customDownloadUrl: downloadUrl,
-    };
-
-    setPreviewFile(syntheticFile);
+  // Handle Batch Download
+  const handleBatchDownload = () => {
+    if (selectedFiles.length === 0) {
+      showToast("Pilih setidaknya satu berkas untuk diunduh", "warning");
+      return;
+    }
+    selectedFiles.forEach((file, index) => {
+      setTimeout(() => {
+        startFileDownload(file.id, file.name, file.size);
+      }, index * 200);
+    });
+    showToast(`Mengunduh ${selectedFiles.length} berkas...`, "info");
   };
 
-  // Handle Import to Google Drive
+  // Handle Single File Download
+  const handleDownloadFile = (file: MountFileItem) => {
+    startFileDownload(file.id, file.name, file.size);
+  };
+
+  // Handle Sync Metadata
+  const handleSyncMetadata = async () => {
+    setIsSyncingMetadata(true);
+    showToast("Memulai sinkronisasi metadata dengan database...", "info");
+    try {
+      await api.syncMount(mount.id);
+      showToast("Sinkronisasi metadata database selesai", "success");
+      loadDirectory(subPath);
+      onRefreshMounts();
+    } catch (err: any) {
+      showAlert({
+        title: "Gagal Sinkronisasi",
+        message: err.message || "Terjadi kesalahan saat menyinkronkan metadata.",
+        type: "error",
+      });
+    } finally {
+      setIsSyncingMetadata(false);
+    }
+  };
+
+  // Handle Execute Import to Google Drive
   const handleExecuteImport = async () => {
     if (!importingItem || !selectedTargetFolderId) return;
 
@@ -342,12 +710,13 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
         importingItem.relativePath,
         selectedTargetFolderId
       );
-      showToast(res.message, "success");
+      showToast(res.message || "Berkas berhasil diantrekan ke Google Drive", "success");
       setImportingItem(null);
+      onRefreshMounts();
     } catch (err: any) {
       showAlert({
-        title: "Gagal Mengimpor Berkas",
-        message: err.message || "Terjadi kesalahan saat mengimpor berkas ke Google Drive.",
+        title: "Gagal Mengimpor ke Google Drive",
+        message: err.message || "Terjadi kesalahan saat mengimpor berkas.",
         type: "error",
       });
     } finally {
@@ -355,652 +724,1145 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
     }
   };
 
+  // Handle Save Rename
+  const handleSaveRename = async (newName: string) => {
+    if (!renameItem) return;
+    try {
+      const relPath =
+        renameItem.mountItem?.relativePath ||
+        (renameItem.type === "folder"
+          ? (renameItem.data as Folder).name
+          : (renameItem.data as FileItem).originalName);
+
+      await api.renameMountItem(mount.id, relPath, newName);
+      showToast(`Nama berhasil diubah menjadi "${newName}"`, "success");
+      loadDirectory(subPath);
+      onRefreshMounts();
+    } catch (err: any) {
+      showAlert({
+        title: "Gagal Mengubah Nama",
+        message: err.message || "Terjadi kesalahan saat mengubah nama item.",
+        type: "error",
+      });
+    }
+  };
+
+  // Right-Click Context Menu Handlers
+  const handleContextMenu = (
+    e: React.MouseEvent,
+    type: "folder" | "file",
+    item: MountFileItem
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const itemKey = type === "folder" ? `folder_${item.id}` : `file_${item.id}`;
+    if (!selectedKeys.has(itemKey)) {
+      setSelectedKeys(new Set([itemKey]));
+      setLastSelectedKey(itemKey);
+    }
+
+    if (type === "folder") {
+      const folderObj = mountDirToFolder(item);
+      setContextMenu({
+        x: e.clientX,
+        y: e.clientY,
+        type: "folder",
+        folder: folderObj,
+      });
+    } else {
+      const fileObj = mountFileToFileItem(item);
+      setContextMenu({
+        x: e.clientX,
+        y: e.clientY,
+        type: "file",
+        file: fileObj,
+      });
+    }
+  };
+
+  // Render Icon Helper for categories
+  const renderItemIcon = (item: MountFileItem) => {
+    if (item.isDirectory) {
+      return <FolderIcon className="w-5 h-5 text-amber-500 fill-amber-500/20" />;
+    }
+    if (item.isImage) return <ImageIcon className="w-5 h-5 text-purple-500" />;
+    if (item.isVideo) return <Video className="w-5 h-5 text-rose-500" />;
+    if (item.isAudio) return <Music className="w-5 h-5 text-emerald-500" />;
+    if (item.isPdf) return <FileText className="w-5 h-5 text-red-500" />;
+    if (item.isText) return <FileCode className="w-5 h-5 text-indigo-500" />;
+    if (item.isOfficeDoc) return <FileSpreadsheet className="w-5 h-5 text-teal-500" />;
+    if (item.isArchive) return <FileArchive className="w-5 h-5 text-amber-600" />;
+    return <FileText className="w-5 h-5 text-slate-500" />;
+  };
+
+  // Drag & Drop Handlers for Canvas
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.currentTarget === e.target) {
+      setIsDragOver(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      handleUploadFiles(Array.from(e.dataTransfer.files));
+    }
+  };
+
+  // Category filter items
+  const categoryFilters = [
+    { id: "ALL", label: "Semua" },
+    { id: "IMAGE", label: "Gambar" },
+    { id: "VIDEO", label: "Video" },
+    { id: "DOCUMENT", label: "Dokumen" },
+    { id: "SPREADSHEET", label: "Spreadsheet" },
+    { id: "PDF", label: "PDF" },
+    { id: "CODE", label: "Kode" },
+    { id: "ARCHIVE", label: "Arsip" },
+    { id: "AUDIO", label: "Audio" },
+  ];
+
   return (
-    <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50">
-      
-      {/* 1. TOP DRIVE BANNER & METADATA */}
-      <div className="bg-white border-b border-slate-200 px-6 py-4 shrink-0 shadow-2xs">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          
-          {/* Left: Drive Info */}
-          <div className="flex items-center gap-3.5 min-w-0">
-            <div className="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shrink-0 shadow-inner">
-              <HardDrive className="w-6 h-6" />
+    <div
+      ref={contentAreaRef}
+      className="flex-1 flex flex-col h-full bg-slate-50/50 overflow-hidden relative select-none"
+      onMouseDown={handleMouseDownOnContainer}
+      onClick={handleContainerClick}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {/* Hidden File Input */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={(e) => {
+          if (e.target.files && e.target.files.length > 0) {
+            handleUploadFiles(Array.from(e.target.files));
+          }
+        }}
+        multiple
+        className="hidden"
+      />
+
+      {/* Drag & Drop Visual Overlay */}
+      {isDragOver && (
+        <div className="absolute inset-0 z-50 bg-indigo-600/10 backdrop-blur-sm border-2 border-dashed border-indigo-500 rounded-xl m-3 flex flex-col items-center justify-center pointer-events-none transition-all animate-in fade-in">
+          <div className="p-4 bg-white rounded-2xl shadow-xl border border-indigo-100 flex flex-col items-center text-center max-w-sm">
+            <div className="w-14 h-14 rounded-2xl bg-indigo-50 flex items-center justify-center text-indigo-600 mb-3 shadow-inner">
+              <UploadCloud className="w-8 h-8 animate-bounce" />
             </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-lg font-extrabold text-slate-900 tracking-tight truncate">
+            <h3 className="text-base font-semibold text-slate-800">
+              Lepaskan berkas untuk mengunggah
+            </h3>
+            <p className="text-xs text-slate-500 mt-1">
+              Berkas akan disimpan langsung ke {mount.name}
+              {subPath ? ` / ${subPath}` : ""}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Marquee Selection Box */}
+      {marqueeBox && (
+        <div
+          className="fixed pointer-events-none border border-indigo-500 bg-indigo-500/15 rounded z-50"
+          style={{
+            left: Math.min(marqueeBox.startX, marqueeBox.currentX),
+            top: Math.min(marqueeBox.startY, marqueeBox.currentY),
+            width: Math.abs(marqueeBox.currentX - marqueeBox.startX),
+            height: Math.abs(marqueeBox.currentY - marqueeBox.startY),
+          }}
+        />
+      )}
+
+      {/* TOP ACTION BAR / HEADER */}
+      <div className="bg-white border-b border-slate-200/80 px-6 py-4 flex-shrink-0">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+          {/* Left Title & Status */}
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-indigo-700 flex items-center justify-center text-white shadow-sm shadow-indigo-200">
+              <HardDrive className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-lg font-bold text-slate-800 tracking-tight flex items-center gap-1.5">
                   {mount.name}
-                </h2>
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-indigo-100 text-indigo-800 border border-indigo-200">
+                </h1>
+                <span className="text-xs font-mono px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 border border-slate-200/60">
                   {mount.mountPoint}
                 </span>
 
-                {/* Real-time Indexing Status Badge */}
-                {(!indexerStatus || indexerStatus.state === "ready" || (!indexerStatus.isIndexing && indexerStatus.state !== "error")) ? (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                    Tersinkronisasi DB
-                  </span>
-                ) : indexerStatus.state === "indexing" || indexerStatus.isIndexing ? (
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200 animate-pulse">
-                    <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600" />
-                    Mengindeks Latar Belakang ({indexerStatus.queueLength || 0} antrean)
-                  </span>
-                ) : indexerStatus.state === "pending" ? (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                    <Clock className="w-3.5 h-3.5 text-amber-600" />
-                    Menunggu Antrean
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
-                    <AlertCircle className="w-3.5 h-3.5 text-rose-600" />
-                    Perlu Sinkronisasi
-                  </span>
+                {/* Indexing Status Pill */}
+                {indexerStatus && (
+                  <div
+                    className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium border ${
+                      indexerStatus.state === "indexing" || isSyncingMetadata
+                        ? "bg-amber-50 text-amber-700 border-amber-200"
+                        : indexerStatus.state === "ready"
+                        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                        : "bg-slate-50 text-slate-600 border-slate-200"
+                    }`}
+                  >
+                    {indexerStatus.state === "indexing" || isSyncingMetadata ? (
+                      <>
+                        <Loader2 className="w-3 h-3 animate-spin text-amber-600" />
+                        <span>Mengindeks...</span>
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                        <span>Tersinkronisasi DB</span>
+                      </>
+                    )}
+                  </div>
                 )}
               </div>
-              <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-2 flex-wrap">
-                <span>{browseData?.totalItems ?? (mount.filesCount || 0)} item dalam direktori</span>
-                <span>•</span>
-                <span>Total Kapasitas: {formatBytes(mount.totalBytes || 0)}</span>
-                {indexerStatus?.totalIndexedFolders !== undefined && indexerStatus.totalIndexedFolders > 0 && (
-                  <>
-                    <span>•</span>
-                    <span className="text-indigo-600 font-medium">{indexerStatus.totalIndexedFolders} folder terindeks</span>
-                  </>
-                )}
-                {indexerStatus?.lastIndexedAt && (
-                  <>
-                    <span>•</span>
-                    <span>Pembaruan: {formatDate(indexerStatus.lastIndexedAt)}</span>
-                  </>
-                )}
+              <p className="text-xs text-slate-500 mt-0.5">
+                {rawItems.length} item dimuat • Kapasitas: {mount.usedSpace} / {mount.totalSpace}
               </p>
             </div>
           </div>
 
-          {/* Right: Actions */}
-          <div className="flex items-center gap-2 flex-wrap shrink-0">
-            {/* Hidden file input */}
-            <input
-              type="file"
-              ref={fileInputRef}
-              multiple
-              onChange={handleUploadFiles}
-              className="hidden"
-            />
+          {/* Right Action Buttons */}
+          <div className="flex items-center flex-wrap gap-2">
+            {/* New Folder Button */}
+            <button
+              onClick={() => setIsCreatingFolder(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 hover:border-slate-300 transition-colors shadow-sm"
+              title="Buat folder baru di path saat ini"
+            >
+              <FolderPlus className="w-4 h-4 text-amber-500" />
+              <span>Folder Baru</span>
+            </button>
 
+            {/* Upload Button */}
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={isUploading}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 active:scale-95 shadow-md shadow-indigo-500/20 transition-all cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-lg shadow-sm shadow-indigo-200 transition-colors"
+              title="Unggah berkas ke folder saat ini"
             >
               {isUploading ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
               ) : (
-                <Upload className="w-4 h-4" />
+                <UploadCloud className="w-4 h-4" />
               )}
-              <span>Unggah ke /mnt</span>
+              <span>Unggah Berkas</span>
             </button>
 
+            {/* Share Drive Button */}
             <button
-              onClick={() => setIsCreatingFolder(true)}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 active:scale-95 transition-all cursor-pointer"
+              onClick={() => setShareFolderModal(mountToRootFolder())}
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 hover:border-slate-300 transition-colors shadow-sm"
+              title="Bagikan akses tautan publik untuk storage ini"
             >
-              <FolderPlus className="w-4 h-4 text-slate-600" />
-              <span>Folder Baru</span>
+              <Share2 className="w-4 h-4 text-indigo-600" />
+              <span>Bagikan Storage</span>
             </button>
 
+            {/* Sync DB Button */}
             <button
               onClick={handleSyncMetadata}
-              disabled={isSyncingMetadata || browseData?.isIndexing}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 active:scale-95 transition-all cursor-pointer"
-              title="Pindai ulang dan sinkronkan struktur direktori /mnt ke database PostgreSQL"
+              disabled={isSyncingMetadata}
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 hover:border-slate-300 transition-colors shadow-sm disabled:opacity-50"
+              title="Pindai ulang dan sinkronkan metadata ke PostgreSQL"
             >
-              <RefreshCw className={`w-4 h-4 ${isSyncingMetadata || browseData?.isIndexing ? "animate-spin text-emerald-600" : "text-emerald-600"}`} />
-              <span>{isSyncingMetadata || browseData?.isIndexing ? "Mengindeks DB..." : "Sinkronkan DB"}</span>
+              <RefreshCw
+                className={`w-3.5 h-3.5 text-slate-500 ${
+                  isSyncingMetadata ? "animate-spin text-indigo-600" : ""
+                }`}
+              />
+              <span className="hidden sm:inline">Sinkronkan DB</span>
             </button>
 
+            {/* Refresh Button */}
             <button
               onClick={() => loadDirectory(subPath)}
               disabled={isLoading}
-              className="p-2 text-slate-500 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-xl transition-all"
-              title="Segarkan Direktori"
+              className="p-2 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
+              title="Segarkan data folder"
             >
-              <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin text-indigo-600" : ""}`} />
+              <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} />
             </button>
           </div>
         </div>
-      </div>
 
-      {/* 2. BREADCRUMBS & FILTER TOOLBAR */}
-      <div className="bg-white/80 border-b border-slate-200 px-6 py-2.5 flex items-center justify-between gap-4 shrink-0 flex-wrap">
-        
-        {/* Breadcrumb Path */}
-        <div className="flex items-center gap-1.5 text-xs text-slate-600 overflow-x-auto py-1 min-w-0 max-w-full">
-          {subPath && (
-            <button
-              onClick={handleNavigateUp}
-              className="p-1 rounded-lg hover:bg-slate-200 text-slate-500 mr-1"
-              title="Kembali ke folder atas"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" />
-            </button>
-          )}
-
-          <button
-            onClick={() => handleNavigate("")}
-            className={`font-semibold hover:text-indigo-600 transition-colors flex items-center gap-1 shrink-0 ${
-              !subPath ? "text-indigo-600 font-bold" : "text-slate-700"
-            }`}
-          >
-            <HardDrive className="w-3.5 h-3.5" />
-            <span>{mount.name}</span>
-          </button>
-
-          {browseData?.breadcrumbs.slice(1).map((b, idx) => (
-            <React.Fragment key={idx}>
-              <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+        {/* Create Folder Inline Form Modal */}
+        {isCreatingFolder && (
+          <div className="mt-3 p-3 bg-indigo-50/70 border border-indigo-100 rounded-xl flex items-center gap-2 animate-in fade-in">
+            <FolderPlus className="w-5 h-5 text-indigo-600 flex-shrink-0" />
+            <form onSubmit={handleCreateFolder} className="flex-1 flex items-center gap-2">
+              <input
+                type="text"
+                value={newFolderName}
+                onChange={(e) => setNewFolderName(e.target.value)}
+                placeholder="Nama folder baru..."
+                autoFocus
+                className="flex-1 px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
               <button
-                onClick={() => handleNavigate(b.subPath)}
-                className={`hover:text-indigo-600 transition-colors truncate max-w-[150px] shrink-0 ${
-                  idx === browseData.breadcrumbs.length - 2
-                    ? "text-indigo-600 font-bold"
-                    : "text-slate-700 font-medium"
+                type="submit"
+                disabled={!newFolderName.trim()}
+                className="px-3 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-lg shadow-sm"
+              >
+                Buat
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsCreatingFolder(false);
+                  setNewFolderName("");
+                }}
+                className="px-2.5 py-1.5 text-xs text-slate-600 hover:bg-slate-200/60 rounded-lg"
+              >
+                Batal
+              </button>
+            </form>
+          </div>
+        )}
+
+        {/* BREADCRUMBS & TOOLBAR */}
+        <div className="mt-3 pt-3 border-t border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-3">
+          {/* Breadcrumbs Trail */}
+          <nav className="flex items-center gap-1 overflow-x-auto text-xs py-1 scrollbar-none">
+            <button
+              onClick={() => handleNavigate("")}
+              className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md transition-colors ${
+                subPath === ""
+                  ? "font-semibold text-indigo-700 bg-indigo-50"
+                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+              }`}
+            >
+              <HardDrive className="w-3.5 h-3.5" />
+              <span>{mount.name}</span>
+            </button>
+
+            {browseData?.breadcrumbs?.slice(1).map((crumb, idx) => {
+              const isLast = idx === (browseData.breadcrumbs?.length || 0) - 2;
+              return (
+                <React.Fragment key={crumb.subPath}>
+                  <ChevronRight className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                  <button
+                    onClick={() => handleNavigate(crumb.subPath)}
+                    className={`px-2 py-1 rounded-md whitespace-nowrap transition-colors ${
+                      isLast
+                        ? "font-semibold text-indigo-700 bg-indigo-50"
+                        : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                    }`}
+                  >
+                    {crumb.name}
+                  </button>
+                </React.Fragment>
+              );
+            })}
+          </nav>
+
+          {/* Search, Filter & View Mode Controls */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {/* Search Input */}
+            <div className="relative w-48 sm:w-60">
+              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Cari dalam storage..."
+                className="w-full pl-8 pr-7 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all"
+              />
+              {searchTerm && (
+                <button
+                  onClick={() => setSearchTerm("")}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* View Mode Toggle */}
+            <div className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200/80">
+              <button
+                onClick={() => setViewMode("grid")}
+                className={`p-1.5 rounded-md transition-colors ${
+                  viewMode === "grid"
+                    ? "bg-white text-indigo-600 shadow-xs"
+                    : "text-slate-500 hover:text-slate-800"
+                }`}
+                title="Tampilan Grid"
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => setViewMode("list")}
+                className={`p-1.5 rounded-md transition-colors ${
+                  viewMode === "list"
+                    ? "bg-white text-indigo-600 shadow-xs"
+                    : "text-slate-500 hover:text-slate-800"
+                }`}
+                title="Tampilan Daftar"
+              >
+                <ListIcon className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* CATEGORY FILTER CHIPS */}
+        <div className="mt-2.5 flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-none text-xs">
+          {categoryFilters.map((cat) => {
+            const isActive = categoryFilter === cat.id;
+            return (
+              <button
+                key={cat.id}
+                onClick={() => setCategoryFilter(cat.id)}
+                className={`px-2.5 py-1 rounded-full whitespace-nowrap font-medium transition-all ${
+                  isActive
+                    ? "bg-indigo-600 text-white shadow-xs"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200/70"
                 }`}
               >
-                {b.name}
+                {cat.label}
               </button>
-            </React.Fragment>
-          ))}
-        </div>
-
-        {/* Search & Layout Toggles */}
-        <div className="flex items-center gap-2.5">
-          <div className="relative w-48 sm:w-64">
-            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              placeholder="Cari dalam drive..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-8 pr-3 py-1.5 bg-slate-100/90 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-indigo-500 focus:bg-white"
-            />
-            {searchTerm && (
-              <button
-                onClick={() => setSearchTerm("")}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
-
-          <div className="flex items-center bg-slate-100 rounded-xl p-0.5 border border-slate-200">
-            <button
-              onClick={() => setViewMode("grid")}
-              className={`p-1.5 rounded-lg transition-colors ${
-                viewMode === "grid" ? "bg-white text-indigo-600 shadow-2xs font-bold" : "text-slate-500 hover:text-slate-800"
-              }`}
-              title="Tampilan Kotak (Grid)"
-            >
-              <LayoutGrid className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => setViewMode("list")}
-              className={`p-1.5 rounded-lg transition-colors ${
-                viewMode === "list" ? "bg-white text-indigo-600 shadow-2xs font-bold" : "text-slate-500 hover:text-slate-800"
-              }`}
-              title="Tampilan Daftar (List)"
-            >
-              <List className="w-4 h-4" />
-            </button>
-          </div>
+            );
+          })}
         </div>
       </div>
 
-      {/* 3. NEW FOLDER INLINE MODAL */}
-      {isCreatingFolder && (
-        <div className="bg-indigo-50/80 border-b border-indigo-100 px-6 py-3 flex items-center justify-between gap-4 animate-fade-in">
-          <form onSubmit={handleCreateFolder} className="flex items-center gap-2.5 flex-1 max-w-md">
-            <FolderPlus className="w-4 h-4 text-indigo-600 shrink-0" />
-            <input
-              type="text"
-              placeholder="Nama folder baru..."
-              value={newFolderName}
-              onChange={(e) => setNewFolderName(e.target.value)}
-              className="w-full px-3 py-1.5 bg-white border border-indigo-200 rounded-xl text-xs text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
-              autoFocus
-            />
-            <button
-              type="submit"
-              className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer"
-            >
-              Buat
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setIsCreatingFolder(false);
-                setNewFolderName("");
-              }}
-              className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-semibold"
-            >
-              Batal
-            </button>
-          </form>
-        </div>
-      )}
-
-      {/* 4. EXPLORER CONTENT BODY */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-6">
-        
-        {isLoading ? (
-          <div className="space-y-6 animate-in fade-in duration-200">
-            <div className="h-44 flex flex-col items-center justify-center text-slate-500 bg-white border border-slate-200 rounded-3xl p-6 shadow-xs text-center">
-              <div className="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 mb-3 shadow-2xs">
-                <Loader2 className="w-6 h-6 animate-spin text-indigo-600" />
-              </div>
-              <p className="text-sm font-bold text-slate-800">Membaca Direktori Mount...</p>
-              <p className="text-xs text-slate-400 mt-0.5">{mount.mountPoint} {subPath ? `/${subPath}` : ""}</p>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3.5">
-              {[...Array(6)].map((_, i) => (
-                <div key={i} className="h-36 bg-white border border-slate-200/80 rounded-2xl p-3.5 animate-pulse shadow-2xs" />
-              ))}
-            </div>
+      {/* MAIN CONTENT AREA */}
+      <div className="flex-1 overflow-y-auto p-6 scrollbar-thin">
+        {isLoading && !browseData ? (
+          <div className="flex flex-col items-center justify-center h-64 text-slate-400">
+            <Loader2 className="w-8 h-8 animate-spin text-indigo-600 mb-2" />
+            <p className="text-sm">Memuat konten storage...</p>
           </div>
         ) : filteredItems.length === 0 ? (
-          <div className="h-72 flex flex-col items-center justify-center text-center p-8 bg-white border border-dashed border-slate-200 rounded-3xl space-y-3">
-            <div className="w-16 h-16 rounded-2xl bg-indigo-50 flex items-center justify-center text-indigo-500 shadow-inner">
-              <FolderIcon className="w-8 h-8" />
+          /* EMPTY STATE */
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <div className="w-16 h-16 rounded-2xl bg-slate-100 border border-slate-200/80 flex items-center justify-center text-slate-400 mb-4 shadow-inner">
+              {searchTerm ? <SearchX className="w-8 h-8" /> : <HardDrive className="w-8 h-8" />}
             </div>
-            <div>
-              <h4 className="text-sm font-bold text-slate-800">Direktori Kosong</h4>
-              <p className="text-xs text-slate-400 mt-1 max-w-sm">
-                Tidak ada berkas atau folder dalam direktori ini. Anda dapat mengunggah berkas atau membuat folder baru.
-              </p>
-            </div>
-            <div className="flex gap-2 pt-2">
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-md cursor-pointer"
-              >
-                Unggah Berkas Sekarang
-              </button>
+            <h3 className="text-base font-semibold text-slate-700">
+              {searchTerm ? "Tidak ada item yang cocok" : "Folder ini masih kosong"}
+            </h3>
+            <p className="text-xs text-slate-500 max-w-sm mt-1">
+              {searchTerm
+                ? `Tidak ditemukan berkas atau folder dengan kata kunci "${searchTerm}".`
+                : "Unggah berkas atau buat folder baru untuk mulai mengisi penyimpanan terpasang ini."}
+            </p>
+            <div className="mt-5 flex items-center gap-2">
               <button
                 onClick={() => setIsCreatingFolder(true)}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 shadow-xs"
               >
-                Buat Folder
+                <FolderPlus className="w-4 h-4 text-amber-500" />
+                <span>Buat Folder</span>
+              </button>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm"
+              >
+                <UploadCloud className="w-4 h-4" />
+                <span>Unggah Berkas</span>
               </button>
             </div>
           </div>
-        ) : (
+        ) : viewMode === "grid" ? (
+          /* GRID VIEW */
           <div className="space-y-6">
-            
-            {/* SUBDIRECTORIES SECTION */}
-            {directories.length > 0 && (
+            {/* DIRECTORIES SECTION */}
+            {sortedDirectories.length > 0 && (
               <div>
-                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-1.5">
                   <FolderIcon className="w-3.5 h-3.5 text-amber-500" />
-                  <span>Folder ({directories.length})</span>
-                </h3>
-
+                  <span>Folder ({sortedDirectories.length})</span>
+                </h2>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-                  {directories.map((dir) => (
-                    <div
-                      key={dir.id}
-                      onClick={() => handleNavigate(dir.relativePath)}
-                      className="group bg-white hover:bg-indigo-50/50 border border-slate-200 hover:border-indigo-300 rounded-2xl p-3.5 flex items-center justify-between gap-2.5 shadow-2xs hover:shadow-md transition-all cursor-pointer select-none"
-                    >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <FolderIcon className="w-6 h-6 text-amber-500 fill-amber-500/20 shrink-0 group-hover:scale-110 transition-transform" />
-                        <span className="text-xs font-bold text-slate-800 truncate" title={dir.name}>
-                          {dir.name}
-                        </span>
-                      </div>
+                  {sortedDirectories.map((dir) => {
+                    const itemKey = `folder_${dir.id}`;
+                    const isSelected = selectedKeys.has(itemKey);
+                    const folderObj = mountDirToFolder(dir);
 
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteItem(dir);
-                        }}
-                        className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-all"
-                        title="Hapus Folder"
+                    return (
+                      <div
+                        key={dir.id}
+                        data-selectable-key={itemKey}
+                        onClick={(e) => handleItemClick(e, itemKey, "folder", dir)}
+                        onDoubleClick={() => handleNavigate(dir.relativePath)}
+                        onContextMenu={(e) => handleContextMenu(e, "folder", dir)}
+                        className={`group relative p-3 rounded-xl border transition-all cursor-pointer select-none ${
+                          isSelected
+                            ? "bg-indigo-50/70 border-indigo-400 ring-2 ring-indigo-400/30 shadow-sm"
+                            : "bg-white border-slate-200/80 hover:border-slate-300 hover:shadow-sm"
+                        }`}
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  ))}
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center text-amber-600 flex-shrink-0 group-hover:scale-105 transition-transform">
+                              <FolderIcon className="w-4 h-4 fill-amber-500/20" />
+                            </div>
+                            <span className="text-xs font-semibold text-slate-800 truncate" title={dir.name}>
+                              {dir.name}
+                            </span>
+                          </div>
+
+                          {/* Hover Checkbox */}
+                          <div
+                            onClick={(e) => handleToggleSelectKey(e, itemKey)}
+                            className={`p-1 rounded transition-opacity ${
+                              isSelected
+                                ? "text-indigo-600 opacity-100"
+                                : "text-slate-400 opacity-0 group-hover:opacity-100 hover:text-slate-600"
+                            }`}
+                          >
+                            {isSelected ? (
+                              <CheckSquare className="w-4 h-4" />
+                            ) : (
+                              <Square className="w-4 h-4" />
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Folder Quick Actions on Hover */}
+                        <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
+                          <span className="truncate">{formatDate(dir.modifiedAt)}</span>
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            {/* Share Folder */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setShareFolderModal(folderObj);
+                              }}
+                              className="p-1 hover:text-indigo-600 hover:bg-indigo-50 rounded"
+                              title="Bagikan folder"
+                            >
+                              <Share2 className="w-3.5 h-3.5" />
+                            </button>
+                            {/* Rename Folder */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setRenameItem({ type: "folder", data: folderObj, mountItem: dir });
+                              }}
+                              className="p-1 hover:text-slate-700 hover:bg-slate-100 rounded"
+                              title="Ubah nama"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                            {/* Delete Folder */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteItem(dir);
+                              }}
+                              className="p-1 hover:text-red-600 hover:bg-red-50 rounded"
+                              title="Hapus folder"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
 
             {/* FILES SECTION */}
-            {files.length > 0 && (
+            {sortedFiles.length > 0 && (
               <div>
-                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-                  <FileText className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>Berkas ({files.length})</span>
-                </h3>
+                <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                  <FileText className="w-3.5 h-3.5 text-indigo-500" />
+                  <span>Berkas ({sortedFiles.length})</span>
+                </h2>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+                  {sortedFiles.map((file) => {
+                    const itemKey = `file_${file.id}`;
+                    const isSelected = selectedKeys.has(itemKey);
+                    const fileObj = mountFileToFileItem(file);
 
-                {viewMode === "grid" ? (
-                  /* GRID VIEW */
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-                    {files.map((file) => {
-                      const viewUrl = api.getMountFileViewUrl(mount.id, file.relativePath);
-                      const downloadUrl = api.getMountFileDownloadUrl(mount.id, file.relativePath);
-
-                      return (
-                        <div
-                          key={file.id}
-                          className="group bg-white border border-slate-200 hover:border-indigo-300 rounded-2xl overflow-hidden shadow-2xs hover:shadow-lg transition-all flex flex-col justify-between"
-                        >
-                          {/* Thumbnail / Media Preview Area */}
-                          <div
-                            onClick={() => handleOpenPreview(file)}
-                            className="h-32 bg-slate-100 flex items-center justify-center relative overflow-hidden cursor-pointer select-none"
-                          >
-                            {file.isImage ? (
-                              <img
-                                src={viewUrl}
-                                alt={file.name}
-                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 pointer-events-none"
-                                loading="lazy"
-                                referrerPolicy="no-referrer"
-                                onError={(e) => {
-                                  e.currentTarget.style.display = "none";
-                                  const parent = e.currentTarget.parentElement;
-                                  if (parent) {
-                                    parent.innerHTML = `<div class="flex flex-col items-center justify-center text-purple-600 p-2"><svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg></div>`;
-                                  }
-                                }}
-                              />
-                            ) : file.isVideo || file.mimeType?.startsWith("video/") || ["mp4", "webm", "mov", "mkv"].includes(file.extension?.toLowerCase() || "") ? (
-                              <div className="w-full h-full relative bg-slate-900 flex items-center justify-center">
-                                <video
-                                  src={viewUrl}
-                                  preload="metadata"
-                                  muted
-                                  playsInline
-                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 pointer-events-none"
-                                  onError={(e) => {
-                                    e.currentTarget.style.display = "none";
-                                  }}
-                                />
-                                <div className="absolute inset-0 bg-slate-950/30 flex items-center justify-center">
-                                  <div className="w-8 h-8 rounded-full bg-black/60 border border-white/20 backdrop-blur-xs flex items-center justify-center text-white shadow-md group-hover:scale-110 group-hover:bg-purple-600 transition-all">
-                                    <Play className="w-3.5 h-3.5 ml-0.5 fill-white" />
-                                  </div>
+                    return (
+                      <div
+                        key={file.id}
+                        data-selectable-key={itemKey}
+                        onClick={(e) => handleItemClick(e, itemKey, "file", file)}
+                        onDoubleClick={() => setPreviewFile(fileObj)}
+                        onContextMenu={(e) => handleContextMenu(e, "file", file)}
+                        className={`group relative flex flex-col rounded-xl border transition-all cursor-pointer select-none overflow-hidden ${
+                          isSelected
+                            ? "bg-indigo-50/70 border-indigo-400 ring-2 ring-indigo-400/30 shadow-sm"
+                            : "bg-white border-slate-200/80 hover:border-slate-300 hover:shadow-sm"
+                        }`}
+                      >
+                        {/* File Thumbnail / Preview Area */}
+                        <div className="h-28 bg-slate-100/70 relative flex items-center justify-center overflow-hidden border-b border-slate-100">
+                          {file.isImage ? (
+                            <img
+                              src={api.getMountFileViewUrl(mount.id, file.relativePath)}
+                              alt={file.name}
+                              referrerPolicy="no-referrer"
+                              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                              loading="lazy"
+                            />
+                          ) : file.isVideo ? (
+                            <div className="relative w-full h-full flex items-center justify-center bg-slate-900">
+                              <Video className="w-8 h-8 text-rose-400 opacity-60" />
+                              <div className="absolute inset-0 flex items-center justify-center">
+                                <div className="w-8 h-8 rounded-full bg-white/20 backdrop-blur-xs flex items-center justify-center text-white">
+                                  <Play className="w-4 h-4 fill-white translate-x-0.5" />
                                 </div>
-                              </div>
-                            ) : (
-                              <div className="w-12 h-12 rounded-2xl bg-white shadow-xs border border-slate-200 flex items-center justify-center group-hover:scale-110 transition-transform">
-                                {renderItemIcon(file)}
-                              </div>
-                            )}
-
-                            {/* Extension Tag */}
-                            <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded-md text-[9px] font-mono font-bold bg-slate-900/70 text-white uppercase shadow-xs">
-                              {file.extension || "FILE"}
-                            </span>
-                          </div>
-
-                          {/* File Details & Actions */}
-                          <div className="p-3">
-                            <h4
-                              onClick={() => handleOpenPreview(file)}
-                              className="text-xs font-bold text-slate-800 truncate hover:text-indigo-600 transition-colors cursor-pointer"
-                              title={file.name}
-                            >
-                              {file.name}
-                            </h4>
-                            <p className="text-[10px] text-slate-400 mt-0.5 flex items-center justify-between">
-                              <span>{formatBytes(file.size)}</span>
-                              <span>{formatDate(file.modifiedAt)}</span>
-                            </p>
-
-                            {/* Action Buttons */}
-                            <div className="flex items-center justify-between pt-2.5 mt-2.5 border-t border-slate-100 gap-1">
-                              <div className="flex items-center gap-1">
-                                <button
-                                  onClick={() => handleOpenPreview(file)}
-                                  className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
-                                  title="Pratinjau Berkas"
-                                >
-                                  <Eye className="w-3.5 h-3.5" />
-                                </button>
-                                <a
-                                  href={downloadUrl}
-                                  download={file.name}
-                                  className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
-                                  title="Unduh Berkas"
-                                >
-                                  <Download className="w-3.5 h-3.5" />
-                                </a>
-                              </div>
-
-                              <div className="flex items-center gap-1">
-                                {/* Import to Google Drive Button */}
-                                <button
-                                  onClick={() => {
-                                    setImportingItem(file);
-                                    if (folders.length > 0) {
-                                      setSelectedTargetFolderId(folders[0].id);
-                                    }
-                                  }}
-                                  className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
-                                  title="Impor &amp; Sinkronkan ke Google Drive"
-                                >
-                                  <UploadCloud className="w-3.5 h-3.5" />
-                                </button>
-
-                                <button
-                                  onClick={() => handleDeleteItem(file)}
-                                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                                  title="Hapus Berkas"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
                               </div>
                             </div>
+                          ) : (
+                            <div className="flex flex-col items-center justify-center">
+                              <div className="p-3 rounded-xl bg-white shadow-xs border border-slate-200/60">
+                                {renderItemIcon(file)}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Extension Badge */}
+                          <div className="absolute top-2 left-2 px-1.5 py-0.5 bg-black/60 backdrop-blur-xs text-white text-[10px] font-mono font-bold rounded">
+                            {file.extension.toUpperCase() || "FILE"}
+                          </div>
+
+                          {/* Top-Right Selection Checkbox */}
+                          <div
+                            onClick={(e) => handleToggleSelectKey(e, itemKey)}
+                            className={`absolute top-2 right-2 p-1 rounded-md bg-white/80 backdrop-blur-xs shadow-xs transition-opacity ${
+                              isSelected
+                                ? "text-indigo-600 opacity-100"
+                                : "text-slate-400 opacity-0 group-hover:opacity-100 hover:text-slate-700"
+                            }`}
+                          >
+                            {isSelected ? (
+                              <CheckSquare className="w-4 h-4" />
+                            ) : (
+                              <Square className="w-4 h-4" />
+                            )}
                           </div>
                         </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  /* LIST VIEW */
-                  <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
-                    <table className="w-full text-left text-xs border-collapse">
-                      <thead>
-                        <tr className="bg-slate-50/75 border-b border-slate-200 text-slate-500 font-semibold uppercase text-[10px] tracking-wider">
-                          <th className="py-3 px-4">Nama Berkas</th>
-                          <th className="py-3 px-4">Ukuran</th>
-                          <th className="py-3 px-4">Tipe MIME</th>
-                          <th className="py-3 px-4">Waktu Modifikasi</th>
-                          <th className="py-3 px-4 text-right">Aksi</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {files.map((file) => {
-                          const downloadUrl = api.getMountFileDownloadUrl(mount.id, file.relativePath);
 
-                          return (
-                            <tr key={file.id} className="hover:bg-slate-50/70 transition-colors">
-                              <td className="py-3 px-4 font-semibold text-slate-800">
-                                <div className="flex items-center gap-2.5 min-w-0">
-                                  <div
-                                    onClick={() => handleOpenPreview(file)}
-                                    className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center shrink-0 cursor-pointer hover:bg-indigo-50 transition-colors"
-                                  >
-                                    {renderItemIcon(file)}
-                                  </div>
-                                  <span
-                                    onClick={() => handleOpenPreview(file)}
-                                    className="truncate hover:text-indigo-600 transition-colors cursor-pointer"
-                                    title={file.name}
-                                  >
-                                    {file.name}
-                                  </span>
-                                </div>
-                              </td>
-                              <td className="py-3 px-4 font-mono text-slate-600 whitespace-nowrap">
-                                {formatBytes(file.size)}
-                              </td>
-                              <td className="py-3 px-4 font-mono text-[11px] text-slate-500 truncate max-w-[140px]">
-                                {file.mimeType}
-                              </td>
-                              <td className="py-3 px-4 text-slate-500 whitespace-nowrap text-[11px]">
-                                {formatDate(file.modifiedAt)}
-                              </td>
-                              <td className="py-3 px-4 text-right whitespace-nowrap">
-                                <div className="flex items-center justify-end gap-1">
-                                  <button
-                                    onClick={() => handleOpenPreview(file)}
-                                    className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
-                                    title="Pratinjau"
-                                  >
-                                    <Eye className="w-3.5 h-3.5" />
-                                  </button>
-                                  <a
-                                    href={downloadUrl}
-                                    download={file.name}
-                                    className="p-1.5 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
-                                    title="Unduh"
-                                  >
-                                    <Download className="w-3.5 h-3.5" />
-                                  </a>
-                                  <button
-                                    onClick={() => {
-                                      setImportingItem(file);
-                                      if (folders.length > 0) {
-                                        setSelectedTargetFolderId(folders[0].id);
-                                      }
-                                    }}
-                                    className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
-                                    title="Impor ke Google Drive"
-                                  >
-                                    <UploadCloud className="w-3.5 h-3.5" />
-                                  </button>
-                                  <button
-                                    onClick={() => handleDeleteItem(file)}
-                                    className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                                    title="Hapus"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+                        {/* File Details Deck */}
+                        <div className="p-3 flex-1 flex flex-col justify-between">
+                          <div>
+                            <span className="text-xs font-semibold text-slate-800 line-clamp-1 group-hover:text-indigo-600 transition-colors" title={file.name}>
+                              {file.name}
+                            </span>
+                            <p className="text-[11px] text-slate-400 mt-0.5">
+                              {formatBytes(file.size)} • {formatDate(file.modifiedAt)}
+                            </p>
+                          </div>
+
+                          {/* Quick Bottom Action Buttons */}
+                          <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity">
+                            {/* Preview */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPreviewFile(fileObj);
+                              }}
+                              className="p-1 hover:text-indigo-600 hover:bg-indigo-50 rounded"
+                              title="Pratinjau berkas"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                            </button>
+
+                            {/* Download */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDownloadFile(file);
+                              }}
+                              className="p-1 hover:text-emerald-600 hover:bg-emerald-50 rounded"
+                              title="Unduh berkas"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                            </button>
+
+                            {/* Import to Google Drive */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setImportingItem(file);
+                              }}
+                              className="p-1 hover:text-blue-600 hover:bg-blue-50 rounded"
+                              title="Impor ke Google Drive"
+                            >
+                              <UploadCloud className="w-3.5 h-3.5" />
+                            </button>
+
+                            {/* Rename */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setRenameItem({ type: "file", data: fileObj, mountItem: file });
+                              }}
+                              className="p-1 hover:text-slate-700 hover:bg-slate-100 rounded"
+                              title="Ubah nama"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+
+                            {/* Delete */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteItem(file);
+                              }}
+                              className="p-1 hover:text-red-600 hover:bg-red-50 rounded"
+                              title="Hapus berkas"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
+          </div>
+        ) : (
+          /* LIST VIEW TABLE */
+          <div className="bg-white rounded-xl border border-slate-200/80 overflow-hidden shadow-xs">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="bg-slate-50/80 border-b border-slate-200/80 text-slate-500 font-semibold uppercase tracking-wider text-[11px]">
+                    <th className="py-3 px-4 w-10">
+                      <div
+                        onClick={handleSelectAll}
+                        className="cursor-pointer text-slate-400 hover:text-slate-600"
+                        title="Pilih Semua"
+                      >
+                        {selectedCount > 0 && selectedCount === allVisibleItems.length ? (
+                          <CheckSquare className="w-4 h-4 text-indigo-600" />
+                        ) : (
+                          <Square className="w-4 h-4" />
+                        )}
+                      </div>
+                    </th>
+                    <th className="py-3 px-4">Nama</th>
+                    <th className="py-3 px-4 hidden md:table-cell">Ukuran</th>
+                    <th className="py-3 px-4 hidden lg:table-cell">Tipe</th>
+                    <th className="py-3 px-4 hidden sm:table-cell">Terakhir Diubah</th>
+                    <th className="py-3 px-4 text-right">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {/* DIRECTORIES IN LIST */}
+                  {sortedDirectories.map((dir) => {
+                    const itemKey = `folder_${dir.id}`;
+                    const isSelected = selectedKeys.has(itemKey);
+                    const folderObj = mountDirToFolder(dir);
+
+                    return (
+                      <tr
+                        key={dir.id}
+                        data-selectable-key={itemKey}
+                        onClick={(e) => handleItemClick(e, itemKey, "folder", dir)}
+                        onDoubleClick={() => handleNavigate(dir.relativePath)}
+                        onContextMenu={(e) => handleContextMenu(e, "folder", dir)}
+                        className={`group cursor-pointer transition-colors ${
+                          isSelected ? "bg-indigo-50/60" : "hover:bg-slate-50/70"
+                        }`}
+                      >
+                        <td className="py-2.5 px-4">
+                          <div
+                            onClick={(e) => handleToggleSelectKey(e, itemKey)}
+                            className={isSelected ? "text-indigo-600" : "text-slate-300 group-hover:text-slate-400"}
+                          >
+                            {isSelected ? (
+                              <CheckSquare className="w-4 h-4" />
+                            ) : (
+                              <Square className="w-4 h-4" />
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-4">
+                          <div className="flex items-center gap-2.5">
+                            <FolderIcon className="w-4 h-4 text-amber-500 fill-amber-500/20 flex-shrink-0" />
+                            <span className="font-semibold text-slate-800 group-hover:text-indigo-600 transition-colors">
+                              {dir.name}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-4 text-slate-400 hidden md:table-cell">—</td>
+                        <td className="py-2.5 px-4 text-slate-500 hidden lg:table-cell">Folder</td>
+                        <td className="py-2.5 px-4 text-slate-500 hidden sm:table-cell">
+                          {formatDate(dir.modifiedAt)}
+                        </td>
+                        <td className="py-2.5 px-4 text-right">
+                          <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setShareFolderModal(folderObj);
+                              }}
+                              className="p-1 hover:text-indigo-600 hover:bg-indigo-50 rounded"
+                              title="Bagikan folder"
+                            >
+                              <Share2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setRenameItem({ type: "folder", data: folderObj, mountItem: dir });
+                              }}
+                              className="p-1 hover:text-slate-700 hover:bg-slate-100 rounded"
+                              title="Ubah nama"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteItem(dir);
+                              }}
+                              className="p-1 hover:text-red-600 hover:bg-red-50 rounded"
+                              title="Hapus folder"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+
+                  {/* FILES IN LIST */}
+                  {sortedFiles.map((file) => {
+                    const itemKey = `file_${file.id}`;
+                    const isSelected = selectedKeys.has(itemKey);
+                    const fileObj = mountFileToFileItem(file);
+
+                    return (
+                      <tr
+                        key={file.id}
+                        data-selectable-key={itemKey}
+                        onClick={(e) => handleItemClick(e, itemKey, "file", file)}
+                        onDoubleClick={() => setPreviewFile(fileObj)}
+                        onContextMenu={(e) => handleContextMenu(e, "file", file)}
+                        className={`group cursor-pointer transition-colors ${
+                          isSelected ? "bg-indigo-50/60" : "hover:bg-slate-50/70"
+                        }`}
+                      >
+                        <td className="py-2.5 px-4">
+                          <div
+                            onClick={(e) => handleToggleSelectKey(e, itemKey)}
+                            className={isSelected ? "text-indigo-600" : "text-slate-300 group-hover:text-slate-400"}
+                          >
+                            {isSelected ? (
+                              <CheckSquare className="w-4 h-4" />
+                            ) : (
+                              <Square className="w-4 h-4" />
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-4">
+                          <div className="flex items-center gap-2.5">
+                            {renderItemIcon(file)}
+                            <span className="font-medium text-slate-800 group-hover:text-indigo-600 transition-colors">
+                              {file.name}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-4 text-slate-500 font-mono hidden md:table-cell">
+                          {formatBytes(file.size)}
+                        </td>
+                        <td className="py-2.5 px-4 text-slate-400 font-mono uppercase hidden lg:table-cell">
+                          {file.extension || "FILE"}
+                        </td>
+                        <td className="py-2.5 px-4 text-slate-500 hidden sm:table-cell">
+                          {formatDate(file.modifiedAt)}
+                        </td>
+                        <td className="py-2.5 px-4 text-right">
+                          <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPreviewFile(fileObj);
+                              }}
+                              className="p-1 hover:text-indigo-600 hover:bg-indigo-50 rounded"
+                              title="Pratinjau berkas"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDownloadFile(file);
+                              }}
+                              className="p-1 hover:text-emerald-600 hover:bg-emerald-50 rounded"
+                              title="Unduh berkas"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setImportingItem(file);
+                              }}
+                              className="p-1 hover:text-blue-600 hover:bg-blue-50 rounded"
+                              title="Impor ke Google Drive"
+                            >
+                              <UploadCloud className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setRenameItem({ type: "file", data: fileObj, mountItem: file });
+                              }}
+                              className="p-1 hover:text-slate-700 hover:bg-slate-100 rounded"
+                              title="Ubah nama"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteItem(file);
+                              }}
+                              className="p-1 hover:text-red-600 hover:bg-red-50 rounded"
+                              title="Hapus berkas"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </div>
 
-      {/* 5. IMPORT TO GOOGLE DRIVE MODAL */}
-      {importingItem && (
-        <div
-          className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setImportingItem(null);
+      {/* MULTI-ITEM FLOATING SELECTION TOOLBAR */}
+      {selectedCount > 0 && (
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-40 bg-slate-900/95 text-white px-5 py-2.5 rounded-2xl shadow-2xl border border-slate-700 backdrop-blur-md flex items-center gap-4 animate-in slide-in-from-bottom-5">
+          <div className="flex items-center gap-2 text-xs font-semibold">
+            <span className="w-5 h-5 rounded-full bg-indigo-500 flex items-center justify-center text-[10px]">
+              {selectedCount}
+            </span>
+            <span>Item Dipilih</span>
+          </div>
+
+          <div className="h-4 w-px bg-slate-700" />
+
+          <div className="flex items-center gap-1.5">
+            {selectedFiles.length > 0 && (
+              <button
+                onClick={handleBatchDownload}
+                className="inline-flex items-center gap-1 px-3 py-1 text-xs font-medium bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors text-slate-200"
+              >
+                <Download className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Unduh ({selectedFiles.length})</span>
+              </button>
+            )}
+
+            <button
+              onClick={handleBatchDelete}
+              className="inline-flex items-center gap-1 px-3 py-1 text-xs font-medium bg-red-600/80 hover:bg-red-600 text-white rounded-lg transition-colors"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Hapus ({selectedCount})</span>
+            </button>
+          </div>
+
+          <div className="h-4 w-px bg-slate-700" />
+
+          <button
+            onClick={() => setSelectedKeys(new Set())}
+            className="text-xs text-slate-400 hover:text-white transition-colors"
+          >
+            Batal
+          </button>
+        </div>
+      )}
+
+      {/* MODAL: SHARE FOLDER / MOUNT */}
+      {shareFolderModal && (
+        <ShareFolderModal
+          folder={shareFolderModal}
+          onClose={() => setShareFolderModal(null)}
+          onPermissionUpdated={(updated) => {
+            showToast("Izin berbagi berhasil diperbarui", "success");
           }}
-        >
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 text-slate-800 animate-scale-up">
-            <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
+        />
+      )}
+
+      {/* MODAL: INLINE RENAME */}
+      {renameItem && (
+        <InlineRenameModal
+          item={renameItem}
+          onClose={() => setRenameItem(null)}
+          onSave={handleSaveRename}
+        />
+      )}
+
+      {/* DRAWER: ITEM DETAILS */}
+      {detailsItem && (
+        <ItemDetailsDrawer
+          item={detailsItem}
+          onClose={() => setDetailsItem(null)}
+          onPreviewFile={(f) => setPreviewFile(f)}
+          onShareFolder={(f) => setShareFolderModal(f)}
+        />
+      )}
+
+      {/* MODAL: FILE PREVIEW */}
+      {previewFile && (
+        <FilePreviewModal
+          file={previewFile}
+          onClose={() => setPreviewFile(null)}
+          onDownload={(f) => startFileDownload(f.id, f.originalName, f.size)}
+        />
+      )}
+
+      {/* MODAL: IMPORT TO GOOGLE DRIVE */}
+      {importingItem && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 border border-slate-200 animate-in zoom-in-95">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600">
+                <div className="p-2.5 bg-indigo-50 rounded-xl text-indigo-600">
                   <UploadCloud className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-slate-900 text-sm">Impor ke Google Drive</h3>
-                  <p className="text-xs text-slate-500">Salin dari <code className="font-mono text-indigo-700">{mount.mountPoint}</code></p>
+                  <h3 className="text-base font-bold text-slate-800">
+                    Impor ke Google Drive
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5 truncate max-w-xs">
+                    {importingItem.name}
+                  </p>
                 </div>
               </div>
               <button
                 onClick={() => setImportingItem(null)}
-                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100 transition-colors"
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="space-y-4">
-              <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 text-xs space-y-1.5">
-                <div className="font-bold text-slate-800 truncate">{importingItem.name}</div>
-                <div className="text-slate-500 flex items-center justify-between">
-                  <span>Ukuran: {formatBytes(importingItem.size)}</span>
-                  <span>Tipe: {importingItem.extension.toUpperCase()}</span>
-                </div>
-              </div>
+            <div className="py-4 space-y-4">
+              <p className="text-xs text-slate-600">
+                Berkas akan disalin ke antrean sinkronisasi Google Drive dan otomatis diunggah ke cloud sesuai target folder yang dipilih.
+              </p>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                  Pilih Folder Tujuan Aplikasi
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                  Pilih Folder Tujuan di Google Drive
                 </label>
-                {folders.length === 0 ? (
-                  <p className="text-xs text-rose-500">Belum ada folder aplikasi yang tersedia.</p>
-                ) : (
-                  <select
-                    value={selectedTargetFolderId}
-                    onChange={(e) => setSelectedTargetFolderId(e.target.value)}
-                    className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:bg-white"
-                  >
-                    {folders.map((f) => (
-                      <option key={f.id} value={f.id}>
-                        {f.name} ({f.targetFolderPath})
-                      </option>
-                    ))}
-                  </select>
-                )}
-                <p className="text-[11px] text-slate-400 mt-1">
-                  Berkas akan disalin ke buffer lokal dan otomatis dijadwalkan untuk sinkronisasi ke folder Google Drive tujuan.
-                </p>
-              </div>
-
-              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setImportingItem(null)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
+                <select
+                  value={selectedTargetFolderId}
+                  onChange={(e) => setSelectedTargetFolderId(e.target.value)}
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
-                  Batal
-                </button>
-                <button
-                  type="button"
-                  onClick={handleExecuteImport}
-                  disabled={isImporting || folders.length === 0}
-                  className="px-5 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-md shadow-blue-500/20 active:scale-95 transition-all inline-flex items-center gap-1.5 cursor-pointer"
-                >
-                  {isImporting ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
+                  {folders.length === 0 ? (
+                    <option value="">(Belum ada folder aplikasi)</option>
                   ) : (
-                    <Cloud className="w-4 h-4" />
+                    folders.map((f) => (
+                      <option key={f.id} value={f.id}>
+                        {f.name} ({f.targetDriveType === DriveType.SHARED_DRIVE ? "Shared Drive" : "Drive Saya"})
+                      </option>
+                    ))
                   )}
-                  <span>Mulai Impor &amp; Sinkron</span>
-                </button>
+                </select>
               </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setImportingItem(null)}
+                className="px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteImport}
+                disabled={isImporting || !selectedTargetFolderId}
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-lg shadow-sm transition-colors"
+              >
+                {isImporting ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Mengimpor...</span>
+                  </>
+                ) : (
+                  <>
+                    <UploadCloud className="w-3.5 h-3.5" />
+                    <span>Mulai Impor</span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* 6. FILE PREVIEW MODAL */}
-      <FilePreviewModal
-        file={previewFile}
-        onClose={() => setPreviewFile(null)}
-      />
+      {/* CONTEXT MENU */}
+      {contextMenu && (
+        <ContextMenu
+          state={contextMenu}
+          onClose={() => setContextMenu(null)}
+          onOpenFolder={(f) => {
+            const rel = f.targetFolderPath
+              ? f.targetFolderPath.replace(mount.mountPoint, "").replace(/^[\/\\]/, "")
+              : f.name;
+            handleNavigate(rel);
+          }}
+          onShareFolder={(f) => setShareFolderModal(f)}
+          onRenameFolder={(f) => {
+            const match = sortedDirectories.find((d) => d.id === f.id);
+            setRenameItem({ type: "folder", data: f, mountItem: match });
+          }}
+          onViewFolderDetails={(f) => setDetailsItem({ type: "folder", data: f })}
+          onDeleteFolder={(f) => {
+            const match = sortedDirectories.find((d) => d.id === f.id);
+            if (match) handleDeleteItem(match);
+          }}
+          onPreviewFile={(f) => setPreviewFile(f)}
+          onDownloadFile={(f) => startFileDownload(f.id, f.originalName, f.size)}
+          onRenameFile={(f) => {
+            const match = sortedFiles.find((file) => file.id === f.id);
+            setRenameItem({ type: "file", data: f, mountItem: match });
+          }}
+          onViewFileDetails={(f) => setDetailsItem({ type: "file", data: f })}
+          onDeleteFile={(f) => {
+            const match = sortedFiles.find((file) => file.id === f.id);
+            if (match) handleDeleteItem(match);
+          }}
+        />
+      )}
 
-      {/* 7. OPERATION LOADING MODAL */}
-      <OperationLoadingModal {...operationLoading} />
+      {/* OPERATION LOADING MODAL */}
+      <OperationLoadingModal
+        isOpen={operationLoading.isOpen}
+        title={operationLoading.title}
+        message={operationLoading.message}
+        type={operationLoading.type}
+        subMessage={operationLoading.subMessage}
+      />
     </div>
   );
 };

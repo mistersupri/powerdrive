@@ -245,6 +245,43 @@ export class MountController {
   }
 
   /**
+   * Rename item in mount
+   */
+  async renameItem(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { mountId } = req.params;
+      const { itemRelativePath, newName } = req.body;
+
+      if (!itemRelativePath || !newName) {
+        return res.status(400).json({
+          success: false,
+          error: "Parameter itemRelativePath dan newName wajib diisi",
+        });
+      }
+
+      const mount = mountService.getMountById(mountId);
+      if (!mount) {
+        return res.status(404).json({
+          success: false,
+          error: "Drive sistem mount tidak ditemukan",
+        });
+      }
+
+      const result = await mountService.renameItem(mount.mountPoint, itemRelativePath, newName);
+      res.status(200).json({
+        success: true,
+        data: result,
+        message: `Item berhasil diubah namanya menjadi "${newName}"`,
+      });
+    } catch (err: any) {
+      res.status(500).json({
+        success: false,
+        error: err.message || "Gagal mengubah nama item pada sistem mount",
+      });
+    }
+  }
+
+  /**
    * Upload file directly to mounted storage and save metadata to PostgreSQL
    */
   async uploadToMount(req: AuthenticatedRequest, res: Response) {
