@@ -1000,7 +1000,7 @@ export class StorageController {
   public static async checkConflicts(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const { folderId, fileNames } = req.body;
-      if (!folderId || !Array.isArray(fileNames)) {
+      if (folderId === undefined || folderId === null || !Array.isArray(fileNames)) {
         res.status(400).json({
           success: false,
           error: "folderId and fileNames array are required",
@@ -1032,7 +1032,7 @@ export class StorageController {
     try {
       const { fileName, fileSize, mimeType, folderId, chunkSize, totalChunks, conflictMode } = req.body;
 
-      if (!fileName || !fileSize || !folderId || !totalChunks) {
+      if (!fileName || !fileSize || folderId === undefined || folderId === null || !totalChunks) {
         res.status(400).json({
           success: false,
           error: "fileName, fileSize, folderId, and totalChunks are required",
@@ -1040,16 +1040,19 @@ export class StorageController {
         return;
       }
 
-      // Check folder permissions
-      const targetFolder = await db.folder.findUnique({ where: { id: folderId } });
-      if (targetFolder) {
-        const isOwnerOrAdmin = req.user && (req.user.role === "ADMIN" || targetFolder.ownerId === req.user.id);
-        if (targetFolder.permission === "VIEW" && !isOwnerOrAdmin) {
-          res.status(403).json({
-            success: false,
-            error: "Folder ini memiliki hak akses Hanya Lihat (VIEW). Anda tidak diizinkan mengunggah berkas ke folder ini.",
-          });
-          return;
+      // Check folder permissions if targeting a specific subfolder
+      const targetFolderId = !folderId || folderId === "root" || folderId === "null" ? null : folderId;
+      if (targetFolderId) {
+        const targetFolder = await db.folder.findUnique({ where: { id: targetFolderId } });
+        if (targetFolder) {
+          const isOwnerOrAdmin = req.user && (req.user.role === "ADMIN" || targetFolder.ownerId === req.user.id);
+          if (targetFolder.permission === "VIEW" && !isOwnerOrAdmin) {
+            res.status(403).json({
+              success: false,
+              error: "Folder ini memiliki hak akses Hanya Lihat (VIEW). Anda tidak diizinkan mengunggah berkas ke folder ini.",
+            });
+            return;
+          }
         }
       }
 

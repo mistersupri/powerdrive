@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import crypto from "crypto";
 import { db } from "../db/index.ts";
-import { ActivityAction, FileRecord, SyncStatus, UserRecord } from "../types/index.ts";
+import { ActivityAction, FileRecord, FolderRecord, SyncStatus, UserRecord } from "../types/index.ts";
 import { AuditService } from "./audit.service.ts";
 
 export function getMimeType(fileName: string, dbMimeType?: string): string {
@@ -165,10 +165,13 @@ export class StorageService {
     ipAddress?: string;
     userAgent?: string;
   }): Promise<{ uploadId: string; chunkSize: number; totalChunks: number; uploadedChunks: number[] }> {
-    // 1. Verify folder exists
-    const folder = await db.folder.findUnique({ where: { id: folderId } });
-    if (!folder) {
-      throw new Error(`Target folder with id ${folderId} does not exist`);
+    // 1. Verify folder exists if target is a subfolder
+    const targetFolderId = !folderId || folderId === "root" || folderId === "null" ? null : folderId;
+    if (targetFolderId) {
+      const folder = await db.folder.findUnique({ where: { id: targetFolderId } });
+      if (!folder) {
+        throw new Error(`Target folder with id ${folderId} does not exist`);
+      }
     }
 
     // 2. Generate unique uploadId
@@ -183,7 +186,7 @@ export class StorageService {
       fileName,
       fileSize,
       mimeType: mimeType || "application/octet-stream",
-      folderId,
+      folderId: targetFolderId || "root",
       chunkSize,
       totalChunks,
       uploadedChunks: new Set<number>(),
@@ -370,9 +373,10 @@ export class StorageService {
     }
 
     // Prepare final destination
-    const folder = await db.folder.findUnique({ where: { id: session.folderId } });
-    if (!folder) {
-      throw new Error(`Target folder ${session.folderId} not found`);
+    const targetFolderId = !session.folderId || session.folderId === "root" || session.folderId === "null" ? null : session.folderId;
+    let folder: FolderRecord | null = null;
+    if (targetFolderId) {
+      folder = await db.folder.findUnique({ where: { id: targetFolderId } });
     }
 
     const { absoluteDir, relativeDir } = this.getPartitionedPath();
@@ -424,10 +428,10 @@ export class StorageService {
 
     // Check if an existing file with the same originalName in this folder exists
     const existingFile = await db.file.findFirst({
-      where: { folderId: session.folderId, originalName: session.fileName },
+      where: { folderId: targetFolderId, originalName: session.fileName },
     });
 
-    const isSyncEnabled = folder.syncToGoogleDrive !== false;
+    const isSyncEnabled = folder ? folder.syncToGoogleDrive !== false : true;
     const initialSyncStatus = isSyncEnabled ? SyncStatus.PENDING : SyncStatus.LOCAL_ONLY;
 
     let fileRecord: FileRecord;
@@ -497,7 +501,7 @@ export class StorageService {
     } else {
       let finalName = session.fileName;
       if (existingFile && session.conflictMode === "rename") {
-        finalName = await this.getAvailableFileName(session.folderId, session.fileName);
+        finalName = await this.getAvailableFileName(targetFolderId, session.fileName);
       }
 
       const resolvedMimeType = getMimeType(session.fileName, session.mimeType);
@@ -505,7 +509,7 @@ export class StorageService {
       fileRecord = await db.file.create({
         data: {
           userId: session.userId || "usr_anonymous",
-          folderId: session.folderId,
+          folderId: targetFolderId,
           originalName: finalName,
           storedName,
           storagePath: relativeFilePath,
@@ -516,7 +520,7 @@ export class StorageService {
           versionHistory: [],
           syncStatus: initialSyncStatus,
           googleDriveFileId: null,
-          googleDriveFolderId: folder.googleDriveFolderId || null,
+          googleDriveFolderId: folder ? folder.googleDriveFolderId || null : null,
           googleDriveWebViewLink: null,
           syncAttempts: 0,
           lastError: null,
@@ -553,7 +557,7 @@ export class StorageService {
         size: finalStats.size,
         mimeType: session.mimeType,
         checksumSha256,
-        folderName: folder.name,
+        folderName: folder ? folder.name : "Drive Saya",
         uploadMethod: "RESUMABLE_CHUNKED",
         totalChunks: session.totalChunks,
       },
@@ -583,7 +587,8 @@ export class StorageService {
   /**
    * Get next available non-conflicting filename (e.g. Doc (1).pdf)
    */
-  public static async getAvailableFileName(folderId: string, fileName: string): Promise<string> {
+  public static async getAvailableFileName(folderId: string | null, fileName: string): Promise<string> {
+    const targetFolderId = !folderId || folderId === "root" || folderId === "null" ? null : folderId;
     const extIndex = fileName.lastIndexOf(".");
     const namePart = extIndex !== -1 ? fileName.substring(0, extIndex) : fileName;
     const extPart = extIndex !== -1 ? fileName.substring(extIndex) : "";
@@ -593,7 +598,7 @@ export class StorageService {
 
     while (true) {
       const existing = await db.file.findFirst({
-        where: { folderId, originalName: candidate },
+        where: { folderId: targetFolderId, originalName: candidate },
       });
       if (!existing) return candidate;
       candidate = `${namePart} (${counter})${extPart}`;
@@ -605,13 +610,14 @@ export class StorageService {
    * Check for duplicate files in a folder before upload
    */
   public static async checkConflicts(
-    folderId: string,
+    folderId: string | null,
     fileNames: string[]
   ): Promise<Array<{ fileName: string; existingFile: FileRecord }>> {
+    const targetFolderId = !folderId || folderId === "root" || folderId === "null" ? null : folderId;
     const conflicts: Array<{ fileName: string; existingFile: FileRecord }> = [];
     for (const fileName of fileNames) {
       const existing = await db.file.findFirst({
-        where: { folderId, originalName: fileName },
+        where: { folderId: targetFolderId, originalName: fileName },
       });
       if (existing) {
         conflicts.push({ fileName, existingFile: existing });
@@ -652,16 +658,20 @@ export class StorageService {
     mimeType: string;
     buffer: Buffer;
     size: number;
-    folderId: string;
+    folderId: string | null;
     conflictMode?: "create_version" | "overwrite" | "rename" | "skip";
     user?: UserRecord;
     ipAddress?: string;
     userAgent?: string;
   }): Promise<FileRecord> {
-    // 1. Verify folder exists
-    const folder = await db.folder.findUnique({ where: { id: folderId } });
-    if (!folder) {
-      throw new Error(`Target folder with id ${folderId} does not exist`);
+    // 1. Verify folder exists if target is a subfolder
+    const targetFolderId = !folderId || folderId === "root" || folderId === "null" ? null : folderId;
+    let folder: FolderRecord | null = null;
+    if (targetFolderId) {
+      folder = await db.folder.findUnique({ where: { id: targetFolderId } });
+      if (!folder) {
+        throw new Error(`Target folder with id ${folderId} does not exist`);
+      }
     }
 
     // 2. Format safe storage filename
@@ -679,10 +689,10 @@ export class StorageService {
 
     // 5. Check duplicate/versioning
     const existingFile = await db.file.findFirst({
-      where: { folderId, originalName },
+      where: { folderId: targetFolderId, originalName },
     });
 
-    const isSyncEnabled = folder.syncToGoogleDrive !== false;
+    const isSyncEnabled = folder ? folder.syncToGoogleDrive !== false : true;
     const initialSyncStatus = isSyncEnabled ? SyncStatus.PENDING : SyncStatus.LOCAL_ONLY;
 
     let fileRecord: FileRecord;
@@ -753,13 +763,13 @@ export class StorageService {
     } else {
       let finalName = originalName;
       if (existingFile && conflictMode === "rename") {
-        finalName = await this.getAvailableFileName(folderId, originalName);
+        finalName = await this.getAvailableFileName(targetFolderId, originalName);
       }
 
       fileRecord = await db.file.create({
         data: {
           userId: user?.id || "usr_anonymous",
-          folderId,
+          folderId: targetFolderId,
           originalName: finalName,
           storedName,
           storagePath: relativeFilePath,
@@ -770,7 +780,7 @@ export class StorageService {
           versionHistory: [],
           syncStatus: initialSyncStatus,
           googleDriveFileId: null,
-          googleDriveFolderId: folder.googleDriveFolderId || null,
+          googleDriveFolderId: folder ? folder.googleDriveFolderId || null : null,
           googleDriveWebViewLink: null,
           syncAttempts: 0,
           lastError: null,

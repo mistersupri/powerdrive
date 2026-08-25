@@ -821,7 +821,7 @@ export const GoogleDriveExplorer: React.FC<GoogleDriveExplorerProps> = ({
 
   // Check upload permission for current folder
   const canUploadToCurrentFolder = useMemo(() => {
-    if (!currentFolder) return false;
+    if (!currentFolder) return true; // Root folder ("Drive Saya") is always uploadable
     if (isAdmin) return true;
     if (currentFolder.ownerId && currentFolder.ownerId === user?.id) return true;
     return currentFolder.permission !== FolderPermission.VIEW;
@@ -871,15 +871,7 @@ export const GoogleDriveExplorer: React.FC<GoogleDriveExplorerProps> = ({
       return;
     }
 
-    const targetFolderId = currentFolderId || (folders.length > 0 ? folders[0].id : "");
-    if (!targetFolderId) {
-      showAlert({
-        title: "Pilih Folder Target",
-        message: "Harap buat atau buka folder terlebih dahulu sebelum mengunggah berkas.",
-        type: "info",
-      });
-      return;
-    }
+    const targetFolderId = currentFolderId || "root";
 
     // Check for filename conflicts in the target folder
     try {
@@ -929,7 +921,7 @@ export const GoogleDriveExplorer: React.FC<GoogleDriveExplorerProps> = ({
   const handleConflictResolved = (resolutions: Map<string, ConflictResolutionMode>) => {
     setShowConflictModal(false);
     setConflictItems([]);
-    const targetFolderId = currentFolderId || (folders.length > 0 ? folders[0].id : "");
+    const targetFolderId = currentFolderId || "root";
     const targetFolderName = currentFolder?.name || "Drive Saya";
     startChunkUpload({
       targetFolderId,
