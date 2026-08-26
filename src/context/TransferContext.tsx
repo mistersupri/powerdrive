@@ -627,15 +627,8 @@ export const TransferProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, []);
 
   const processChunkUploadTask = useCallback(
-    async (taskId: string, sessionFolderId: string, conflictModes?: Map<string, string>) => {
-      let task: UploadTask | undefined;
-      setChunkSession((prev) => {
-        task = prev?.tasks.find((t) => t.id === taskId);
-        return prev;
-      });
-
-      if (!task) return;
-
+    async (task: UploadTask, sessionFolderId: string, conflictModes?: Map<string, string>) => {
+      const taskId = task.id;
       const file = task.file;
       const conflictMode = ((conflictModes?.get(file.name) as any) || "create_version") as
         | "create_version"
@@ -846,7 +839,7 @@ export const TransferProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     tasksToStart.forEach((task) => {
       chunkStartedTasksRef.current.add(task.id);
       processChunkUploadTask(
-        task.id,
+        task,
         chunkSession.targetFolderId,
         chunkSession.fileConflictModes as any
       );
