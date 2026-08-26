@@ -12,6 +12,7 @@ import {
   Role,
   SyncJobRecord,
   SyncStatus,
+  PreviewStatus,
   SystemSettingRecord,
   UserRecord,
 } from "../types/index.ts";
@@ -494,6 +495,7 @@ class DatabaseService {
         userId?: string;
         folderId?: string;
         syncStatus?: SyncStatus;
+        previewStatus?: PreviewStatus;
         checksumSha256?: string;
         isTrashed?: boolean;
         originalName?: string;
@@ -509,6 +511,10 @@ class DatabaseService {
         whereClause.isTrashed = options.where.isTrashed;
       } else if (!options?.includeTrashed) {
         whereClause.isTrashed = false;
+      }
+
+      if (options?.where?.previewStatus) {
+        whereClause.previewStatus = options.where.previewStatus;
       }
 
       if (options?.where?.id) {

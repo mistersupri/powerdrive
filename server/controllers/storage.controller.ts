@@ -8,7 +8,7 @@ import { db } from "../db/index.ts";
 import { ActivityAction, SyncStatus } from "../types/index.ts";
 import { AuditService } from "../services/audit.service.ts";
 
-function generateVideoThumbnailSvg(fileName: string, mimeType: string = "", sizeBytes: number = 0): string {
+export function generateVideoThumbnailSvg(fileName: string, mimeType: string = "", sizeBytes: number = 0): string {
   const ext = fileName.split(".").pop()?.toUpperCase() || "MP4";
   const sizeFormatted =
     sizeBytes > 1024 * 1024
@@ -69,7 +69,7 @@ function generateVideoThumbnailSvg(fileName: string, mimeType: string = "", size
 </svg>`;
 }
 
-function generateFileThumbnailSvg(fileName: string, mimeType: string = "", sizeBytes: number = 0): string {
+export function generateFileThumbnailSvg(fileName: string, mimeType: string = "", sizeBytes: number = 0): string {
   const ext = fileName.split(".").pop()?.toUpperCase() || "FILE";
   const sizeFormatted =
     sizeBytes > 1024 * 1024
@@ -644,6 +644,45 @@ export class StorageController {
       const resolvedMime = getMimeType(file.originalName, file.mimeType);
       const isImage = resolvedMime.startsWith("image/") || /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|avif)$/i.test(file.originalName);
       const isVideo = resolvedMime.startsWith("video/") || /\.(mp4|webm|ogg|ogv|mov|m4v|mkv|avi|wmv|flv|3gp)$/i.test(file.originalName);
+
+      // A. If the local/remote file preview is PENDING or PROCESSING, serve a beautiful animated loading SVG
+      if (file.previewStatus === "PENDING" || file.previewStatus === "PROCESSING") {
+        const safeName = file.originalName.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        const displayName = safeName.length > 22 ? safeName.substring(0, 19) + "..." : safeName;
+        const processingSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" width="320" height="200">
+  <defs>
+    <linearGradient id="procGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0F172A" />
+      <stop offset="100%" stop-color="#1E293B" />
+    </linearGradient>
+  </defs>
+  <rect width="100%" height="100%" fill="url(#procGrad)" />
+  <circle cx="160" cy="80" r="20" fill="none" stroke="#6366F1" stroke-width="3" stroke-dasharray="80" stroke-dashoffset="0">
+    <animateTransform attributeName="transform" type="rotate" from="0 160 80" to="360 160 80" dur="1.5s" repeatCount="indefinite" />
+  </circle>
+  <text x="160" y="130" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" fill="#94A3B8" font-weight="500" text-anchor="middle">Memproses Pratinjau...</text>
+  <text x="160" y="150" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" fill="#64748B" text-anchor="middle">${displayName}</text>
+</svg>`;
+        res.setHeader("Content-Type", "image/svg+xml");
+        res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate"); // Do not cache while processing!
+        res.send(processingSvg);
+        return;
+      }
+
+      // B. If a physically pre-rendered thumbnail exists on the disk, serve it immediately with heavy caching
+      if (file.previewStatus === "READY" && file.thumbnailPath && file.thumbnailPath !== "gdrive") {
+        const fullThumbPath = StorageService.resolveStoragePath(file.thumbnailPath);
+        if (fullThumbPath && fs.existsSync(fullThumbPath)) {
+          const ext = file.thumbnailPath.split(".").pop()?.toLowerCase();
+          const contentType = ext === "svg" ? "image/svg+xml" : (ext === "png" ? "image/png" : "image/jpeg");
+          const stat = fs.statSync(fullThumbPath);
+          res.setHeader("Content-Type", contentType);
+          res.setHeader("Content-Length", stat.size);
+          res.setHeader("Cache-Control", "public, max-age=86400"); // Cache for 1 day
+          fs.createReadStream(fullThumbPath).pipe(res);
+          return;
+        }
+      }
 
       // 1. If Google Drive remote file exists, Google Drive provides high-res thumbnails for both images & videos!
       if (file.googleDriveFileId && !file.googleDriveFileId.startsWith("gdrive_") && !file.googleDriveFileId.startsWith("virtual_")) {

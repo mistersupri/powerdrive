@@ -21,6 +21,13 @@ enum SyncStatus {
   LOCAL_ONLY
 }
 
+enum PreviewStatus {
+  PENDING
+  PROCESSING
+  READY
+  FAILED
+}
+
 enum DriveType {
   MY_DRIVE
   SHARED_DRIVE
@@ -130,6 +137,8 @@ model File {
   googleDriveFolderId    String?     // System-Managed Destination Folder ID
   googleDriveWebViewLink String?
   syncStatus             SyncStatus  @default(PENDING)
+  previewStatus          PreviewStatus @default(PENDING)
+  thumbnailPath          String?
   syncAttempts           Int         @default(0)
   lastError              String?     @db.Text
   syncedAt               DateTime?

@@ -4,6 +4,7 @@ import crypto from "crypto";
 import { db } from "../db/index.ts";
 import { ActivityAction, FileRecord, FolderRecord, SyncStatus, UserRecord } from "../types/index.ts";
 import { AuditService } from "./audit.service.ts";
+import { PreviewService } from "./preview.service.ts";
 
 export function getMimeType(fileName: string, dbMimeType?: string): string {
   if (dbMimeType && dbMimeType !== "application/octet-stream" && dbMimeType !== "binary/octet-stream" && dbMimeType.trim().length > 0) {
@@ -566,6 +567,9 @@ export class StorageService {
       result: "SUCCESS",
     });
 
+    // Trigger Preview Worker immediately for the uploaded file
+    PreviewService.triggerImmediateProcess();
+
     return fileRecord;
   }
 
@@ -824,6 +828,9 @@ export class StorageService {
       userAgent,
       result: "SUCCESS",
     });
+
+    // Trigger Preview Worker immediately for the uploaded file
+    PreviewService.triggerImmediateProcess();
 
     return fileRecord;
   }

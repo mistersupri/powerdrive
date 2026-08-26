@@ -13,6 +13,7 @@ import { ContextMenu, ContextMenuState } from "./ContextMenu.tsx";
 import { ItemDetailsDrawer } from "./ItemDetailsDrawer.tsx";
 import { FilePreviewModal } from "./FilePreviewModal.tsx";
 import { VideoThumbnail } from "./VideoThumbnail.tsx";
+import { LazyThumbnail } from "./LazyThumbnail.tsx";
 import {
   Folder as FolderIcon,
   FolderOpen,
@@ -644,133 +645,7 @@ export const PublicSharedFolderView: React.FC<PublicSharedFolderViewProps> = ({
 
   // Large visual thumbnail in Grid (Matching GoogleDriveExplorer)
   const renderLargeThumbnail = (file: FileItem) => {
-    const category = getFileCategory(file.mimeType, file.originalName);
-    const ext = file.originalName.split(".").pop()?.toUpperCase() || "FILE";
-
-    if (category === "image") {
-      return (
-        <div className="w-full h-36 sm:h-40 bg-slate-100 rounded-t-xl overflow-hidden flex items-center justify-center relative border-b border-slate-100 select-none">
-          <img
-            src={api.getThumbnailUrl(file.id)}
-            alt={file.originalName}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 pointer-events-none"
-            loading="lazy"
-            referrerPolicy="no-referrer"
-            onError={(e) => {
-              e.currentTarget.style.display = "none";
-              const fallback = e.currentTarget.parentElement?.querySelector(".image-fallback");
-              if (fallback) fallback.classList.remove("hidden");
-            }}
-          />
-          <div className="image-fallback hidden flex flex-col items-center justify-center gap-2 p-4 text-purple-600">
-            <div className="w-14 h-14 rounded-2xl bg-purple-100 flex items-center justify-center shadow-2xs">
-              <ImageIcon className="w-8 h-8 text-purple-600" />
-            </div>
-            <span className="text-[10px] font-extrabold tracking-wider bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">
-              {ext}
-            </span>
-          </div>
-        </div>
-      );
-    }
-
-    if (category === "pdf") {
-      return (
-        <div className="w-full h-36 sm:h-40 bg-gradient-to-b from-rose-50 to-rose-100/60 rounded-t-xl flex flex-col items-center justify-center gap-2.5 border-b border-rose-100 select-none">
-          <div className="w-16 h-16 rounded-2xl bg-white shadow-md border border-rose-200 flex items-center justify-center text-rose-600 group-hover:scale-105 transition-transform">
-            <FileText className="w-9 h-9" />
-          </div>
-          <span className="text-[10px] font-extrabold uppercase tracking-wider text-rose-700 bg-white/90 border border-rose-200 px-2.5 py-0.5 rounded-full shadow-2xs">
-            DOKUMEN PDF
-          </span>
-        </div>
-      );
-    }
-
-    if (category === "spreadsheet") {
-      return (
-        <div className="w-full h-36 sm:h-40 bg-gradient-to-b from-emerald-50 to-emerald-100/60 rounded-t-xl flex flex-col items-center justify-center gap-2.5 border-b border-emerald-100 select-none">
-          <div className="w-16 h-16 rounded-2xl bg-white shadow-md border border-emerald-200 flex items-center justify-center text-emerald-600 group-hover:scale-105 transition-transform">
-            <FileSpreadsheet className="w-9 h-9" />
-          </div>
-          <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-700 bg-white/90 border border-emerald-200 px-2.5 py-0.5 rounded-full shadow-2xs">
-            LEMBAR SEBAR ({ext})
-          </span>
-        </div>
-      );
-    }
-
-    if (category === "document") {
-      return (
-        <div className="w-full h-36 sm:h-40 bg-gradient-to-b from-blue-50 to-blue-100/60 rounded-t-xl flex flex-col items-center justify-center gap-2.5 border-b border-blue-100 select-none">
-          <div className="w-16 h-16 rounded-2xl bg-white shadow-md border border-blue-200 flex items-center justify-center text-blue-600 group-hover:scale-105 transition-transform">
-            <FileText className="w-9 h-9" />
-          </div>
-          <span className="text-[10px] font-extrabold uppercase tracking-wider text-blue-700 bg-white/90 border border-blue-200 px-2.5 py-0.5 rounded-full shadow-2xs">
-            DOKUMEN WORD ({ext})
-          </span>
-        </div>
-      );
-    }
-
-    if (category === "video") {
-      return (
-        <VideoThumbnail
-          file={file}
-          className="w-full h-36 sm:h-40 border-b border-purple-100/50"
-        />
-      );
-    }
-
-    if (category === "audio") {
-      return (
-        <div className="w-full h-36 sm:h-40 bg-gradient-to-b from-teal-50 to-teal-100/60 rounded-t-xl flex flex-col items-center justify-center gap-2.5 border-b border-teal-100 select-none">
-          <div className="w-16 h-16 rounded-2xl bg-white shadow-md border border-teal-200 flex items-center justify-center text-teal-600 group-hover:scale-105 transition-transform">
-            <Music className="w-9 h-9" />
-          </div>
-          <span className="text-[10px] font-extrabold uppercase tracking-wider text-teal-700 bg-white/90 border border-teal-200 px-2.5 py-0.5 rounded-full shadow-2xs">
-            AUDIO ({ext})
-          </span>
-        </div>
-      );
-    }
-
-    if (category === "archive") {
-      return (
-        <div className="w-full h-36 sm:h-40 bg-gradient-to-b from-amber-50 to-amber-100/60 rounded-t-xl flex flex-col items-center justify-center gap-2.5 border-b border-amber-100 select-none">
-          <div className="w-16 h-16 rounded-2xl bg-white shadow-md border border-amber-200 flex items-center justify-center text-amber-600 group-hover:scale-105 transition-transform">
-            <FileArchive className="w-9 h-9" />
-          </div>
-          <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-700 bg-white/90 border border-amber-200 px-2.5 py-0.5 rounded-full shadow-2xs">
-            ARSIP ZIP ({ext})
-          </span>
-        </div>
-      );
-    }
-
-    if (category === "code") {
-      return (
-        <div className="w-full h-36 sm:h-40 bg-gradient-to-b from-indigo-50 to-indigo-100/60 rounded-t-xl flex flex-col items-center justify-center gap-2.5 border-b border-indigo-100 select-none">
-          <div className="w-16 h-16 rounded-2xl bg-white shadow-md border border-indigo-200 flex items-center justify-center text-indigo-600 group-hover:scale-105 transition-transform">
-            <FileCode className="w-9 h-9" />
-          </div>
-          <span className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-700 bg-white/90 border border-indigo-200 px-2.5 py-0.5 rounded-full shadow-2xs">
-            SKRIP / KODE ({ext})
-          </span>
-        </div>
-      );
-    }
-
-    return (
-      <div className="w-full h-36 sm:h-40 bg-gradient-to-b from-slate-50 to-slate-100 rounded-t-xl flex flex-col items-center justify-center gap-2.5 border-b border-slate-200 select-none">
-        <div className="w-16 h-16 rounded-2xl bg-white shadow-md border border-slate-200 flex items-center justify-center text-slate-500 group-hover:scale-105 transition-transform">
-          <FileGenericIcon className="w-9 h-9" />
-        </div>
-        <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-600 bg-white/90 border border-slate-200 px-2.5 py-0.5 rounded-full shadow-2xs">
-          BERKAS ({ext})
-        </span>
-      </div>
-    );
+    return <LazyThumbnail file={file} />;
   };
 
   const getFileSmallIcon = (mimeType: string, name: string) => {

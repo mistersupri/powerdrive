@@ -1,10 +1,11 @@
-import { Role as PrismaRole, DriveType as PrismaDriveType, SyncStatus as PrismaSyncStatus } from "@prisma/client";
+import { Role as PrismaRole, DriveType as PrismaDriveType, SyncStatus as PrismaSyncStatus, PreviewStatus as PrismaPreviewStatus } from "@prisma/client";
 
-export { PrismaRole as Role, PrismaDriveType as DriveType, PrismaSyncStatus as SyncStatus };
+export { PrismaRole as Role, PrismaDriveType as DriveType, PrismaSyncStatus as SyncStatus, PrismaPreviewStatus as PreviewStatus };
 
 type Role = PrismaRole;
 type DriveType = PrismaDriveType;
 type SyncStatus = PrismaSyncStatus;
+type PreviewStatus = PrismaPreviewStatus;
 
 export enum FolderPermission {
   VIEW = "VIEW",
@@ -127,6 +128,8 @@ export interface FileRecord {
   googleDriveFolderId?: string | null;
   googleDriveWebViewLink?: string | null;
   syncStatus: SyncStatus;
+  previewStatus?: PreviewStatus;
+  thumbnailPath?: string | null;
   syncAttempts: number;
   lastError?: string | null;
   syncedAt?: Date | null;

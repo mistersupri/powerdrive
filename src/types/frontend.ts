@@ -22,6 +22,13 @@ export enum SyncStatus {
   LOCAL_ONLY = "LOCAL_ONLY",
 }
 
+export enum PreviewStatus {
+  PENDING = "PENDING",
+  PROCESSING = "PROCESSING",
+  READY = "READY",
+  FAILED = "FAILED",
+}
+
 export interface SmtpConfig {
   host: string;
   port: number;
@@ -99,6 +106,8 @@ export interface FileItem {
   trashedAt?: string | null;
   trashedBy?: string | null;
   syncStatus: SyncStatus;
+  previewStatus?: PreviewStatus;
+  thumbnailPath?: string | null;
   syncAttempts: number;
   lastError?: string | null;
   googleDriveFileId?: string | null;
