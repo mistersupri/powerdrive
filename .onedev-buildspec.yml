@@ -28,3 +28,31 @@ jobs:
   includeUpstreamWhenRebuild: false
   includeDownstreamWhenRebuild: false
   timeout: 14400
+- name: pull remote
+  steps:
+  - type: CheckoutStep
+    name: checkout
+    cloneCredential:
+      type: DefaultCredential
+    withLfs: false
+    withSubmodules: false
+    condition: SUCCESSFUL
+    optional: false
+  - type: PullRepository
+    name: pull github
+    remoteUrl: https://github.com/mistersupri/powerdrive.git
+    userName: mistersupri
+    passwordSecret: github
+    targetProject: mistersupri/powerdrive
+    accessTokenSecret: onedev
+    refs: main
+    withLfs: false
+    force: true
+    condition: SUCCESSFUL
+    optional: false
+  retryCondition: never
+  maxRetries: 3
+  retryDelay: 30
+  includeUpstreamWhenRebuild: false
+  includeDownstreamWhenRebuild: false
+  timeout: 14400
