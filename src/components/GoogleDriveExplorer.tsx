@@ -158,6 +158,7 @@ export const GoogleDriveExplorer: React.FC<GoogleDriveExplorerProps> = ({
   // Right-Click Context Menu & Quick Action States
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [shareFolderModal, setShareFolderModal] = useState<Folder | null>(null);
+  const [shareFileModal, setShareFileModal] = useState<FileItem | null>(null);
   const [renameItem, setRenameItem] = useState<
     { type: "folder"; data: Folder } | { type: "file"; data: FileItem } | null
   >(null);
@@ -1833,6 +1834,13 @@ export const GoogleDriveExplorer: React.FC<GoogleDriveExplorerProps> = ({
                     <Download className="w-3.5 h-3.5" />
                     <span>Unduh</span>
                   </a>
+                  <button
+                    onClick={() => setShareFileModal(singleSelectedItem.data)}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-blue-700 hover:bg-blue-800 text-white text-xs font-semibold transition-all cursor-pointer shadow-xs"
+                  >
+                    <Share2 className="w-3.5 h-3.5" />
+                    <span>Bagikan</span>
+                  </button>
                   {singleSelectedItem.data.syncStatus === SyncStatus.SYNCED &&
                   singleSelectedItem.data.googleDriveWebViewLink ? (
                     <a
@@ -3097,6 +3105,7 @@ export const GoogleDriveExplorer: React.FC<GoogleDriveExplorerProps> = ({
         onSyncFile={handleSyncFile}
         onViewFileDetails={(file) => setDetailsItem({ type: "file", data: file })}
         onDeleteFile={handleDeleteFile}
+        onShareFile={(file) => setShareFileModal(file)}
       />
 
       {/* FILE INLINE PREVIEW MODAL */}
@@ -3115,6 +3124,13 @@ export const GoogleDriveExplorer: React.FC<GoogleDriveExplorerProps> = ({
           onPermissionUpdated={() => {
             onRefreshData();
           }}
+        />
+      )}
+
+      {shareFileModal && (
+        <ShareFolderModal
+          file={shareFileModal}
+          onClose={() => setShareFileModal(null)}
         />
       )}
 

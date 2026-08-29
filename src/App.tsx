@@ -20,9 +20,10 @@ import { Loader2 } from "lucide-react";
 function MainApp() {
   const { user, isAdmin, isLoading: isAuthLoading } = useAuth();
 
-  // Check if opening via share link (?folderId=...&perm=...&sig=...)
+  // Check if opening via share link (?folderId=...&perm=...&sig=... or ?fileId=...)
   const [shareParams] = useState<{
     folderId: string | null;
+    fileId: string | null;
     perm: string | null;
     sig: string | null;
   }>(() => {
@@ -30,11 +31,12 @@ function MainApp() {
       const params = new URLSearchParams(window.location.search);
       return {
         folderId: params.get("folderId") || params.get("folder"),
+        fileId: params.get("fileId") || params.get("file"),
         perm: params.get("perm") || params.get("permission"),
         sig: params.get("sig") || params.get("signature") || params.get("token"),
       };
     } catch {
-      return { folderId: null, perm: null, sig: null };
+      return { folderId: null, fileId: null, perm: null, sig: null };
     }
   });
 
@@ -101,12 +103,13 @@ function MainApp() {
     );
   }
 
-  // 1. If unauthenticated AND a valid share folderId is present in URL, open Public Shared Folder directly!
-  if (!user && shareParams.folderId && !forceShowLogin) {
+  // 1. If a valid share folderId or fileId is present in URL, open Public Shared Folder/File directly!
+  if ((shareParams.folderId || shareParams.fileId) && !forceShowLogin) {
     return (
       <>
         <PublicSharedFolderView
-          initialFolderId={shareParams.folderId}
+          initialFolderId={shareParams.folderId || undefined}
+          fileId={shareParams.fileId || undefined}
           permParam={shareParams.perm}
           signatureParam={shareParams.sig}
           onGoToLogin={() => setForceShowLogin(true)}
@@ -123,7 +126,7 @@ function MainApp() {
       <AuthView
         onSuccess={fetchGlobalData}
         onBackToSharedFolder={
-          shareParams.folderId ? () => setForceShowLogin(false) : undefined
+          (shareParams.folderId || shareParams.fileId) ? () => setForceShowLogin(false) : undefined
         }
       />
     );

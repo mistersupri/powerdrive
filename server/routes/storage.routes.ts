@@ -19,6 +19,7 @@ storageRouter.get("/bulk-download/session/:sessionId", StorageController.getArch
 // File listing & inspection (accessible for shared folders)
 storageRouter.get("/files", StorageController.listFiles);
 storageRouter.get("/files/:id", StorageController.getFile);
+storageRouter.get("/files/:id/share-links", StorageController.getFileShareLinks);
 
 // Bulk Multi-Part Archive & Direct ZIP endpoints (accessible for shared folders)
 storageRouter.post("/bulk-download/prepare", StorageController.prepareBulkArchive);

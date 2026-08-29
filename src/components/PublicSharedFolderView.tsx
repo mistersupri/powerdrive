@@ -53,8 +53,18 @@ import {
   Sparkles,
 } from "lucide-react";
 
+// Client-side SHA-256 helper for password hashing
+async function sha256(message: string): Promise<string> {
+  if (!message) return "";
+  const msgBuffer = new TextEncoder().encode(message);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", msgBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 interface PublicSharedFolderViewProps {
-  initialFolderId: string;
+  initialFolderId?: string;
+  fileId?: string;
   permParam?: string | null;
   signatureParam?: string | null;
   onGoToLogin: () => void;
@@ -62,6 +72,7 @@ interface PublicSharedFolderViewProps {
 
 export const PublicSharedFolderView: React.FC<PublicSharedFolderViewProps> = ({
   initialFolderId,
+  fileId,
   permParam,
   signatureParam,
   onGoToLogin,
@@ -87,6 +98,26 @@ export const PublicSharedFolderView: React.FC<PublicSharedFolderViewProps> = ({
   const [isSignatureValid, setIsSignatureValid] = useState<boolean | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Gating & Verification States
+  const [urlParams] = useState(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      return {
+        pwdHash: params.get("pwdHash") || null,
+        emails: params.get("emails") || null,
+      };
+    } catch {
+      return { pwdHash: null, emails: null };
+    }
+  });
+
+  const [gatePassword, setGatePassword] = useState("");
+  const [gateEmail, setGateEmail] = useState("");
+  const [gatePassed, setGatePassed] = useState(false);
+  const [gateError, setGateError] = useState("");
+  const [isVerifyingGate, setIsVerifyingGate] = useState(false);
+  const [sharedFile, setSharedFile] = useState<FileItem | null>(null);
 
   // View & Filter state (Identical to Drive Saya)
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
@@ -117,53 +148,109 @@ export const PublicSharedFolderView: React.FC<PublicSharedFolderViewProps> = ({
     { type: "folder"; data: Folder } | { type: "file"; data: FileItem } | null
   >(null);
 
-  // 1. Initial Load: Fetch Shared Root Folder & Verify Signature
-  const loadSharedRoot = useCallback(async () => {
+  // 1. Initial Load: Fetch Shared Root Folder / File & Verify Signature
+  const loadSharedRoot = useCallback(async (enteredPwdHash?: string, enteredEmail?: string) => {
     setIsLoading(true);
     setError(null);
+    setGateError("");
     try {
       let effectivePerm = permParam === "EDIT" ? FolderPermission.EDIT : FolderPermission.VIEW;
+      
+      const hasPwd = !!urlParams.pwdHash;
+      const hasEmail = !!urlParams.emails;
+      const needsGate = (hasPwd || hasEmail) && !gatePassed;
+
+      const pwdHashToUse = enteredPwdHash || urlParams.pwdHash || undefined;
+      const emailToUse = enteredEmail || undefined;
+
+      if (needsGate && !enteredPwdHash && !enteredEmail) {
+        setIsLoading(false);
+        return; // Wait for user action on Gate screen
+      }
+
       if (signatureParam) {
         try {
           const verifyRes = await api.verifyShareToken({
             folderId: initialFolderId,
+            fileId: fileId,
             permission: effectivePerm,
             signature: signatureParam,
+            pwdHash: pwdHashToUse,
+            emails: urlParams.emails || undefined,
+            emailInput: emailToUse,
           });
-          if (verifyRes.isValid && verifyRes.folder) {
+
+          if (verifyRes.isValid) {
             setIsSignatureValid(true);
-            setRootFolder(verifyRes.folder);
-            setCurrentFolder(verifyRes.folder);
-            setFolderPath([verifyRes.folder]);
+            setGatePassed(true);
             if (verifyRes.grantedPermission) {
               setPermission(verifyRes.grantedPermission as FolderPermission);
             }
+            if (fileId && verifyRes.file) {
+              setSharedFile(verifyRes.file);
+            } else if (verifyRes.folder) {
+              setRootFolder(verifyRes.folder);
+              setCurrentFolder(verifyRes.folder);
+              setFolderPath([verifyRes.folder]);
+            }
           } else {
             setIsSignatureValid(false);
+            if (hasPwd || hasEmail) {
+              setGateError("Kredensial tidak valid. Silakan periksa kembali password atau email Anda.");
+            } else {
+              setError("Tanda tangan keamanan tidak valid.");
+            }
           }
-        } catch {
+        } catch (err: any) {
           setIsSignatureValid(false);
-        }
-      }
-
-      const folderRes = await api.getFolder(initialFolderId);
-      if (folderRes.folder) {
-        setRootFolder(folderRes.folder);
-        setCurrentFolder(folderRes.folder);
-        setFolderPath([folderRes.folder]);
-        if (!signatureParam) {
-          setPermission(folderRes.folder.permission || FolderPermission.VIEW);
+          if (hasPwd || hasEmail) {
+            setGateError(err.message || "Verifikasi akses gagal. Silakan coba lagi.");
+          } else {
+            setError(err.message || "Gagal memverifikasi tanda tangan keamanan.");
+          }
         }
       } else {
-        throw new Error("Folder tidak ditemukan atau tautan telah kedaluwarsa.");
+        // Fallback for direct fetch without token if available public
+        if (fileId) {
+          const fileRes = await api.getFile(fileId);
+          if (fileRes.file) {
+            setSharedFile(fileRes.file);
+          } else {
+            throw new Error("Berkas tidak ditemukan atau tidak bersifat publik.");
+          }
+        } else if (initialFolderId) {
+          const folderRes = await api.getFolder(initialFolderId);
+          if (folderRes.folder) {
+            setRootFolder(folderRes.folder);
+            setCurrentFolder(folderRes.folder);
+            setFolderPath([folderRes.folder]);
+            setPermission(folderRes.folder.permission || FolderPermission.VIEW);
+          } else {
+            throw new Error("Folder tidak ditemukan atau tidak bersifat publik.");
+          }
+        }
       }
     } catch (err: any) {
-      console.error("Failed to load shared folder:", err);
-      setError(err.message || "Gagal memuat folder bagikan. Tautan mungkin telah dihapus atau tidak valid.");
+      console.error("Failed to load shared resource:", err);
+      setError(err.message || "Gagal memuat sumber daya dibagikan.");
     } finally {
       setIsLoading(false);
     }
-  }, [initialFolderId, permParam, signatureParam]);
+  }, [initialFolderId, fileId, permParam, signatureParam, urlParams, gatePassed]);
+
+  const handleVerifyGate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsVerifyingGate(true);
+    setGateError("");
+    try {
+      const pwdHash = urlParams.pwdHash && gatePassword ? await sha256(gatePassword) : undefined;
+      await loadSharedRoot(pwdHash, gateEmail || undefined);
+    } catch (err: any) {
+      setGateError(err.message || "Gagal memproses verifikasi akses.");
+    } finally {
+      setIsVerifyingGate(false);
+    }
+  };
 
   useEffect(() => {
     loadSharedRoot();
@@ -672,6 +759,93 @@ export const PublicSharedFolderView: React.FC<PublicSharedFolderViewProps> = ({
     }
   };
 
+  // 1. Gate Screen Render (if password or email restricted, and not passed yet)
+  const isPwdRestricted = !!urlParams.pwdHash;
+  const isEmailRestricted = !!urlParams.emails;
+  if ((isPwdRestricted || isEmailRestricted) && !gatePassed) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-slate-800 border border-slate-700/80 rounded-3xl p-8 shadow-2xl text-slate-100">
+          <div className="w-16 h-16 bg-blue-500/10 text-blue-400 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-blue-500/20">
+            <Lock className="w-8 h-8" />
+          </div>
+          <h2 className="text-xl font-bold text-center mb-1 text-white">Gerbang Akses Aman</h2>
+          <p className="text-xs text-slate-400 text-center mb-6 leading-relaxed">
+            Tautan ini dilindungi. Silakan masukkan kredensial di bawah ini untuk membuka akses.
+          </p>
+          
+          <form onSubmit={handleVerifyGate} className="space-y-4">
+            {isPwdRestricted && (
+              <div>
+                <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                  Password Tautan
+                </label>
+                <input
+                  type="password"
+                  value={gatePassword}
+                  onChange={(e) => setGatePassword(e.target.value)}
+                  placeholder="Masukkan password tautan..."
+                  required
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 text-white placeholder-slate-600 focus:outline-hidden transition-all"
+                />
+              </div>
+            )}
+
+            {isEmailRestricted && (
+              <div>
+                <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                  Alamat Email Anda
+                </label>
+                <input
+                  type="email"
+                  value={gateEmail}
+                  onChange={(e) => setGateEmail(e.target.value)}
+                  placeholder="Masukkan alamat email terdaftar..."
+                  required
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 text-white placeholder-slate-600 focus:outline-hidden transition-all"
+                />
+              </div>
+            )}
+
+            {gateError && (
+              <div className="text-xs bg-rose-500/10 text-rose-400 border border-rose-500/20 rounded-xl p-3 font-semibold">
+                {gateError}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={isVerifyingGate}
+              className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2 cursor-pointer active:scale-95 disabled:opacity-50"
+            >
+              {isVerifyingGate ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Memverifikasi Akses...</span>
+                </>
+              ) : (
+                <>
+                  <ShieldCheck className="w-4 h-4" />
+                  <span>Buka Akses</span>
+                </>
+              )}
+            </button>
+          </form>
+
+          <div className="mt-6 pt-4 border-t border-slate-700/50 flex justify-center">
+            <button
+              type="button"
+              onClick={onGoToLogin}
+              className="text-xs font-bold text-blue-400 hover:text-blue-300 transition-colors"
+            >
+              Kembali ke Halaman Masuk
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Loading State
   if (isLoading) {
     return (
@@ -680,7 +854,7 @@ export const PublicSharedFolderView: React.FC<PublicSharedFolderViewProps> = ({
           <div className="w-14 h-14 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center shadow-2xs">
             <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
           </div>
-          <p className="text-base font-bold text-slate-900">Membuka Folder Dibagikan...</p>
+          <p className="text-base font-bold text-slate-900">Membuka Sumber Daya Dibagikan...</p>
           <p className="text-xs text-slate-500 max-w-xs">
             Memverifikasi tanda tangan keamanan kriptografi HMAC-SHA256
           </p>
@@ -690,7 +864,7 @@ export const PublicSharedFolderView: React.FC<PublicSharedFolderViewProps> = ({
   }
 
   // Error State
-  if (error || !rootFolder) {
+  if (error || (!rootFolder && !sharedFile)) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
         <div className="max-w-md w-full bg-white border border-slate-200 rounded-3xl p-8 text-center shadow-2xl">
@@ -699,11 +873,11 @@ export const PublicSharedFolderView: React.FC<PublicSharedFolderViewProps> = ({
           </div>
           <h2 className="text-lg font-bold text-slate-900 mb-2">Tautan Bagikan Tidak Tersedia</h2>
           <p className="text-xs text-slate-500 mb-6 leading-relaxed">
-            {error || "Folder yang Anda tuju mungkin telah dihapus, akses dicabut, atau tanda tangan keamanan tidak cocok."}
+            {error || "Sumber daya yang Anda tuju mungkin telah dihapus, akses dicabut, atau tanda tangan keamanan tidak cocok."}
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <button
-              onClick={loadSharedRoot}
+              onClick={() => loadSharedRoot()}
               className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition-colors"
             >
               <RefreshCw className="w-4 h-4" />
@@ -718,6 +892,85 @@ export const PublicSharedFolderView: React.FC<PublicSharedFolderViewProps> = ({
             </button>
           </div>
         </div>
+      </div>
+    );
+  }
+
+  // Auto-open preview for single file sharing
+  if (sharedFile && !rootFolder) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col selection:bg-blue-600 selection:text-white">
+        {/* Header */}
+        <header className="h-16 bg-white border-b border-slate-200 px-4 sm:px-6 flex items-center justify-between gap-4 shadow-2xs">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-md shadow-blue-600/20 shrink-0">
+              <HardDrive className="w-5 h-5" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="font-extrabold text-slate-900 text-sm sm:text-base tracking-tight truncate">
+                  Power Drive
+                </span>
+                <span className="inline-flex items-center gap-1 text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                  Berkas Dibagikan
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 truncate">
+                {sharedFile.originalName} • Hanya Lihat
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onGoToLogin}
+              className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all border border-slate-200 cursor-pointer"
+            >
+              <LogIn className="w-3.5 h-3.5 text-blue-600" />
+              <span>Masuk Akun</span>
+            </button>
+          </div>
+        </header>
+
+        {/* Workspace */}
+        <div className="flex-1 flex items-center justify-center p-6 bg-slate-100/50">
+          <div className="max-w-md w-full bg-white border border-slate-200 rounded-3xl p-8 text-center shadow-xl">
+            <div className="w-20 h-20 bg-blue-50 text-blue-600 rounded-3xl flex items-center justify-center mx-auto mb-5 border border-blue-100 shadow-2xs flex justify-center items-center">
+              {getFileSmallIcon(sharedFile.mimeType, sharedFile.originalName)}
+            </div>
+            <h2 className="text-lg font-bold text-slate-900 mb-1 truncate max-w-full" title={sharedFile.originalName}>
+              {sharedFile.originalName}
+            </h2>
+            <p className="text-xs text-slate-500 mb-6 font-medium">
+              Ukuran: {formatBytes(sharedFile.size)} • {sharedFile.mimeType || "Dokumen"}
+            </p>
+
+            <div className="flex flex-col gap-2.5">
+              <button
+                onClick={() => setPreviewFile(sharedFile)}
+                className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition-colors shadow-lg shadow-blue-600/10"
+              >
+                <Eye className="w-4 h-4" />
+                <span>Buka Pratinjau Berkas</span>
+              </button>
+              <button
+                onClick={() => startFileDownload(sharedFile.id, sharedFile.originalName, sharedFile.size)}
+                className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition-colors"
+              >
+                <Download className="w-4 h-4" />
+                <span>Unduh Berkas</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Preview Drawer */}
+        {previewFile && (
+          <FilePreviewModal
+            file={previewFile}
+            onClose={() => setPreviewFile(null)}
+          />
+        )}
       </div>
     );
   }

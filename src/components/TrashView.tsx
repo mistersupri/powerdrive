@@ -450,6 +450,14 @@ export const TrashView: React.FC<TrashViewProps> = ({ onRefreshAll }) => {
 
   // Restore Single File
   const handleRestoreFile = async (file: FileItem) => {
+    const confirmed = await showConfirm({
+      title: "Pulihkan Berkas?",
+      message: `Apakah Anda yakin ingin memulihkan berkas "${file.originalName}" ke lokasi asalnya?`,
+      confirmText: "Pulihkan",
+      cancelText: "Batal",
+    });
+    if (!confirmed) return;
+
     setIsProcessing(true);
     setProcessingInfo({
       isOpen: true,
@@ -482,6 +490,14 @@ export const TrashView: React.FC<TrashViewProps> = ({ onRefreshAll }) => {
 
   // Restore Single Folder
   const handleRestoreFolder = async (folder: Folder) => {
+    const confirmed = await showConfirm({
+      title: "Pulihkan Folder?",
+      message: `Apakah Anda yakin ingin memulihkan folder "${folder.name}" beserta seluruh isinya ke lokasi asalnya?`,
+      confirmText: "Pulihkan",
+      cancelText: "Batal",
+    });
+    if (!confirmed) return;
+
     setIsProcessing(true);
     setProcessingInfo({
       isOpen: true,
@@ -598,6 +614,14 @@ export const TrashView: React.FC<TrashViewProps> = ({ onRefreshAll }) => {
   const handleBulkRestore = async () => {
     const fileIds = selectedFiles.map((f) => f.id);
     const folderIds = selectedFolders.map((f) => f.id);
+
+    const confirmed = await showConfirm({
+      title: "Pulihkan Item Terpilih?",
+      message: `Apakah Anda yakin ingin memulihkan ${selectedFolders.length} folder dan ${selectedFiles.length} berkas yang terpilih ke lokasi asalnya?`,
+      confirmText: "Pulihkan",
+      cancelText: "Batal",
+    });
+    if (!confirmed) return;
 
     setIsProcessing(true);
     setProcessingInfo({

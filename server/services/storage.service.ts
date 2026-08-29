@@ -429,7 +429,7 @@ export class StorageService {
 
     // Check if an existing file with the same originalName in this folder exists
     const existingFile = await db.file.findFirst({
-      where: { folderId: targetFolderId, originalName: session.fileName },
+      where: { folderId: targetFolderId, originalName: session.fileName, isTrashed: false },
     });
 
     const isSyncEnabled = folder ? folder.syncToGoogleDrive !== false : true;
@@ -602,7 +602,7 @@ export class StorageService {
 
     while (true) {
       const existing = await db.file.findFirst({
-        where: { folderId: targetFolderId, originalName: candidate },
+        where: { folderId: targetFolderId, originalName: candidate, isTrashed: false },
       });
       if (!existing) return candidate;
       candidate = `${namePart} (${counter})${extPart}`;
@@ -621,7 +621,7 @@ export class StorageService {
     const conflicts: Array<{ fileName: string; existingFile: FileRecord }> = [];
     for (const fileName of fileNames) {
       const existing = await db.file.findFirst({
-        where: { folderId: targetFolderId, originalName: fileName },
+        where: { folderId: targetFolderId, originalName: fileName, isTrashed: false },
       });
       if (existing) {
         conflicts.push({ fileName, existingFile: existing });
@@ -693,7 +693,7 @@ export class StorageService {
 
     // 5. Check duplicate/versioning
     const existingFile = await db.file.findFirst({
-      where: { folderId: targetFolderId, originalName },
+      where: { folderId: targetFolderId, originalName, isTrashed: false },
     });
 
     const isSyncEnabled = folder ? folder.syncToGoogleDrive !== false : true;
@@ -957,7 +957,7 @@ export class StorageService {
 
       let finalName = file.originalName;
       const existingFile = await db.file.findFirst({
-        where: { folderId: targetFolderId, originalName: file.originalName },
+        where: { folderId: targetFolderId, originalName: file.originalName, isTrashed: false },
       });
       if (existingFile) {
         finalName = await this.getAvailableFileName(targetFolderId, file.originalName);
@@ -1073,7 +1073,7 @@ export class StorageService {
 
       let finalName = file.originalName;
       const existingFile = await db.file.findFirst({
-        where: { folderId: targetFolderId, originalName: file.originalName },
+        where: { folderId: targetFolderId, originalName: file.originalName, isTrashed: false },
       });
       if (existingFile) {
         finalName = await this.getAvailableFileName(targetFolderId, file.originalName);

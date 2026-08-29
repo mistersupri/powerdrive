@@ -49,6 +49,7 @@ const getFileCategory = (mimeType: string, originalName: string): string => {
 export const LazyThumbnail: React.FC<LazyThumbnailProps> = ({ file }) => {
   const [isInView, setIsInView] = useState(false);
   const [previewStatus, setPreviewStatus] = useState<PreviewStatus>(file.previewStatus || PreviewStatus.PENDING);
+  const [isImageLoaded, setIsImageLoaded] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const category = getFileCategory(file.mimeType || "", file.originalName);
@@ -154,13 +155,23 @@ export const LazyThumbnail: React.FC<LazyThumbnailProps> = ({ file }) => {
         ref={containerRef}
         className="w-full h-36 sm:h-40 bg-slate-100 rounded-t-xl overflow-hidden flex items-center justify-center relative border-b border-slate-100 select-none group"
       >
+        {/* Beautiful blur placeholder skeleton shown while loading */}
+        {!isImageLoaded && (
+          <div className="absolute inset-0 bg-slate-200/60 backdrop-blur-md flex items-center justify-center animate-pulse z-10">
+            <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
+          </div>
+        )}
         <img
           src={api.getThumbnailUrl(file.id)}
           alt={file.originalName}
-          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 pointer-events-none"
+          className={`w-full h-full object-cover group-hover:scale-105 pointer-events-none transition-all duration-700 ease-out ${
+            isImageLoaded ? "blur-0 scale-100 opacity-100" : "blur-xl scale-110 opacity-50"
+          }`}
           loading="lazy"
           referrerPolicy="no-referrer"
+          onLoad={() => setIsImageLoaded(true)}
           onError={(e) => {
+            setIsImageLoaded(true);
             e.currentTarget.style.display = "none";
             const fallback = e.currentTarget.parentElement?.querySelector(".image-fallback");
             if (fallback) fallback.classList.remove("hidden");

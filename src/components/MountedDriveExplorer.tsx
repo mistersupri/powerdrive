@@ -790,7 +790,7 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
     if (item.isVideo) return <Video className="w-5 h-5 text-rose-500" />;
     if (item.isAudio) return <Music className="w-5 h-5 text-emerald-500" />;
     if (item.isPdf) return <FileText className="w-5 h-5 text-red-500" />;
-    if (item.isText) return <FileCode className="w-5 h-5 text-indigo-500" />;
+    if (item.isText) return <FileCode className="w-5 h-5 text-blue-500" />;
     if (item.isOfficeDoc) return <FileSpreadsheet className="w-5 h-5 text-teal-500" />;
     if (item.isArchive) return <FileArchive className="w-5 h-5 text-amber-600" />;
     return <FileText className="w-5 h-5 text-slate-500" />;
@@ -858,9 +858,9 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
 
       {/* Drag & Drop Visual Overlay */}
       {isDragOver && (
-        <div className="absolute inset-0 z-50 bg-indigo-600/10 backdrop-blur-sm border-2 border-dashed border-indigo-500 rounded-xl m-3 flex flex-col items-center justify-center pointer-events-none transition-all animate-in fade-in">
-          <div className="p-4 bg-white rounded-2xl shadow-xl border border-indigo-100 flex flex-col items-center text-center max-w-sm">
-            <div className="w-14 h-14 rounded-2xl bg-indigo-50 flex items-center justify-center text-indigo-600 mb-3 shadow-inner">
+        <div className="absolute inset-0 z-50 bg-blue-600/10 backdrop-blur-sm border-2 border-dashed border-blue-500 rounded-xl m-3 flex flex-col items-center justify-center pointer-events-none transition-all animate-in fade-in">
+          <div className="p-4 bg-white rounded-2xl shadow-xl border border-blue-100 flex flex-col items-center text-center max-w-sm">
+            <div className="w-14 h-14 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-600 mb-3 shadow-inner">
               <UploadCloud className="w-8 h-8 animate-bounce" />
             </div>
             <h3 className="text-base font-semibold text-slate-800">
@@ -877,7 +877,7 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
       {/* Marquee Selection Box */}
       {marqueeBox && (
         <div
-          className="fixed pointer-events-none border border-indigo-500 bg-indigo-500/15 rounded z-50"
+          className="fixed pointer-events-none border border-blue-500 bg-blue-500/15 rounded z-50"
           style={{
             left: Math.min(marqueeBox.startX, marqueeBox.currentX),
             top: Math.min(marqueeBox.startY, marqueeBox.currentY),
@@ -892,7 +892,7 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           {/* Left Title & Status */}
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-indigo-700 flex items-center justify-center text-white shadow-sm shadow-indigo-200">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white shadow-sm shadow-blue-200">
               <HardDrive className="w-5 h-5" />
             </div>
             <div>
@@ -951,7 +951,7 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={isUploading}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-lg shadow-sm shadow-indigo-200 transition-colors"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg shadow-sm shadow-blue-200 transition-colors"
               title="Unggah berkas ke folder saat ini"
             >
               {isUploading ? (
@@ -968,7 +968,7 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
               className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 hover:border-slate-300 transition-colors shadow-sm"
               title="Bagikan akses tautan publik untuk storage ini"
             >
-              <Share2 className="w-4 h-4 text-indigo-600" />
+              <Share2 className="w-4 h-4 text-blue-600" />
               <span>Bagikan Storage</span>
             </button>
 
@@ -981,7 +981,7 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
             >
               <RefreshCw
                 className={`w-3.5 h-3.5 text-slate-500 ${
-                  isSyncingMetadata ? "animate-spin text-indigo-600" : ""
+                  isSyncingMetadata ? "animate-spin text-blue-600" : ""
                 }`}
               />
               <span className="hidden sm:inline">Sinkronkan DB</span>
@@ -1001,8 +1001,8 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
 
         {/* Create Folder Inline Form Modal */}
         {isCreatingFolder && (
-          <div className="mt-3 p-3 bg-indigo-50/70 border border-indigo-100 rounded-xl flex items-center gap-2 animate-in fade-in">
-            <FolderPlus className="w-5 h-5 text-indigo-600 flex-shrink-0" />
+          <div className="mt-3 p-3 bg-blue-50/70 border border-blue-100 rounded-xl flex items-center gap-2 animate-in fade-in">
+            <FolderPlus className="w-5 h-5 text-blue-600 flex-shrink-0" />
             <form onSubmit={handleCreateFolder} className="flex-1 flex items-center gap-2">
               <input
                 type="text"
@@ -1010,12 +1010,12 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
                 onChange={(e) => setNewFolderName(e.target.value)}
                 placeholder="Nama folder baru..."
                 autoFocus
-                className="flex-1 px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="flex-1 px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               <button
                 type="submit"
                 disabled={!newFolderName.trim()}
-                className="px-3 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-lg shadow-sm"
+                className="px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg shadow-sm"
               >
                 Buat
               </button>
@@ -1041,7 +1041,7 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
               onClick={() => handleNavigate("")}
               className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md transition-colors ${
                 subPath === ""
-                  ? "font-semibold text-indigo-700 bg-indigo-50"
+                  ? "font-semibold text-blue-700 bg-blue-50"
                   : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
               }`}
             >
@@ -1058,7 +1058,7 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
                     onClick={() => handleNavigate(crumb.subPath)}
                     className={`px-2 py-1 rounded-md whitespace-nowrap transition-colors ${
                       isLast
-                        ? "font-semibold text-indigo-700 bg-indigo-50"
+                        ? "font-semibold text-blue-700 bg-blue-50"
                         : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
                     }`}
                   >
@@ -1079,7 +1079,7 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="Cari dalam storage..."
-                className="w-full pl-8 pr-7 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all"
+                className="w-full pl-8 pr-7 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all"
               />
               {searchTerm && (
                 <button
@@ -1097,7 +1097,7 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
                 onClick={() => setViewMode("grid")}
                 className={`p-1.5 rounded-md transition-colors ${
                   viewMode === "grid"
-                    ? "bg-white text-indigo-600 shadow-xs"
+                    ? "bg-white text-blue-600 shadow-xs"
                     : "text-slate-500 hover:text-slate-800"
                 }`}
                 title="Tampilan Grid"
@@ -1108,7 +1108,7 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
                 onClick={() => setViewMode("list")}
                 className={`p-1.5 rounded-md transition-colors ${
                   viewMode === "list"
-                    ? "bg-white text-indigo-600 shadow-xs"
+                    ? "bg-white text-blue-600 shadow-xs"
                     : "text-slate-500 hover:text-slate-800"
                 }`}
                 title="Tampilan Daftar"
@@ -1129,7 +1129,7 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
                 onClick={() => setCategoryFilter(cat.id)}
                 className={`px-2.5 py-1 rounded-full whitespace-nowrap font-medium transition-all ${
                   isActive
-                    ? "bg-indigo-600 text-white shadow-xs"
+                    ? "bg-blue-600 text-white shadow-xs"
                     : "bg-slate-100 text-slate-600 hover:bg-slate-200/70"
                 }`}
               >
@@ -1144,7 +1144,7 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
       <div className="flex-1 overflow-y-auto p-6 scrollbar-thin">
         {isLoading && !browseData ? (
           <div className="flex flex-col items-center justify-center h-64 text-slate-400">
-            <Loader2 className="w-8 h-8 animate-spin text-indigo-600 mb-2" />
+            <Loader2 className="w-8 h-8 animate-spin text-blue-600 mb-2" />
             <p className="text-sm">Memuat konten storage...</p>
           </div>
         ) : filteredItems.length === 0 ? (
@@ -1171,7 +1171,7 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
               </button>
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm"
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm"
               >
                 <UploadCloud className="w-4 h-4" />
                 <span>Unggah Berkas</span>
@@ -1201,9 +1201,9 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
                         onClick={(e) => handleItemClick(e, itemKey, "folder", dir)}
                         onDoubleClick={() => handleNavigate(dir.relativePath)}
                         onContextMenu={(e) => handleContextMenu(e, "folder", dir)}
-                        className={`group relative p-3 rounded-xl border transition-all cursor-pointer select-none ${
+                        className={`group relative p-3 rounded-2xl border transition-all cursor-pointer select-none ${
                           isSelected
-                            ? "bg-indigo-50/70 border-indigo-400 ring-2 ring-indigo-400/30 shadow-sm"
+                            ? "bg-blue-50/70 border-blue-400 ring-2 ring-blue-400/30 shadow-sm"
                             : "bg-white border-slate-200/80 hover:border-slate-300 hover:shadow-sm"
                         }`}
                       >
@@ -1222,7 +1222,7 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
                             onClick={(e) => handleToggleSelectKey(e, itemKey)}
                             className={`p-1 rounded transition-opacity ${
                               isSelected
-                                ? "text-indigo-600 opacity-100"
+                                ? "text-blue-600 opacity-100"
                                 : "text-slate-400 opacity-0 group-hover:opacity-100 hover:text-slate-600"
                             }`}
                           >
@@ -1244,7 +1244,7 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
                                 e.stopPropagation();
                                 setShareFolderModal(folderObj);
                               }}
-                              className="p-1 hover:text-indigo-600 hover:bg-indigo-50 rounded"
+                              className="p-1 hover:text-blue-600 hover:bg-blue-50 rounded"
                               title="Bagikan folder"
                             >
                               <Share2 className="w-3.5 h-3.5" />
@@ -1284,7 +1284,7 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
             {sortedFiles.length > 0 && (
               <div>
                 <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-                  <FileText className="w-3.5 h-3.5 text-indigo-500" />
+                  <FileText className="w-3.5 h-3.5 text-blue-500" />
                   <span>Berkas ({sortedFiles.length})</span>
                 </h2>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
@@ -1300,9 +1300,9 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
                         onClick={(e) => handleItemClick(e, itemKey, "file", file)}
                         onDoubleClick={() => setPreviewFile(fileObj)}
                         onContextMenu={(e) => handleContextMenu(e, "file", file)}
-                        className={`group relative flex flex-col rounded-xl border transition-all cursor-pointer select-none overflow-hidden ${
+                        className={`group relative flex flex-col rounded-2xl border transition-all cursor-pointer select-none overflow-hidden ${
                           isSelected
-                            ? "bg-indigo-50/70 border-indigo-400 ring-2 ring-indigo-400/30 shadow-sm"
+                            ? "bg-blue-50/70 border-blue-400 ring-2 ring-blue-400/30 shadow-sm"
                             : "bg-white border-slate-200/80 hover:border-slate-300 hover:shadow-sm"
                         }`}
                       >
@@ -1343,7 +1343,7 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
                             onClick={(e) => handleToggleSelectKey(e, itemKey)}
                             className={`absolute top-2 right-2 p-1 rounded-md bg-white/80 backdrop-blur-xs shadow-xs transition-opacity ${
                               isSelected
-                                ? "text-indigo-600 opacity-100"
+                                ? "text-blue-600 opacity-100"
                                 : "text-slate-400 opacity-0 group-hover:opacity-100 hover:text-slate-700"
                             }`}
                           >
@@ -1358,7 +1358,7 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
                         {/* File Details Deck */}
                         <div className="p-3 flex-1 flex flex-col justify-between">
                           <div>
-                            <span className="text-xs font-semibold text-slate-800 line-clamp-1 group-hover:text-indigo-600 transition-colors" title={file.name}>
+                            <span className="text-xs font-semibold text-slate-800 line-clamp-1 group-hover:text-blue-600 transition-colors" title={file.name}>
                               {file.name}
                             </span>
                             <p className="text-[11px] text-slate-400 mt-0.5">
@@ -1374,7 +1374,7 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
                                 e.stopPropagation();
                                 setPreviewFile(fileObj);
                               }}
-                              className="p-1 hover:text-indigo-600 hover:bg-indigo-50 rounded"
+                              className="p-1 hover:text-blue-600 hover:bg-blue-50 rounded"
                               title="Pratinjau berkas"
                             >
                               <Eye className="w-3.5 h-3.5" />
@@ -1438,7 +1438,7 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
           </div>
         ) : (
           /* LIST VIEW TABLE */
-          <div className="bg-white rounded-xl border border-slate-200/80 overflow-hidden shadow-xs">
+          <div className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-xs">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
@@ -1450,7 +1450,7 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
                         title="Pilih Semua"
                       >
                         {selectedCount > 0 && selectedCount === allVisibleItems.length ? (
-                          <CheckSquare className="w-4 h-4 text-indigo-600" />
+                          <CheckSquare className="w-4 h-4 text-blue-600" />
                         ) : (
                           <Square className="w-4 h-4" />
                         )}
@@ -1478,13 +1478,13 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
                         onDoubleClick={() => handleNavigate(dir.relativePath)}
                         onContextMenu={(e) => handleContextMenu(e, "folder", dir)}
                         className={`group cursor-pointer transition-colors ${
-                          isSelected ? "bg-indigo-50/60" : "hover:bg-slate-50/70"
+                          isSelected ? "bg-blue-50/60" : "hover:bg-slate-50/70"
                         }`}
                       >
                         <td className="py-2.5 px-4">
                           <div
                             onClick={(e) => handleToggleSelectKey(e, itemKey)}
-                            className={isSelected ? "text-indigo-600" : "text-slate-300 group-hover:text-slate-400"}
+                            className={isSelected ? "text-blue-600" : "text-slate-300 group-hover:text-slate-400"}
                           >
                             {isSelected ? (
                               <CheckSquare className="w-4 h-4" />
@@ -1496,7 +1496,7 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
                         <td className="py-2.5 px-4">
                           <div className="flex items-center gap-2.5">
                             <FolderIcon className="w-4 h-4 text-amber-500 fill-amber-500/20 flex-shrink-0" />
-                            <span className="font-semibold text-slate-800 group-hover:text-indigo-600 transition-colors">
+                            <span className="font-semibold text-slate-800 group-hover:text-blue-600 transition-colors">
                               {dir.name}
                             </span>
                           </div>
@@ -1513,7 +1513,7 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
                                 e.stopPropagation();
                                 setShareFolderModal(folderObj);
                               }}
-                              className="p-1 hover:text-indigo-600 hover:bg-indigo-50 rounded"
+                              className="p-1 hover:text-blue-600 hover:bg-blue-50 rounded"
                               title="Bagikan folder"
                             >
                               <Share2 className="w-3.5 h-3.5" />
@@ -1558,13 +1558,13 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
                         onDoubleClick={() => setPreviewFile(fileObj)}
                         onContextMenu={(e) => handleContextMenu(e, "file", file)}
                         className={`group cursor-pointer transition-colors ${
-                          isSelected ? "bg-indigo-50/60" : "hover:bg-slate-50/70"
+                          isSelected ? "bg-blue-50/60" : "hover:bg-slate-50/70"
                         }`}
                       >
                         <td className="py-2.5 px-4">
                           <div
                             onClick={(e) => handleToggleSelectKey(e, itemKey)}
-                            className={isSelected ? "text-indigo-600" : "text-slate-300 group-hover:text-slate-400"}
+                            className={isSelected ? "text-blue-600" : "text-slate-300 group-hover:text-slate-400"}
                           >
                             {isSelected ? (
                               <CheckSquare className="w-4 h-4" />
@@ -1576,7 +1576,7 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
                         <td className="py-2.5 px-4">
                           <div className="flex items-center gap-2.5">
                             {renderItemIcon(file)}
-                            <span className="font-medium text-slate-800 group-hover:text-indigo-600 transition-colors">
+                            <span className="font-medium text-slate-800 group-hover:text-blue-600 transition-colors">
                               {file.name}
                             </span>
                           </div>
@@ -1597,7 +1597,7 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
                                 e.stopPropagation();
                                 setPreviewFile(fileObj);
                               }}
-                              className="p-1 hover:text-indigo-600 hover:bg-indigo-50 rounded"
+                              className="p-1 hover:text-blue-600 hover:bg-blue-50 rounded"
                               title="Pratinjau berkas"
                             >
                               <Eye className="w-3.5 h-3.5" />
@@ -1658,7 +1658,7 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
       {selectedCount > 0 && (
         <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-40 bg-slate-900/95 text-white px-5 py-2.5 rounded-2xl shadow-2xl border border-slate-700 backdrop-blur-md flex items-center gap-4 animate-in slide-in-from-bottom-5">
           <div className="flex items-center gap-2 text-xs font-semibold">
-            <span className="w-5 h-5 rounded-full bg-indigo-500 flex items-center justify-center text-[10px]">
+            <span className="w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center text-[10px]">
               {selectedCount}
             </span>
             <span>Item Dipilih</span>
@@ -1742,7 +1742,7 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 border border-slate-200 animate-in zoom-in-95">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
               <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-indigo-50 rounded-xl text-indigo-600">
+                <div className="p-2.5 bg-blue-50 rounded-xl text-blue-600">
                   <UploadCloud className="w-5 h-5" />
                 </div>
                 <div>
@@ -1774,7 +1774,7 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
                 <select
                   value={selectedTargetFolderId}
                   onChange={(e) => setSelectedTargetFolderId(e.target.value)}
-                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   {folders.length === 0 ? (
                     <option value="">(Belum ada folder aplikasi)</option>
@@ -1801,7 +1801,7 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
                 type="button"
                 onClick={handleExecuteImport}
                 disabled={isImporting || !selectedTargetFolderId}
-                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-lg shadow-sm transition-colors"
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg shadow-sm transition-colors"
               >
                 {isImporting ? (
                   <>

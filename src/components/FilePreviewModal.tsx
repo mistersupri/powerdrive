@@ -64,8 +64,11 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
   const [videoLoading, setVideoLoading] = useState<boolean>(true);
   const [videoError, setVideoError] = useState<boolean>(false);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
-  const [isMuted, setIsMuted] = useState<boolean>(false);
+  const [isMuted, setIsMuted] = useState<boolean>(true);
   const [playbackRate, setPlaybackRate] = useState<number>(1);
+  const [currentTime, setCurrentTime] = useState<number>(0);
+  const [duration, setDuration] = useState<number>(0);
+  const [selectedQuality, setSelectedQuality] = useState<"low" | "medium" | "original">("medium");
 
   // Text / Code Viewer States
   const [textContent, setTextContent] = useState<string | null>(null);
@@ -85,8 +88,11 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
     setVideoLoading(true);
     setVideoError(false);
     setIsPlaying(false);
-    setIsMuted(false);
+    setIsMuted(true);
     setPlaybackRate(1);
+    setCurrentTime(0);
+    setDuration(0);
+    setSelectedQuality("medium");
     setTextContent(null);
     setTextError(null);
     setTextSearch("");
@@ -190,6 +196,28 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
   const isVideo =
     mimeType.startsWith("video/") ||
     /\.(mp4|webm|ogg|mov|m4v|mkv|avi)$/i.test(file.originalName);
+
+  const viewUrlWithQuality = (() => {
+    let url = viewUrl;
+    if (selectedQuality && (isImage || isVideo)) {
+      url += (url.includes("?") ? "&" : "?") + `quality=${selectedQuality}`;
+    }
+    return url;
+  })();
+
+  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!videoRef.current) return;
+    const val = parseFloat(e.target.value);
+    videoRef.current.currentTime = val;
+    setCurrentTime(val);
+  };
+
+  const formatTime = (secs: number) => {
+    if (isNaN(secs)) return "0:00";
+    const minutes = Math.floor(secs / 60);
+    const seconds = Math.floor(secs % 60);
+    return `${minutes}:${seconds < 10 ? "0" : ""}${seconds}`;
+  };
 
   const isAudio =
     mimeType.startsWith("audio/") ||
@@ -443,7 +471,7 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
               ) : (
                 <div className="w-full h-full flex items-center justify-center overflow-auto p-4 select-none">
                   <img
-                    src={viewUrl}
+                    src={viewUrlWithQuality}
                     alt={file.originalName}
                     onLoad={() => setImageLoading(false)}
                     onError={() => {
@@ -500,6 +528,25 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
                   >
                     Reset
                   </button>
+                  <div className="h-4 w-px bg-slate-700 mx-1" />
+                  {/* Quality selector */}
+                  <div className="flex items-center gap-1 bg-slate-800/80 rounded-lg p-0.5 border border-slate-700">
+                    {(["low", "medium", "original"] as const).map((q) => (
+                      <button
+                        key={q}
+                        onClick={() => setSelectedQuality(q)}
+                        className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase transition-all cursor-pointer ${
+                          selectedQuality === q
+                            ? "bg-blue-600 text-white shadow-xs"
+                            : "text-slate-400 hover:text-white"
+                        }`}
+                        title={`Kualitas: ${q === "low" ? "Rendah (Low)" : q === "medium" ? "Sedang (Medium)" : "Asli (Original)"}`}
+                      >
+                        {q === "low" ? "Low" : q === "medium" ? "Med" : "Orig"}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="h-4 w-px bg-slate-700 mx-1" />
                   <button
                     onClick={toggleFullscreen}
                     className="p-1.5 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
@@ -558,12 +605,15 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
                 <div className="w-full h-full flex items-center justify-center relative">
                   <video
                     ref={videoRef}
-                    key={viewUrl}
+                    key={viewUrlWithQuality}
                     playsInline
+                    autoPlay
+                    muted={isMuted}
                     preload="metadata"
                     onLoadedData={() => {
                       setVideoLoading(false);
                       setVideoError(false);
+                      videoRef.current?.play().catch(() => {});
                     }}
                     onCanPlay={() => {
                       setVideoLoading(false);
@@ -579,10 +629,12 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
                       setVideoLoading(false);
                       setVideoError(true);
                     }}
+                    onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
+                    onDurationChange={(e) => setDuration(e.currentTarget.duration)}
                     className="max-w-full max-h-full rounded-2xl shadow-2xl border border-slate-800 bg-black outline-hidden"
                   >
-                    <source src={viewUrl} type={file.mimeType || "video/mp4"} />
-                    <source src={viewUrl} />
+                    <source src={viewUrlWithQuality} type={file.mimeType || "video/mp4"} />
+                    <source src={viewUrlWithQuality} />
                     Browser Anda tidak mendukung pemutar video HTML5 langsung.
                   </video>
                 </div>
@@ -590,81 +642,127 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
 
               {/* Floating Video Control Dock */}
               {!videoError && (
-                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 bg-slate-900/90 border border-slate-700/80 backdrop-blur-md rounded-2xl px-3 py-1.5 flex items-center gap-1.5 shadow-2xl text-slate-300">
-                  <button
-                    onClick={() => {
-                      if (!videoRef.current) return;
-                      if (videoRef.current.paused) {
-                        videoRef.current.play().catch(() => {});
-                      } else {
-                        videoRef.current.pause();
-                      }
-                    }}
-                    className="p-1.5 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
-                    title={isPlaying ? "Jeda (Pause)" : "Putar (Play)"}
-                  >
-                    {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      if (!videoRef.current) return;
-                      videoRef.current.currentTime = 0;
-                      videoRef.current.play().catch(() => {});
-                    }}
-                    className="p-1.5 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
-                    title="Ulangi dari Awal"
-                  >
-                    <RotateCcw className="w-4 h-4" />
-                  </button>
-
-                  <div className="h-4 w-px bg-slate-700 mx-1" />
-
-                  {/* Playback speed selector */}
-                  <div className="flex items-center gap-0.5">
-                    {[0.75, 1, 1.25, 1.5, 2].map((rate) => (
-                      <button
-                        key={rate}
-                        onClick={() => {
-                          if (videoRef.current) {
-                            videoRef.current.playbackRate = rate;
-                            setPlaybackRate(rate);
-                          }
-                        }}
-                        className={`px-1.5 py-0.5 rounded-md text-[11px] font-mono font-semibold transition-colors cursor-pointer ${
-                          playbackRate === rate
-                            ? "bg-purple-600 text-white"
-                            : "text-slate-400 hover:text-white hover:bg-slate-800"
-                        }`}
-                      >
-                        {rate}x
-                      </button>
-                    ))}
+                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 w-[90%] max-w-2xl bg-slate-900/95 border border-slate-700/80 backdrop-blur-md rounded-2xl px-4 py-2 flex flex-col gap-2 shadow-2xl text-slate-300">
+                  {/* Timeline Slider & Time Display */}
+                  <div className="flex items-center gap-3 w-full">
+                    <span className="text-[11px] font-mono text-slate-400 select-none min-w-[35px] text-right">
+                      {formatTime(currentTime)}
+                    </span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={duration || 100}
+                      value={currentTime}
+                      onChange={handleSeek}
+                      className="grow h-1.5 rounded-lg appearance-none cursor-pointer accent-purple-500 bg-slate-700/60 hover:bg-slate-700 transition-all focus:outline-hidden"
+                      style={{
+                        background: `linear-gradient(to right, rgb(168, 85, 247) 0%, rgb(168, 85, 247) ${duration ? (currentTime / duration) * 100 : 0}%, rgba(51, 65, 85, 0.6) ${duration ? (currentTime / duration) * 100 : 0}%, rgba(51, 65, 85, 0.6) 100%)`
+                      }}
+                    />
+                    <span className="text-[11px] font-mono text-slate-400 select-none min-w-[35px]">
+                      {formatTime(duration)}
+                    </span>
                   </div>
 
-                  <div className="h-4 w-px bg-slate-700 mx-1" />
+                  {/* Actions / Control Buttons row */}
+                  <div className="flex items-center justify-between w-full">
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => {
+                          if (!videoRef.current) return;
+                          if (videoRef.current.paused) {
+                            videoRef.current.play().catch(() => {});
+                          } else {
+                            videoRef.current.pause();
+                          }
+                        }}
+                        className="p-1.5 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                        title={isPlaying ? "Jeda (Pause)" : "Putar (Play)"}
+                      >
+                        {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                      </button>
 
-                  {/* Mute button */}
-                  <button
-                    onClick={() => {
-                      if (!videoRef.current) return;
-                      const nextMute = !videoRef.current.muted;
-                      videoRef.current.muted = nextMute;
-                      setIsMuted(nextMute);
-                    }}
-                    className="p-1.5 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
-                    title={isMuted ? "Bunyikan Audio" : "Bisukan Audio"}
-                  >
-                    {isMuted ? <VolumeX className="w-4 h-4 text-rose-400" /> : <Volume2 className="w-4 h-4" />}
-                  </button>
+                      <button
+                        onClick={() => {
+                          if (!videoRef.current) return;
+                          videoRef.current.currentTime = 0;
+                          videoRef.current.play().catch(() => {});
+                        }}
+                        className="p-1.5 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                        title="Ulangi dari Awal"
+                      >
+                        <RotateCcw className="w-4 h-4" />
+                      </button>
+                    </div>
 
-                  <button
-                    onClick={toggleFullscreen}
-                    className="p-1.5 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
-                    title={isFullscreen ? "Keluar Layar Penuh" : "Layar Penuh"}
-                  >
-                    {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-                  </button>
+                    <div className="flex items-center gap-2">
+                      {/* Playback speed selector */}
+                      <div className="flex items-center gap-0.5">
+                        {[0.75, 1, 1.25, 1.5, 2].map((rate) => (
+                          <button
+                            key={rate}
+                            onClick={() => {
+                              if (videoRef.current) {
+                                videoRef.current.playbackRate = rate;
+                                setPlaybackRate(rate);
+                              }
+                            }}
+                            className={`px-1.5 py-0.5 rounded-md text-[11px] font-mono font-semibold transition-colors cursor-pointer ${
+                              playbackRate === rate
+                                ? "bg-purple-600 text-white"
+                                : "text-slate-400 hover:text-white hover:bg-slate-800"
+                            }`}
+                          >
+                            {rate}x
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="h-4 w-px bg-slate-700" />
+
+                      {/* Quality selector */}
+                      <div className="flex items-center gap-1 bg-slate-800/80 rounded-lg p-0.5 border border-slate-700">
+                        {(["low", "medium", "original"] as const).map((q) => (
+                          <button
+                            key={q}
+                            onClick={() => setSelectedQuality(q)}
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase transition-all cursor-pointer ${
+                              selectedQuality === q
+                                ? "bg-purple-600 text-white shadow-xs"
+                                : "text-slate-400 hover:text-slate-200"
+                            }`}
+                            title={`Kualitas: ${q === "low" ? "Rendah (Low)" : q === "medium" ? "Sedang (Medium)" : "Asli (Original)"}`}
+                          >
+                            {q === "low" ? "Low" : q === "medium" ? "Med" : "Orig"}
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="h-4 w-px bg-slate-700" />
+
+                      {/* Mute button */}
+                      <button
+                        onClick={() => {
+                          if (!videoRef.current) return;
+                          const nextMute = !videoRef.current.muted;
+                          videoRef.current.muted = nextMute;
+                          setIsMuted(nextMute);
+                        }}
+                        className="p-1.5 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                        title={isMuted ? "Bunyikan Audio" : "Bisukan Audio"}
+                      >
+                        {isMuted ? <VolumeX className="w-4 h-4 text-rose-400" /> : <Volume2 className="w-4 h-4" />}
+                      </button>
+
+                      <button
+                        onClick={toggleFullscreen}
+                        className="p-1.5 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                        title={isFullscreen ? "Keluar Layar Penuh" : "Layar Penuh"}
+                      >
+                        {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>

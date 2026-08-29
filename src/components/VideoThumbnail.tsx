@@ -91,7 +91,7 @@ export const VideoThumbnail: React.FC<VideoThumbnailProps> = ({
       {(!isGDrive || imageError) && !videoFrameError && (
         <video
           ref={videoRef}
-          src={viewUrl}
+          src={`${viewUrl}${viewUrl.includes("?") ? "&" : "?"}quality=low`}
           preload="metadata"
           muted
           playsInline

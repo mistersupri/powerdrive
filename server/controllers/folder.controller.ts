@@ -4,6 +4,7 @@ import { FolderService } from "../services/folder.service.ts";
 import { GoogleDriveService } from "../services/google-drive.service.ts";
 import { ShareTokenService } from "../services/share-token.service.ts";
 import { DriveType } from "../types/index.ts";
+import { db } from "../db/index.ts";
 
 export class FolderController {
   public static async listFolders(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -399,6 +400,7 @@ export class FolderController {
   public static async getShareLinks(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const { id } = req.params;
+      const { pwdHash, emails } = req.query;
       const folder = await FolderService.getFolderById(id);
       if (!folder) {
         res.status(404).json({
@@ -412,7 +414,7 @@ export class FolderController {
       const protocol = req.protocol || "https";
       const origin = `${protocol}://${host}`;
 
-      const links = ShareTokenService.getSecuredLinks(id, origin);
+      const links = ShareTokenService.getSecuredLinks(id, origin, pwdHash as string, emails as string);
 
       res.status(200).json({
         success: true,
@@ -431,18 +433,19 @@ export class FolderController {
 
   public static async verifyShareToken(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
-      const { folderId, permission, signature, sig, token } = req.body;
+      const { folderId, fileId, permission, signature, sig, token, pwdHash, emails } = req.body;
+      const itemId = folderId || fileId;
       const effectiveSig = (signature || sig || token || "").trim();
 
-      if (!folderId || !permission || !effectiveSig) {
+      if (!itemId || !permission || !effectiveSig) {
         res.status(400).json({
           success: false,
-          error: "Folder ID, permission, and cryptographic signature are required",
+          error: "Item ID, permission, and cryptographic signature are required",
         });
         return;
       }
 
-      const isValid = ShareTokenService.verifySignature(folderId, permission, effectiveSig);
+      const isValid = ShareTokenService.verifySignature(itemId, permission, effectiveSig, pwdHash, emails);
       if (!isValid) {
         res.status(403).json({
           success: false,
@@ -452,24 +455,45 @@ export class FolderController {
         return;
       }
 
-      const folder = await FolderService.getFolderById(folderId);
-      if (!folder) {
-        res.status(404).json({
-          success: false,
-          error: "Folder tidak ditemukan.",
-          data: { isValid: false },
-        });
-        return;
-      }
+      if (folderId) {
+        const folder = await FolderService.getFolderById(folderId);
+        if (!folder) {
+          res.status(404).json({
+            success: false,
+            error: "Folder tidak ditemukan.",
+            data: { isValid: false },
+          });
+          return;
+        }
 
-      res.status(200).json({
-        success: true,
-        data: {
-          isValid: true,
-          folder,
-          grantedPermission: permission,
-        },
-      });
+        res.status(200).json({
+          success: true,
+          data: {
+            isValid: true,
+            folder,
+            grantedPermission: permission,
+          },
+        });
+      } else {
+        const file = await db.file.findUnique({ where: { id: fileId } });
+        if (!file) {
+          res.status(404).json({
+            success: false,
+            error: "Berkas tidak ditemukan.",
+            data: { isValid: false },
+          });
+          return;
+        }
+
+        res.status(200).json({
+          success: true,
+          data: {
+            isValid: true,
+            file,
+            grantedPermission: permission,
+          },
+        });
+      }
     } catch (error: any) {
       res.status(500).json({
         success: false,

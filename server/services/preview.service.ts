@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { Jimp } from "jimp";
 import { db } from "../db/index.ts";
 import { PreviewStatus } from "../types/index.ts";
 import { getMimeType } from "./storage.service.ts";
@@ -9,6 +10,7 @@ export class PreviewService {
   private static isProcessing = false;
   private static workerTimer: NodeJS.Timeout | null = null;
   private static thumbnailsDir = path.join(process.cwd(), "storage", "thumbnails");
+  private static previewsDir = path.join(process.cwd(), "storage", "previews");
 
   /**
    * Start periodic background preview worker
@@ -18,9 +20,12 @@ export class PreviewService {
       return;
     }
 
-    // Ensure thumbnails directory exists
+    // Ensure thumbnails and previews directories exist
     if (!fs.existsSync(this.thumbnailsDir)) {
       fs.mkdirSync(this.thumbnailsDir, { recursive: true });
+    }
+    if (!fs.existsSync(this.previewsDir)) {
+      fs.mkdirSync(this.previewsDir, { recursive: true });
     }
 
     console.log(`[PreviewWorker] Starting background preview rendering worker (interval: ${intervalMs}ms)`);
@@ -116,9 +121,12 @@ export class PreviewService {
     const isImage = resolvedMime.startsWith("image/") || /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|avif)$/i.test(file.originalName);
     const isVideo = resolvedMime.startsWith("video/") || /\.(mp4|webm|ogg|ogv|mov|m4v|mkv|avi|wmv|flv|3gp)$/i.test(file.originalName);
 
-    // Ensure thumbnails directory is present
+    // Ensure thumbnails and previews directories are present
     if (!fs.existsSync(this.thumbnailsDir)) {
       fs.mkdirSync(this.thumbnailsDir, { recursive: true });
+    }
+    if (!fs.existsSync(this.previewsDir)) {
+      fs.mkdirSync(this.previewsDir, { recursive: true });
     }
 
     let thumbnailPath: string | null = null;
@@ -143,6 +151,9 @@ export class PreviewService {
     const destPath = path.join(this.thumbnailsDir, thumbFileName);
     const relativeThumbPath = path.join("storage", "thumbnails", thumbFileName);
 
+    const previewFileName = `${file.id}.${ext}`;
+    const previewDestPath = path.join(this.previewsDir, previewFileName);
+
     if (isImage) {
       // Resolve the original physical file path
       let srcPath: string | null = null;
@@ -162,9 +173,28 @@ export class PreviewService {
       }
 
       if (srcPath && fs.existsSync(srcPath)) {
-        // Copy original file to thumbnail path (acts as direct high-fidelity thumb)
-        fs.copyFileSync(srcPath, destPath);
-        thumbnailPath = relativeThumbPath;
+        try {
+          // 1. Generate Low-Quality Thumbnail (Max width 200px, quality 40) using Jimp
+          const jimpThumb = await Jimp.read(srcPath);
+          jimpThumb.resize({ w: 200 });
+          const thumbBuffer = await jimpThumb.getBuffer("image/jpeg" as any, { quality: 40 });
+          fs.writeFileSync(destPath, thumbBuffer);
+
+          // 2. Generate Medium-Quality Preview (Max width 1000px, quality 70) using Jimp
+          const jimpPreview = await Jimp.read(srcPath);
+          jimpPreview.resize({ w: 1000 });
+          const previewBuffer = await jimpPreview.getBuffer("image/jpeg" as any, { quality: 70 });
+          fs.writeFileSync(previewDestPath, previewBuffer);
+
+          thumbnailPath = relativeThumbPath;
+          console.log(`[PreviewWorker] Successfully generated low-res thumbnail & medium-res preview with Jimp for ${file.originalName}`);
+        } catch (jimpErr: any) {
+          console.error(`[PreviewWorker] Jimp compression failed for ${file.originalName}, falling back to direct copy:`, jimpErr);
+          // Fallback to copy physical file directly
+          fs.copyFileSync(srcPath, destPath);
+          fs.copyFileSync(srcPath, previewDestPath);
+          thumbnailPath = relativeThumbPath;
+        }
       } else {
         // Fallback to SVG if original file is missing
         const svg = generateFileThumbnailSvg(file.originalName, resolvedMime, Number(file.size));

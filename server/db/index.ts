@@ -464,6 +464,7 @@ class DatabaseService {
         userId?: string;
         syncStatus?: SyncStatus;
         checksumSha256?: string;
+        isTrashed?: boolean;
       };
     }) => {
       const f = (await prisma.file.findFirst({
@@ -474,6 +475,7 @@ class DatabaseService {
           userId: options?.where?.userId,
           syncStatus: options?.where?.syncStatus as any,
           checksumSha256: options?.where?.checksumSha256,
+          isTrashed: options?.where?.isTrashed !== undefined ? options.where.isTrashed : false,
         },
         include: {
           user: true,

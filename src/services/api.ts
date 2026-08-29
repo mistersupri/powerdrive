@@ -413,7 +413,7 @@ export const api = {
     return handleResponse(res);
   },
 
-  async getFolderShareLinks(id: string): Promise<{
+  async getFolderShareLinks(id: string, pwdHash?: string, emails?: string): Promise<{
     folder: Folder;
     links: {
       folderId: string;
@@ -421,17 +421,50 @@ export const api = {
       editLink: { permission: string; signature: string; url: string; name: string; description: string };
     };
   }> {
-    const res = await fetch(`${BASE_URL}/folders/${id}/share-links`, {
+    let url = `${BASE_URL}/folders/${id}/share-links`;
+    const params = new URLSearchParams();
+    if (pwdHash) params.append("pwdHash", pwdHash);
+    if (emails) params.append("emails", emails);
+    const queryString = params.toString();
+    if (queryString) {
+      url += `?${queryString}`;
+    }
+    const res = await fetch(url, {
+      headers: getHeaders(),
+    });
+    return handleResponse(res);
+  },
+
+  async getFileShareLinks(id: string, pwdHash?: string, emails?: string): Promise<{
+    file: FileItem;
+    links: {
+      fileId: string;
+      viewLink: { permission: string; signature: string; url: string; name: string; description: string };
+    };
+  }> {
+    let url = `${BASE_URL}/storage/files/${id}/share-links`;
+    const params = new URLSearchParams();
+    if (pwdHash) params.append("pwdHash", pwdHash);
+    if (emails) params.append("emails", emails);
+    const queryString = params.toString();
+    if (queryString) {
+      url += `?${queryString}`;
+    }
+    const res = await fetch(url, {
       headers: getHeaders(),
     });
     return handleResponse(res);
   },
 
   async verifyShareToken(payload: {
-    folderId: string;
+    folderId?: string;
+    fileId?: string;
     permission: string;
     signature: string;
-  }): Promise<{ isValid: boolean; folder?: Folder; grantedPermission?: string; error?: string }> {
+    pwdHash?: string;
+    emails?: string;
+    emailInput?: string;
+  }): Promise<{ isValid: boolean; folder?: Folder; file?: FileItem; grantedPermission?: string; error?: string }> {
     const res = await fetch(`${BASE_URL}/folders/verify-share-token`, {
       method: "POST",
       headers: getHeaders({ "Content-Type": "application/json" }),

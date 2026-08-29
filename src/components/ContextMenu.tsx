@@ -52,6 +52,7 @@ interface ContextMenuProps {
   onSyncFile?: (file: FileItem) => void;
   onViewFileDetails?: (file: FileItem) => void;
   onDeleteFile?: (file: FileItem) => void;
+  onShareFile?: (file: FileItem) => void;
 }
 
 export const ContextMenu: React.FC<ContextMenuProps> = ({
@@ -75,6 +76,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   onSyncFile,
   onViewFileDetails,
   onDeleteFile,
+  onShareFile,
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -255,6 +257,17 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
           >
             <Download className="w-4 h-4 text-blue-600" />
             <span>Unduh Berkas</span>
+          </button>
+
+          <button
+            onClick={() => {
+              onShareFile?.(state.file!);
+              onClose();
+            }}
+            className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl hover:bg-blue-50 hover:text-blue-700 transition-colors text-left font-medium"
+          >
+            <Share2 className="w-4 h-4 text-blue-600" />
+            <span>Bagikan &amp; Tautan</span>
           </button>
 
           {onCopyFile && (

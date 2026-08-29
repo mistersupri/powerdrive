@@ -7,6 +7,7 @@ import { GoogleDriveService } from "../services/google-drive.service.ts";
 import { db } from "../db/index.ts";
 import { ActivityAction, SyncStatus } from "../types/index.ts";
 import { AuditService } from "../services/audit.service.ts";
+import { ShareTokenService } from "../services/share-token.service.ts";
 
 export function generateVideoThumbnailSvg(fileName: string, mimeType: string = "", sizeBytes: number = 0): string {
   const ext = fileName.split(".").pop()?.toUpperCase() || "MP4";
@@ -521,13 +522,38 @@ export class StorageController {
       }
 
       const explicitToken = req.query.token as string | undefined;
+      const requestedQuality = req.query.quality as string | undefined; // 'low' | 'medium' | 'original'
       const fullPath = StorageService.resolveStoragePath(file.storagePath);
       const determinedMimeType = getMimeType(file.originalName, file.mimeType);
 
       // 1. If physical local file exists
       if (fullPath && fs.existsSync(fullPath)) {
-        const stat = fs.statSync(fullPath);
-        const fileSize = stat.size;
+        let activePath = fullPath;
+        let stat = fs.statSync(activePath);
+        let fileSize = stat.size;
+
+        const isImage = determinedMimeType.startsWith("image/") || /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|avif)$/i.test(file.originalName);
+        if (isImage) {
+          const ext = file.originalName.split(".").pop()?.toLowerCase() || "jpg";
+          const lowPath = path.join(process.cwd(), "storage", "thumbnails", `${file.id}.${ext}`);
+          const medPath = path.join(process.cwd(), "storage", "previews", `${file.id}.${ext}`);
+
+          if (requestedQuality === "low" && fs.existsSync(lowPath)) {
+            activePath = lowPath;
+            stat = fs.statSync(activePath);
+            fileSize = stat.size;
+          } else if (requestedQuality === "original") {
+            activePath = fullPath;
+            stat = fs.statSync(activePath);
+            fileSize = stat.size;
+          } else if (fs.existsSync(medPath)) {
+            // Default to medium quality for previews
+            activePath = medPath;
+            stat = fs.statSync(activePath);
+            fileSize = stat.size;
+          }
+        }
+
         const range = req.headers.range;
 
         res.setHeader("Cache-Control", "public, max-age=3600");
@@ -545,7 +571,7 @@ export class StorageController {
           }
 
           const chunkSize = end - start + 1;
-          const fileStream = fs.createReadStream(fullPath, { start, end });
+          const fileStream = fs.createReadStream(activePath, { start, end });
 
           res.writeHead(206, {
             "Content-Range": `bytes ${start}-${end}/${fileSize}`,
@@ -562,13 +588,21 @@ export class StorageController {
             "Accept-Ranges": "bytes",
             "Content-Disposition": `inline; filename="${encodeURIComponent(file.originalName)}"`,
           });
-          fs.createReadStream(fullPath).pipe(res);
+          fs.createReadStream(activePath).pipe(res);
         }
         return;
       }
 
       // 2. If Google Drive remote file
       if (file.googleDriveFileId && !file.googleDriveFileId.startsWith("gdrive_") && !file.googleDriveFileId.startsWith("virtual_")) {
+        const isImage = determinedMimeType.startsWith("image/") || /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|avif)$/i.test(file.originalName);
+        if (isImage && requestedQuality !== "original") {
+          // Redirect directly to Google Drive resized smart thumbnail endpoint for incredible performance
+          const sz = requestedQuality === "low" ? "w220" : "w1200";
+          res.redirect(`https://drive.google.com/thumbnail?id=${file.googleDriveFileId}&sz=${sz}`);
+          return;
+        }
+
         try {
           const gStream = await GoogleDriveService.downloadFileStream(file.googleDriveFileId, explicitToken);
           res.setHeader("Content-Disposition", `inline; filename="${encodeURIComponent(file.originalName)}"`);
@@ -583,9 +617,9 @@ export class StorageController {
           return;
         } catch (gErr: any) {
           // For images, redirect to Google Drive direct thumbnail / preview
-          const isImage = determinedMimeType.startsWith("image/") || /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|avif)$/i.test(file.originalName);
           if (isImage) {
-            res.redirect(`https://drive.google.com/thumbnail?id=${file.googleDriveFileId}&sz=w1600`);
+            const sz = requestedQuality === "low" ? "w220" : "w1200";
+            res.redirect(`https://drive.google.com/thumbnail?id=${file.googleDriveFileId}&sz=${sz}`);
             return;
           }
 
@@ -703,8 +737,8 @@ export class StorageController {
 
             const thumbnailLink = fileMeta.data.thumbnailLink;
             if (thumbnailLink) {
-              const highResLink = thumbnailLink.replace(/=s\d+$/, "=s800");
-              const thumbRes = await fetch(highResLink);
+              const lowResLink = thumbnailLink.replace(/=s\d+$/, "=s220");
+              const thumbRes = await fetch(lowResLink);
               if (thumbRes.ok) {
                 const buffer = await thumbRes.arrayBuffer();
                 res.setHeader("Content-Type", thumbRes.headers.get("Content-Type") || "image/jpeg");
@@ -717,7 +751,7 @@ export class StorageController {
             console.warn("[StorageController] Failed to fetch Google Drive thumbnail on server, falling back to redirect:", gdriveErr.message || gdriveErr);
           }
 
-          res.redirect(`https://drive.google.com/thumbnail?id=${file.googleDriveFileId}&sz=w800`);
+          res.redirect(`https://drive.google.com/thumbnail?id=${file.googleDriveFileId}&sz=w220`);
           return;
         }
       }
@@ -1657,6 +1691,43 @@ export class StorageController {
       res.status(500).json({
         success: false,
         error: err.message || "Gagal menyalin berkas.",
+      });
+    }
+  }
+
+  /**
+   * Generates cryptographically signed preview / download links for a file
+   */
+  public static async getFileShareLinks(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const { id } = req.params;
+      const { pwdHash, emails } = req.query;
+      const file = await db.file.findUnique({ where: { id } });
+      if (!file) {
+        res.status(404).json({
+          success: false,
+          error: "Berkas tidak ditemukan",
+        });
+        return;
+      }
+
+      const host = req.get("host") || "";
+      const protocol = req.protocol || "https";
+      const origin = `${protocol}://${host}`;
+
+      const links = ShareTokenService.getFileSecuredLinks(id, origin, pwdHash as string, emails as string);
+
+      res.status(200).json({
+        success: true,
+        data: {
+          file,
+          links,
+        },
+      });
+    } catch (error: any) {
+      res.status(500).json({
+        success: false,
+        error: error.message || "Gagal menghasilkan tautan bagikan berkas",
       });
     }
   }
