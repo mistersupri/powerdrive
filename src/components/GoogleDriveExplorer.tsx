@@ -343,20 +343,28 @@ export const GoogleDriveExplorer: React.FC<GoogleDriveExplorerProps> = ({
 
         const [foldersRes, filesRes] = await Promise.all([foldersPromise, filesPromise]);
 
+        // Client-side safety filter: Mounted drive items (/mnt) must never be displayed in "Drive Saya"
+        const filteredFolders = (foldersRes.folders || []).filter(
+          (f) => !f.storageId && !f.targetFolderPath?.startsWith("/mnt")
+        );
+        const filteredFiles = (filesRes.files || []).filter(
+          (f) => !f.storageId && !f.storagePath?.startsWith("/mnt")
+        );
+
         if (append) {
           setLocalFolders((prev) => {
             const existingIds = new Set(prev.map((f) => f.id));
-            const newFolders = foldersRes.folders.filter((f) => !existingIds.has(f.id));
+            const newFolders = filteredFolders.filter((f) => !existingIds.has(f.id));
             return [...prev, ...newFolders];
           });
           setLocalFiles((prev) => {
             const existingIds = new Set(prev.map((f) => f.id));
-            const newFiles = filesRes.files.filter((f) => !existingIds.has(f.id));
+            const newFiles = filteredFiles.filter((f) => !existingIds.has(f.id));
             return [...prev, ...newFiles];
           });
         } else {
-          setLocalFolders(foldersRes.folders);
-          setLocalFiles(filesRes.files);
+          setLocalFolders(filteredFolders);
+          setLocalFiles(filteredFiles);
         }
 
         setCurrentPage(pageToLoad);
@@ -1564,6 +1572,7 @@ export const GoogleDriveExplorer: React.FC<GoogleDriveExplorerProps> = ({
               // Find all subfolders of this breadcrumb folder to display in popover
               const cachedData = crumbSubfoldersCache[crumbKey];
               const localFolders = folders.filter((f) => {
+                if (f.storageId || f.targetFolderPath?.startsWith("/mnt")) return false;
                 const matchesParent = (crumb.id === null)
                   ? (!f.parentId || f.parentId === "root")
                   : (f.parentId === crumb.id);

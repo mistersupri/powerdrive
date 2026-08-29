@@ -78,6 +78,7 @@ export interface Folder {
   filesCount?: number;
   subfoldersCount?: number;
   totalSizeBytes?: number;
+  storageId?: string | null;
 }
 
 export interface FileVersion {
@@ -113,6 +114,7 @@ export interface FileItem {
   googleDriveFileId?: string | null;
   googleDriveFolderId?: string | null;
   googleDriveWebViewLink?: string | null;
+  storageId?: string | null;
   createdAt: string;
   updatedAt: string;
   syncedAt?: string | null;

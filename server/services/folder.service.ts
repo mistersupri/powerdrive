@@ -7,7 +7,11 @@ export class FolderService {
   /**
    * List all application folders with optional parentId filtering and user scoping
    */
-  public static async listFolders(parentId?: string | null, user?: UserRecord): Promise<FolderRecord[]> {
+  public static async listFolders(
+    parentId?: string | null,
+    user?: UserRecord,
+    storageId?: string | null
+  ): Promise<FolderRecord[]> {
     const options: any = {};
     const where: any = {};
     if (parentId !== undefined) {
@@ -16,6 +20,11 @@ export class FolderService {
     if (user && user.role !== "ADMIN") {
       // Scoped per user - users only see their own folders
       where.ownerId = user.id;
+    }
+    if (storageId !== undefined) {
+      where.storageId = storageId;
+    } else {
+      where.storageId = null;
     }
     options.where = where;
     return await db.folder.findMany(options);
@@ -30,12 +39,14 @@ export class FolderService {
     page = 1,
     limit = 20,
     search,
+    storageId,
   }: {
     parentId?: string | null;
     user?: UserRecord;
     page?: number;
     limit?: number;
     search?: string;
+    storageId?: string | null;
   }): Promise<{
     folders: FolderRecord[];
     total: number;
@@ -53,6 +64,11 @@ export class FolderService {
     }
     if (search && search.trim()) {
       where.search = search.trim();
+    }
+    if (storageId !== undefined) {
+      where.storageId = storageId;
+    } else {
+      where.storageId = null;
     }
 
     const safeLimit = Math.max(1, Math.min(100, limit));

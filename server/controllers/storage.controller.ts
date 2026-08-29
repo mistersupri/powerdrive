@@ -266,7 +266,7 @@ export class StorageController {
    */
   public static async listFiles(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
-      const { folderId, syncStatus, myOnly, page, limit, q, search } = req.query;
+      const { folderId, syncStatus, myOnly, page, limit, q, search, storageId } = req.query;
 
       const pageNum = Math.max(1, parseInt(String(page || "1"), 10) || 1);
       const limitNum = Math.max(1, Math.min(100, parseInt(String(limit || "20"), 10) || 20));
@@ -284,6 +284,13 @@ export class StorageController {
       }
       if (searchQuery) {
         where.search = searchQuery;
+      }
+      if (storageId !== undefined && storageId !== "") {
+        if (storageId !== "ALL") {
+          where.storageId = String(storageId);
+        }
+      } else {
+        where.storageId = null;
       }
 
       const total = await db.file.count({ where });

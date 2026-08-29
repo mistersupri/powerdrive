@@ -9,10 +9,11 @@ import { db } from "../db/index.ts";
 export class FolderController {
   public static async listFolders(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
-      const { parentId, page, limit, q, search } = req.query;
+      const { parentId, page, limit, q, search, storageId } = req.query;
       const pageNum = Math.max(1, parseInt(String(page || "1"), 10) || 1);
       const limitNum = Math.max(1, Math.min(100, parseInt(String(limit || "20"), 10) || 20));
       const searchQuery = q || search ? String(q || search).trim() : undefined;
+      const storageIdVal = storageId !== undefined ? (storageId === "ALL" ? "ALL" : String(storageId)) : undefined;
 
       const result = await FolderService.listFoldersPaginated({
         parentId: parentId !== undefined ? String(parentId) : undefined,
@@ -20,6 +21,7 @@ export class FolderController {
         page: pageNum,
         limit: limitNum,
         search: searchQuery,
+        storageId: storageIdVal === "ALL" ? undefined : storageIdVal,
       });
 
       res.status(200).json({
