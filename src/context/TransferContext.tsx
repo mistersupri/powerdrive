@@ -74,7 +74,7 @@ interface TransferContextValue {
 }
 
 const CHUNK_SIZE = 1024 * 1024 * 2; // 2MB chunk for optimal throughput
-const MAX_CONCURRENT_CHUNK_UPLOADS = 3; // Up to 3 concurrent parallel chunk streams
+const MAX_CONCURRENT_CHUNK_UPLOADS = 10; // Up to 10 concurrent parallel chunk streams
 
 const TransferContext = createContext<TransferContextValue | null>(null);
 
