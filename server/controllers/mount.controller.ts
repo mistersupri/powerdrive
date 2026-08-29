@@ -8,11 +8,12 @@ import { AuthenticatedRequest } from "../middleware/auth.ts";
 
 export class MountController {
   /**
-   * List all mounted drives under /mnt
+   * List all mounted drives under /mnt with user permission scoping
    */
-  async listMounts(req: Request, res: Response) {
+  async listMounts(req: AuthenticatedRequest, res: Response) {
     try {
-      const mounts = mountService.listMounts();
+      const user = req.user;
+      const mounts = await mountService.listMountsForUser(user);
       const status = mountIndexerService.getStatus();
       res.status(200).json({
         success: true,
@@ -26,6 +27,33 @@ export class MountController {
       res.status(500).json({
         success: false,
         error: err.message || "Gagal memindai direktori sistem mount",
+      });
+    }
+  }
+
+  /**
+   * Update email access permissions for a mount point (Admin only)
+   */
+  async updatePermissions(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { mountId } = req.params;
+      const { allowedEmails } = req.body;
+      let emails: string[] = [];
+      if (Array.isArray(allowedEmails)) {
+        emails = allowedEmails;
+      } else if (typeof allowedEmails === "string") {
+        emails = allowedEmails.split(",").map((e) => e.trim()).filter(Boolean);
+      }
+      const updated = await mountService.setMountPermissions(mountId, emails);
+      res.status(200).json({
+        success: true,
+        data: { allowedEmails: updated },
+        message: "Izin akses email untuk storage terpasang berhasil diperbarui",
+      });
+    } catch (err: any) {
+      res.status(500).json({
+        success: false,
+        error: err.message || "Gagal memperbarui izin akses storage terpasang",
       });
     }
   }
@@ -59,9 +87,17 @@ export class MountController {
   /**
    * Get specific mount info
    */
-  async getMount(req: Request, res: Response) {
+  async getMount(req: AuthenticatedRequest, res: Response) {
     try {
       const { mountId } = req.params;
+      const isAllowed = await mountService.isUserAllowedForMount(req.user, mountId);
+      if (!isAllowed) {
+        return res.status(403).json({
+          success: false,
+          error: "Akses ditolak: Anda tidak memiliki izin untuk mengakses storage terpasang ini",
+        });
+      }
+
       const mount = mountService.getMountById(mountId);
       if (!mount) {
         return res.status(404).json({
@@ -70,9 +106,10 @@ export class MountController {
         });
       }
       const status = mountIndexerService.getStatus();
+      const permissions = await mountService.getMountPermissions(mountId);
       res.status(200).json({
         success: true,
-        data: { mount, indexingStatus: status },
+        data: { mount: { ...mount, allowedEmails: permissions }, indexingStatus: status },
       });
     } catch (err: any) {
       res.status(500).json({
@@ -83,11 +120,19 @@ export class MountController {
   }
 
   /**
-   * Browse files and directories in a mount point - Reads from PostgreSQL Metadata Index
+   * Browse files and directories in a mount point
    */
-  async browseDirectory(req: Request, res: Response) {
+  async browseDirectory(req: AuthenticatedRequest, res: Response) {
     try {
       const { mountId } = req.params;
+      const isAllowed = await mountService.isUserAllowedForMount(req.user, mountId);
+      if (!isAllowed) {
+        return res.status(403).json({
+          success: false,
+          error: "Akses ditolak: Anda tidak memiliki izin untuk mengakses storage terpasang ini",
+        });
+      }
+
       const subPath = typeof req.query.subPath === "string" ? req.query.subPath : "";
       const page = parseInt(String(req.query.page || "1"), 10) || 1;
       const limit = parseInt(String(req.query.limit || "100"), 10) || 100;

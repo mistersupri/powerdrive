@@ -205,7 +205,7 @@ export const GoogleDriveLayout: React.FC<GoogleDriveLayoutProps> = ({
         {/* Right Status & Account Controls */}
         <div className="flex items-center gap-2 sm:gap-3">
           {/* Sync Trigger Button */}
-          {pendingFilesCount > 0 && (
+          {!activeTab.startsWith("mount_") && pendingFilesCount > 0 && (
             <button
               onClick={handleTriggerSync}
               disabled={isTriggeringSync}

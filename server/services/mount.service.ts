@@ -23,6 +23,7 @@ export interface MountInfo {
   isWritable: boolean;
   isIndexing?: boolean;
   indexingState?: IndexingState;
+  allowedEmails?: string[];
 }
 
 export interface MountFileItem {
@@ -205,6 +206,112 @@ export class MountService {
     }
 
     return result;
+  }
+
+  /**
+   * Get allowed emails for a specific mount ID
+   */
+  public async getMountPermissions(mountId: string): Promise<string[]> {
+    try {
+      const key = `MOUNT_PERM_${mountId}`;
+      const setting = await db.systemSetting.findUnique({ where: { key } });
+      if (!setting || !setting.value) return [];
+      const parsed = JSON.parse(setting.value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Get all mount permissions mapping
+   */
+  public async getAllMountPermissions(): Promise<Record<string, string[]>> {
+    try {
+      const settings = await db.systemSetting.findMany();
+      const result: Record<string, string[]> = {};
+      for (const s of settings) {
+        if (s.key.startsWith("MOUNT_PERM_")) {
+          const mountId = s.key.replace("MOUNT_PERM_", "");
+          try {
+            result[mountId] = JSON.parse(s.value);
+          } catch {
+            result[mountId] = [];
+          }
+        }
+      }
+      return result;
+    } catch {
+      return {};
+    }
+  }
+
+  /**
+   * Set allowed emails for a mount
+   */
+  public async setMountPermissions(mountId: string, allowedEmails: string[]): Promise<string[]> {
+    const key = `MOUNT_PERM_${mountId}`;
+    const cleanEmails = allowedEmails
+      .map((e) => e.trim().toLowerCase())
+      .filter(Boolean);
+
+    await db.systemSetting.upsert({
+      where: { key },
+      create: {
+        key,
+        value: JSON.stringify(cleanEmails),
+        description: `Allowed user emails for mount ${mountId}`,
+      },
+      update: {
+        value: JSON.stringify(cleanEmails),
+      },
+    });
+
+    return cleanEmails;
+  }
+
+  /**
+   * Check if a user is permitted to access a mount
+   */
+  public async isUserAllowedForMount(
+    user: { email?: string; role?: string } | null | undefined,
+    mountId: string
+  ): Promise<boolean> {
+    if (!user) return false;
+    if (user.role === "ADMIN") return true;
+
+    const allowed = await this.getMountPermissions(mountId);
+    if (allowed.length === 0 || allowed.includes("*")) {
+      return true;
+    }
+    if (!user.email) return false;
+    return allowed.includes(user.email.toLowerCase().trim());
+  }
+
+  /**
+   * List mounts filtered and populated with permission metadata for a given user
+   */
+  public async listMountsForUser(user?: { email?: string; role?: string } | null): Promise<MountInfo[]> {
+    const allMounts = this.listMounts();
+    const permissionsMap = await this.getAllMountPermissions();
+
+    const populatedMounts = allMounts.map((m) => ({
+      ...m,
+      allowedEmails: permissionsMap[m.id] || [],
+    }));
+
+    if (!user || user.role === "ADMIN") {
+      return populatedMounts;
+    }
+
+    const userEmail = (user.email || "").toLowerCase().trim();
+    return populatedMounts.filter((m) => {
+      const allowed = m.allowedEmails || [];
+      if (allowed.length === 0 || allowed.includes("*")) {
+        return true;
+      }
+      return allowed.includes(userEmail);
+    });
   }
 
   public getMountById(mountId: string): MountInfo | null {

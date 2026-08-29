@@ -8,6 +8,7 @@ export const mountRouter = Router();
 // Public / Authenticated mount list
 mountRouter.get("/", authenticate, (req, res) => mountController.listMounts(req, res));
 mountRouter.post("/create", authenticate, requireAdmin, (req, res) => mountController.createMountPoint(req, res));
+mountRouter.post("/:mountId/permissions", authenticate, requireAdmin, (req, res) => mountController.updatePermissions(req, res));
 
 // Specific mount operations
 mountRouter.get("/:mountId", authenticate, (req, res) => mountController.getMount(req, res));

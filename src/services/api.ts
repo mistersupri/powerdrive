@@ -931,6 +931,18 @@ export const api = {
     return handleResponse(res);
   },
 
+  async updateMountPermissions(
+    mountId: string,
+    allowedEmails: string[]
+  ): Promise<{ allowedEmails: string[]; message: string }> {
+    const res = await fetch(`${BASE_URL}/mounts/${mountId}/permissions`, {
+      method: "POST",
+      headers: getHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ allowedEmails }),
+    });
+    return handleResponse(res);
+  },
+
   async getMount(mountId: string): Promise<{ mount: MountDrive }> {
     const res = await fetch(`${BASE_URL}/mounts/${mountId}`, {
       headers: getHeaders(),
