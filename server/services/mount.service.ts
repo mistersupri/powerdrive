@@ -252,7 +252,7 @@ export class MountService {
   }
 
   /**
-   * Browse files and folders inside a mount point - Reads from PostgreSQL Metadata Index
+   * Browse files and folders inside a mount point - Reads directly from the physical filesystem
    */
   public async browseDirectory(
     mountPoint: string,
@@ -276,128 +276,109 @@ export class MountService {
     const mountFolder = this.listMounts().find((m) => m.mountPoint === mountPoint);
     const mountId = mountFolder?.id || "mount-default";
 
-    // 1. Perform immediate on-demand indexing of this folder and its direct children
-    await mountIndexerService.indexFolderOnDemand(targetPath, mountPoint, mountId);
-
-    // 2. Identify current directory folder ID in DB
-    const currentFolderId =
-      subPath === ""
-        ? mountId
-        : "folder-" + crypto.createHash("md5").update(targetPath).digest("hex");
-
     const page = Math.max(1, options?.page || 1);
     const limit = Math.max(1, Math.min(200, options?.limit || 100));
-    const search = options?.search?.trim();
-
-    // Query db subfolders
-    const folderWhere: any = {
-      parentId: currentFolderId,
-      storageId: mountId,
-    };
-    if (search) {
-      folderWhere.name = { contains: search, mode: "insensitive" };
-    }
-
-    const dbFolders = await db.folder.findMany({
-      where: folderWhere,
-      orderBy: { name: "asc" },
-    });
-
-    // Query db files
-    const fileWhere: any = {
-      folderId: currentFolderId,
-      storageId: mountId,
-    };
-    if (search) {
-      fileWhere.originalName = { contains: search, mode: "insensitive" };
-    }
-
-    const dbFiles = await db.file.findMany({
-      where: fileWhere,
-      orderBy: { originalName: "asc" },
-    });
+    const search = options?.search?.trim()?.toLowerCase();
 
     const allItems: MountFileItem[] = [];
 
-    // Map subfolders
-    for (const folder of dbFolders) {
-      const full = folder.targetFolderPath;
-      const relative = path.relative(mountPoint, full).replace(/\\/g, "/");
+    if (fs.existsSync(targetPath)) {
+      try {
+        const entries = fs.readdirSync(targetPath, { withFileTypes: true });
 
-      allItems.push({
-        id: folder.id,
-        name: folder.name,
-        relativePath: relative,
-        fullPath: full,
-        mountId,
-        isDirectory: true,
-        size: 0,
-        mimeType: "inode/directory",
-        modifiedAt: folder.updatedAt.toISOString(),
-        extension: "",
-        isImage: false,
-        isVideo: false,
-        isAudio: false,
-        isPdf: false,
-        isText: false,
-        isOfficeDoc: false,
-        isArchive: false,
-      });
-    }
+        for (const entry of entries) {
+          if (entry.name.startsWith(".")) continue;
 
-    // Map files
-    for (const file of dbFiles) {
-      const full = file.storagePath;
-      const relative = file.storageKey || path.relative(mountPoint, full).replace(/\\/g, "/");
-      const ext = file.originalName.split(".").pop()?.toLowerCase() || "";
-      const mimeType = file.mimeType;
+          if (search && !entry.name.toLowerCase().includes(search)) {
+            continue;
+          }
 
-      const isImage =
-        mimeType.startsWith("image/") ||
-        /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|avif)$/i.test(file.originalName);
-      const isVideo =
-        mimeType.startsWith("video/") ||
-        /\.(mp4|webm|ogg|mov|mkv|avi|m4v)$/i.test(file.originalName);
-      const isAudio =
-        mimeType.startsWith("audio/") ||
-        /\.(mp3|wav|ogg|m4a|aac|flac)$/i.test(file.originalName);
-      const isPdf =
-        mimeType === "application/pdf" || /\.pdf$/i.test(file.originalName);
-      const isText =
-        mimeType.startsWith("text/") ||
-        mimeType.includes("json") ||
-        mimeType.includes("javascript") ||
-        mimeType.includes("typescript") ||
-        mimeType.includes("xml") ||
-        /\.(txt|md|csv|tsv|json|js|ts|tsx|jsx|html|css|scss|xml|yaml|yml|sql|log|env|py|sh|bat|ini|conf)$/i.test(
-          file.originalName
-        );
-      const isOfficeDoc =
-        /\.(docx?|xlsx?|pptx?|odt|ods|odp)$/i.test(file.originalName) ||
-        mimeType.includes("word") ||
-        mimeType.includes("sheet") ||
-        mimeType.includes("presentation");
-      const isArchive = /\.(zip|rar|7z|tar|gz|bz2)$/i.test(file.originalName);
+          const full = path.join(targetPath, entry.name);
+          const relative = path.relative(mountPoint, full).replace(/\\/g, "/");
+          const entryId = crypto.createHash("md5").update(full).digest("hex");
 
-      allItems.push({
-        id: file.id,
-        name: file.originalName,
-        relativePath: relative,
-        fullPath: full,
-        mountId,
-        isDirectory: false,
-        size: Number(file.size),
-        mimeType,
-        modifiedAt: file.updatedAt.toISOString(),
-        extension: ext,
-        isImage,
-        isVideo,
-        isAudio,
-        isPdf,
-        isText,
-        isOfficeDoc,
-        isArchive,
-      });
+          try {
+            const stat = fs.statSync(full);
+            const isDirectory = entry.isDirectory();
+
+            if (isDirectory) {
+              allItems.push({
+                id: "folder-" + entryId,
+                name: entry.name,
+                relativePath: relative,
+                fullPath: full,
+                mountId,
+                isDirectory: true,
+                size: 0,
+                mimeType: "inode/directory",
+                modifiedAt: stat.mtime.toISOString(),
+                extension: "",
+                isImage: false,
+                isVideo: false,
+                isAudio: false,
+                isPdf: false,
+                isText: false,
+                isOfficeDoc: false,
+                isArchive: false,
+              });
+            } else {
+              const ext = entry.name.split(".").pop()?.toLowerCase() || "";
+              const mimeType = mime.lookup(entry.name) || "application/octet-stream";
+
+              const isImage =
+                mimeType.startsWith("image/") ||
+                /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|avif)$/i.test(entry.name);
+              const isVideo =
+                mimeType.startsWith("video/") ||
+                /\.(mp4|webm|ogg|mov|mkv|avi|m4v)$/i.test(entry.name);
+              const isAudio =
+                mimeType.startsWith("audio/") ||
+                /\.(mp3|wav|ogg|m4a|aac|flac)$/i.test(entry.name);
+              const isPdf =
+                mimeType === "application/pdf" || /\.pdf$/i.test(entry.name);
+              const isText =
+                mimeType.startsWith("text/") ||
+                mimeType.includes("json") ||
+                mimeType.includes("javascript") ||
+                mimeType.includes("typescript") ||
+                mimeType.includes("xml") ||
+                /\.(txt|md|csv|tsv|json|js|ts|tsx|jsx|html|css|scss|xml|yaml|yml|sql|log|env|py|sh|bat|ini|conf)$/i.test(
+                  entry.name
+                );
+              const isOfficeDoc =
+                /\.(docx?|xlsx?|pptx?|odt|ods|odp)$/i.test(entry.name) ||
+                mimeType.includes("word") ||
+                mimeType.includes("sheet") ||
+                mimeType.includes("presentation");
+              const isArchive = /\.(zip|rar|7z|tar|gz|bz2)$/i.test(entry.name);
+
+              allItems.push({
+                id: "file-" + entryId,
+                name: entry.name,
+                relativePath: relative,
+                fullPath: full,
+                mountId,
+                isDirectory: false,
+                size: stat.size,
+                mimeType,
+                modifiedAt: stat.mtime.toISOString(),
+                extension: ext,
+                isImage,
+                isVideo,
+                isAudio,
+                isPdf,
+                isText,
+                isOfficeDoc,
+                isArchive,
+              });
+            }
+          } catch (err: any) {
+            console.warn(`[MountService] Error statting entry ${entry.name} inside browseDirectory:`, err.message);
+          }
+        }
+      } catch (err: any) {
+        console.error(`[MountService] Error reading directory ${targetPath}:`, err);
+      }
     }
 
     // Sort: directories first, then alphabetical
@@ -423,7 +404,17 @@ export class MountService {
       breadcrumbs.push({ name: part, subPath: accumulated });
     }
 
-    const indexerStatus = mountIndexerService.getStatus();
+    const indexerStatus = {
+      state: "idle" as IndexingState,
+      isIndexing: false,
+      totalIndexedFolders: 0,
+      totalIndexedFiles: 0,
+      lastIndexedAt: new Date().toISOString(),
+      lastError: null as string | null,
+      currentlyIndexingFolder: null as string | null,
+      queueLength: 0,
+      reconciliationCount: 0,
+    };
 
     return {
       mountPoint,
@@ -435,13 +426,13 @@ export class MountService {
       limit,
       totalPages,
       breadcrumbs,
-      isIndexing: indexerStatus.isIndexing,
+      isIndexing: false,
       indexingStatus: indexerStatus,
     };
   }
 
   /**
-   * Create a new folder inside a mount and update PostgreSQL metadata
+   * Create a new folder inside a mount directly on the physical filesystem
    */
   public async createFolder(mountPoint: string, subPath: string, folderName: string): Promise<string> {
     const targetParent = this.resolveSafePath(mountPoint, subPath);
@@ -455,39 +446,11 @@ export class MountService {
     }
     fs.mkdirSync(newDirPath, { recursive: true });
 
-    // Write metadata immediately to PostgreSQL
-    const mountFolder = this.listMounts().find((m) => m.mountPoint === mountPoint);
-    const mountId = mountFolder?.id || "mount-default";
-    const parentId =
-      subPath === ""
-        ? mountId
-        : "folder-" + crypto.createHash("md5").update(targetParent).digest("hex");
-    const folderId = "folder-" + crypto.createHash("md5").update(newDirPath).digest("hex");
-
-    await prisma.folder.upsert({
-      where: { id: folderId },
-      update: {
-        name: sanitized,
-        parentId,
-        targetFolderPath: newDirPath,
-        storageId: mountId,
-        source: "MOUNT",
-      },
-      create: {
-        id: folderId,
-        name: sanitized,
-        parentId,
-        targetFolderPath: newDirPath,
-        storageId: mountId,
-        source: "MOUNT",
-      },
-    });
-
     return newDirPath;
   }
 
   /**
-   * Rename a file or directory inside /mnt and re-index metadata
+   * Rename a file or directory inside /mnt
    */
   public async renameItem(
     mountPoint: string,
@@ -508,29 +471,13 @@ export class MountService {
       throw new Error(`Item dengan nama "${sanitized}" sudah ada`);
     }
 
-    const stat = fs.statSync(sourcePath);
     await fs.promises.rename(sourcePath, destPath);
-
-    const mount = this.listMounts().find((m) => m.mountPoint === mountPoint);
-    const mountId = mount?.id || "mount-default";
-
-    // Clean old metadata
-    if (stat.isDirectory()) {
-      const oldFolderId = "folder-" + crypto.createHash("md5").update(sourcePath).digest("hex");
-      await prisma.folder.delete({ where: { id: oldFolderId } }).catch(() => {});
-    } else {
-      const oldFileId = "file-" + crypto.createHash("md5").update(sourcePath).digest("hex");
-      await prisma.file.delete({ where: { id: oldFileId } }).catch(() => {});
-    }
-
-    // Re-index parent folder
-    await mountIndexerService.indexFolderOnDemand(dir, mountPoint, mountId);
 
     return { oldPath: sourcePath, newPath: destPath };
   }
 
   /**
-   * Delete a file or directory inside /mnt and update PostgreSQL metadata
+   * Delete a file or directory inside /mnt
    */
   public async deleteItem(mountPoint: string, itemRelativePath: string): Promise<void> {
     const target = this.resolveSafePath(mountPoint, itemRelativePath);
@@ -540,13 +487,8 @@ export class MountService {
     const stat = fs.statSync(target);
     if (stat.isDirectory()) {
       fs.rmSync(target, { recursive: true, force: true });
-      const folderId = "folder-" + crypto.createHash("md5").update(target).digest("hex");
-      await prisma.file.deleteMany({ where: { folderId } }).catch(() => {});
-      await prisma.folder.delete({ where: { id: folderId } }).catch(() => {});
     } else {
       fs.unlinkSync(target);
-      const fileId = "file-" + crypto.createHash("md5").update(target).digest("hex");
-      await prisma.file.delete({ where: { id: fileId } }).catch(() => {});
     }
   }
 
@@ -575,7 +517,7 @@ export class MountService {
   }
 
   /**
-   * Save uploaded binary file directly to mount storage and update PostgreSQL metadata
+   * Save uploaded binary file directly to mount storage
    */
   public async saveUploadedFile(
     mountPoint: string,
@@ -594,49 +536,12 @@ export class MountService {
     const mountFolder = this.listMounts().find((m) => m.mountPoint === mountPoint);
     const mountId = mountFolder?.id || "mount-default";
 
-    const parentId =
-      subPath === ""
-        ? mountId
-        : "folder-" + crypto.createHash("md5").update(targetDir).digest("hex");
-
     const md5 = crypto.createHash("md5").update(destPath).digest("hex");
     const fileId = "file-" + md5;
     const relativePath = path.relative(mountPoint, destPath).replace(/\\/g, "/");
-    const checksum = crypto
-      .createHash("sha256")
-      .update(destPath + stat.size + stat.mtime.toISOString())
-      .digest("hex");
-
-    await prisma.file.upsert({
-      where: { id: fileId },
-      update: {
-        originalName: file.originalname,
-        storedName: file.originalname,
-        storagePath: destPath,
-        mimeType: file.mimetype || mime.lookup(file.originalname) || "application/octet-stream",
-        size: BigInt(stat.size),
-        checksumSha256: checksum,
-        storageId: mountId,
-        storageKey: relativePath,
-        updatedAt: new Date(),
-      },
-      create: {
-        id: fileId,
-        userId: "usr_admin_001",
-        folderId: parentId,
-        originalName: file.originalname,
-        storedName: file.originalname,
-        storagePath: destPath,
-        mimeType: file.mimetype || mime.lookup(file.originalname) || "application/octet-stream",
-        size: BigInt(stat.size),
-        checksumSha256: checksum,
-        storageId: mountId,
-        storageKey: relativePath,
-      },
-    });
 
     const ext = file.originalname.split(".").pop()?.toLowerCase() || "";
-    const mimeType = file.mimetype;
+    const mimeType = file.mimetype || mime.lookup(file.originalname) || "application/octet-stream";
 
     return {
       id: fileId,
