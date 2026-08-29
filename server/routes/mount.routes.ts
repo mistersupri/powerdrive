@@ -17,7 +17,9 @@ mountRouter.get("/:mountId/sync-status", authenticate, (req, res) => mountContro
 mountRouter.post("/:mountId/mkdir", authenticate, (req, res) => mountController.createFolder(req, res));
 mountRouter.post("/:mountId/rename", authenticate, (req, res) => mountController.renameItem(req, res));
 mountRouter.post("/:mountId/delete", authenticate, (req, res) => mountController.deleteItem(req, res));
-mountRouter.post("/:mountId/upload", authenticate, uploadMiddleware.array("files", 10), (req, res) =>
+mountRouter.post("/:mountId/bulk-move", authenticate, (req, res) => mountController.bulkMoveItems(req, res));
+mountRouter.post("/:mountId/bulk-copy", authenticate, (req, res) => mountController.bulkCopyItems(req, res));
+mountRouter.post("/:mountId/upload", authenticate, uploadMiddleware.array("files", 100), (req, res) =>
   mountController.uploadToMount(req, res)
 );
 mountRouter.post("/:mountId/import-to-drive", authenticate, (req, res) =>

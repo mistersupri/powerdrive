@@ -475,6 +475,82 @@ export class MountController {
       });
     }
   }
+
+  /**
+   * Bulk move files or folders inside a mount point
+   */
+  async bulkMoveItems(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { mountId } = req.params;
+      const { sourceRelativePaths, targetFolderRelativePath } = req.body;
+
+      if (!sourceRelativePaths || !Array.isArray(sourceRelativePaths) || targetFolderRelativePath === undefined) {
+        return res.status(400).json({
+          success: false,
+          error: "Parameter sourceRelativePaths (array) dan targetFolderRelativePath wajib diisi",
+        });
+      }
+
+      const mount = mountService.getMountById(mountId);
+      if (!mount) {
+        return res.status(404).json({
+          success: false,
+          error: "Drive mount tidak ditemukan",
+        });
+      }
+
+      const result = await mountService.bulkMoveMountItems(
+        mount.mountPoint,
+        sourceRelativePaths,
+        targetFolderRelativePath
+      );
+
+      res.status(200).json(result);
+    } catch (err: any) {
+      res.status(500).json({
+        success: false,
+        error: err.message || "Gagal memindahkan beberapa berkas di drive terpasang",
+      });
+    }
+  }
+
+  /**
+   * Bulk copy files or folders inside a mount point
+   */
+  async bulkCopyItems(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { mountId } = req.params;
+      const { sourceRelativePaths, targetFolderRelativePath } = req.body;
+
+      if (!sourceRelativePaths || !Array.isArray(sourceRelativePaths) || targetFolderRelativePath === undefined) {
+        return res.status(400).json({
+          success: false,
+          error: "Parameter sourceRelativePaths (array) dan targetFolderRelativePath wajib diisi",
+        });
+      }
+
+      const mount = mountService.getMountById(mountId);
+      if (!mount) {
+        return res.status(404).json({
+          success: false,
+          error: "Drive mount tidak ditemukan",
+        });
+      }
+
+      const result = await mountService.bulkCopyMountItems(
+        mount.mountPoint,
+        sourceRelativePaths,
+        targetFolderRelativePath
+      );
+
+      res.status(200).json(result);
+    } catch (err: any) {
+      res.status(500).json({
+        success: false,
+        error: err.message || "Gagal menyalin beberapa berkas di drive terpasang",
+      });
+    }
+  }
 }
 
 export const mountController = new MountController();

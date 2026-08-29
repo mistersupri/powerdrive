@@ -1007,6 +1007,32 @@ export const api = {
     return handleResponse(res);
   },
 
+  async bulkMoveMountItems(
+    mountId: string,
+    sourceRelativePaths: string[],
+    targetFolderRelativePath: string
+  ): Promise<{ success: boolean; message: string }> {
+    const res = await fetch(`${BASE_URL}/mounts/${mountId}/bulk-move`, {
+      method: "POST",
+      headers: getHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ sourceRelativePaths, targetFolderRelativePath }),
+    });
+    return handleResponse(res);
+  },
+
+  async bulkCopyMountItems(
+    mountId: string,
+    sourceRelativePaths: string[],
+    targetFolderRelativePath: string
+  ): Promise<{ success: boolean; message: string }> {
+    const res = await fetch(`${BASE_URL}/mounts/${mountId}/bulk-copy`, {
+      method: "POST",
+      headers: getHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ sourceRelativePaths, targetFolderRelativePath }),
+    });
+    return handleResponse(res);
+  },
+
   async uploadToMount(
     mountId: string,
     subPath: string,

@@ -656,6 +656,87 @@ export class MountService {
 
     return fileRecord;
   }
+
+  /**
+   * Bulk move files or folders inside a mount point directly on the physical filesystem
+   */
+  public async bulkMoveMountItems(
+    mountPoint: string,
+    sourceRelativePaths: string[],
+    targetFolderRelativePath: string
+  ): Promise<{ success: boolean; message: string }> {
+    const targetFolderAbs = this.resolveSafePath(mountPoint, targetFolderRelativePath);
+    if (!fs.existsSync(targetFolderAbs) || !fs.statSync(targetFolderAbs).isDirectory()) {
+      throw new Error("Folder tujuan tidak ditemukan atau bukan merupakan direktori.");
+    }
+
+    let movedCount = 0;
+    for (const sourceRel of sourceRelativePaths) {
+      const sourceAbs = this.resolveSafePath(mountPoint, sourceRel);
+      if (!fs.existsSync(sourceAbs)) continue;
+
+      const name = path.basename(sourceAbs);
+      const destAbs = path.join(targetFolderAbs, name);
+
+      if (sourceAbs === destAbs) continue;
+
+      // Prevent moving a directory into itself or its descendants
+      if (destAbs.startsWith(sourceAbs)) {
+        throw new Error("Tidak dapat memindahkan folder ke dalam dirinya sendiri atau subfoldernya.");
+      }
+
+      await fs.promises.rename(sourceAbs, destAbs);
+      movedCount++;
+    }
+
+    return {
+      success: true,
+      message: `Berhasil memindahkan ${movedCount} item ke folder tujuan.`,
+    };
+  }
+
+  /**
+   * Bulk copy files or folders inside a mount point directly on the physical filesystem
+   */
+  public async bulkCopyMountItems(
+    mountPoint: string,
+    sourceRelativePaths: string[],
+    targetFolderRelativePath: string
+  ): Promise<{ success: boolean; message: string }> {
+    const targetFolderAbs = this.resolveSafePath(mountPoint, targetFolderRelativePath);
+    if (!fs.existsSync(targetFolderAbs) || !fs.statSync(targetFolderAbs).isDirectory()) {
+      throw new Error("Folder tujuan tidak ditemukan atau bukan merupakan direktori.");
+    }
+
+    let copiedCount = 0;
+    for (const sourceRel of sourceRelativePaths) {
+      const sourceAbs = this.resolveSafePath(mountPoint, sourceRel);
+      if (!fs.existsSync(sourceAbs)) continue;
+
+      const name = path.basename(sourceAbs);
+      const destAbs = path.join(targetFolderAbs, name);
+
+      if (sourceAbs === destAbs) continue;
+
+      if (destAbs.startsWith(sourceAbs)) {
+        throw new Error("Tidak dapat menyalin folder ke dalam dirinya sendiri atau subfoldernya.");
+      }
+
+      // Check if directory or file
+      const stat = fs.statSync(sourceAbs);
+      if (stat.isDirectory()) {
+        fs.cpSync(sourceAbs, destAbs, { recursive: true });
+      } else {
+        fs.copyFileSync(sourceAbs, destAbs);
+      }
+      copiedCount++;
+    }
+
+    return {
+      success: true,
+      message: `Berhasil menyalin ${copiedCount} item ke folder tujuan.`,
+    };
+  }
 }
 
 export const mountService = new MountService();

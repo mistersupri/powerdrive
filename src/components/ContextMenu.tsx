@@ -37,6 +37,8 @@ interface ContextMenuProps {
   onClose: () => void;
   onOpenFolder?: (folder: Folder) => void;
   onDownloadFolder?: (folder: Folder) => void;
+  onCopyFolder?: (folder: Folder) => void;
+  onMoveFolder?: (folder: Folder) => void;
   onSyncFolder?: (folder: Folder) => void;
   onShareFolder?: (folder: Folder) => void;
   onRenameFolder?: (folder: Folder) => void;
@@ -61,6 +63,8 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   onClose,
   onOpenFolder,
   onDownloadFolder,
+  onCopyFolder,
+  onMoveFolder,
   onSyncFolder,
   onShareFolder,
   onRenameFolder,
@@ -183,6 +187,32 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
             >
               <RefreshCw className="w-4 h-4 text-indigo-600" />
               <span>{state.folder?.syncToGoogleDrive ? "Sinkronisasi Ulang ke Drive" : "Sinkronkan ke Google Drive"}</span>
+            </button>
+          )}
+
+          {onCopyFolder && (
+            <button
+              onClick={() => {
+                onCopyFolder?.(state.folder!);
+                onClose();
+              }}
+              className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl hover:bg-blue-50 hover:text-blue-700 transition-colors text-left font-medium"
+            >
+              <Copy className="w-4 h-4 text-indigo-600" />
+              <span>Salin Folder</span>
+            </button>
+          )}
+
+          {onMoveFolder && (
+            <button
+              onClick={() => {
+                onMoveFolder?.(state.folder!);
+                onClose();
+              }}
+              className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl hover:bg-blue-50 hover:text-blue-700 transition-colors text-left font-medium"
+            >
+              <Move className="w-4 h-4 text-indigo-600" />
+              <span>Pindahkan Folder</span>
             </button>
           )}
 

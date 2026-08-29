@@ -11,35 +11,31 @@ import {
   FileArchive,
   Download,
   Eye,
-  Play,
   Trash2,
-  Upload,
+  UploadCloud,
   Plus,
   RefreshCw,
   Search,
   LayoutGrid,
   List as ListIcon,
   ChevronRight,
-  ArrowLeft,
-  UploadCloud,
   CheckCircle2,
-  AlertCircle,
-  Clock,
   Loader2,
   FolderPlus,
-  Cloud,
   Check,
   X,
-  FileUp,
   Share2,
   Edit3,
   Info,
-  Layers,
   MoreVertical,
   CheckSquare,
   Square,
   SearchX,
-  ShieldCheck,
+  Copy,
+  Move,
+  Grid,
+  CloudDownload,
+  Cloud,
 } from "lucide-react";
 import {
   MountDrive,
@@ -49,7 +45,6 @@ import {
   FileItem,
   SyncStatus,
   IndexerStatus,
-  IndexingState,
   FolderPermission,
   DriveType,
 } from "../types/frontend.ts";
@@ -62,6 +57,7 @@ import { ShareFolderModal } from "./ShareFolderModal.tsx";
 import { InlineRenameModal } from "./InlineRenameModal.tsx";
 import { ItemDetailsDrawer } from "./ItemDetailsDrawer.tsx";
 import { ContextMenu, ContextMenuState } from "./ContextMenu.tsx";
+import { MoveCopyMountModal } from "./MoveCopyMountModal.tsx";
 
 interface MountedDriveExplorerProps {
   mount: MountDrive;
@@ -92,6 +88,17 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [lastSelectedKey, setLastSelectedKey] = useState<string | null>(null);
   const [isDragOver, setIsDragOver] = useState<boolean>(false);
+
+  // Drag & Drop Internal Move State
+  const [showMoveCopyModal, setShowMoveCopyModal] = useState<"move" | "copy" | null>(null);
+  const [activeDragItem, setActiveDragItem] = useState<{
+    key: string;
+    type: "folder" | "file";
+    relativePath: string;
+    id: string;
+  } | null>(null);
+  const [activeDragOverId, setActiveDragOverId] = useState<string | null>(null);
+  const [hoveredCrumbId, setHoveredCrumbId] = useState<string | null>(null);
 
   // Marquee Rubberband Selection
   const [marqueeBox, setMarqueeBox] = useState<{
@@ -199,26 +206,27 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
         syncAttempts: 0,
         createdAt: file.modifiedAt,
         updatedAt: file.modifiedAt,
-        googleDriveWebViewLink: viewUrl,
       };
     },
     [mount.id]
   );
 
-  // Load directory contents (progressive & instant on-demand)
+  // Load Directory Content
   const loadDirectory = useCallback(
-    async (path: string = "") => {
+    async (targetSubPath: string) => {
       setIsLoading(true);
       try {
-        const data = await api.browseMountDirectory(mount.id, path);
+        const data = await api.browseMountDirectory(mount.id, targetSubPath);
         setBrowseData(data);
+        setSubPath(targetSubPath);
         if (data.indexingStatus) {
           setIndexerStatus(data.indexingStatus);
         }
       } catch (err: any) {
+        console.error("Failed to browse mount directory:", err);
         showAlert({
-          title: "Gagal Membaca Direktori",
-          message: err.message || "Tidak dapat memuat isi folder pada drive mount.",
+          title: "Gagal Membuka Folder",
+          message: err.message || "Tidak dapat mengakses direktori storage ini.",
           type: "error",
         });
       } finally {
@@ -228,80 +236,43 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
     [mount.id, showAlert]
   );
 
-  useEffect(() => {
-    setSubPath("");
-    setSearchTerm("");
-    setSelectedKeys(new Set());
-    loadDirectory("");
-  }, [mount.id, loadDirectory]);
-
-  // Polling indexer status when background indexing is running
-  useEffect(() => {
-    let timer: NodeJS.Timeout | null = null;
-    const fetchStatus = async () => {
-      try {
-        const status = await api.getMountSyncStatus(mount.id);
-        setIndexerStatus(status);
-        if (status.isIndexing || status.state === "indexing") {
-          timer = setTimeout(fetchStatus, 2500);
-        }
-      } catch {
-        // Silent catch for background polling
-      }
-    };
-
-    if (indexerStatus?.isIndexing || indexerStatus?.state === "indexing" || isSyncingMetadata) {
-      timer = setTimeout(fetchStatus, 2000);
+  // Fetch Indexer Status
+  const fetchIndexerStatus = useCallback(async () => {
+    try {
+      const status = await api.getMountSyncStatus(mount.id);
+      setIndexerStatus(status);
+    } catch (err) {
+      console.warn("Failed to fetch indexer status:", err);
     }
+  }, [mount.id]);
 
-    return () => {
-      if (timer) clearTimeout(timer);
-    };
-  }, [mount.id, indexerStatus?.isIndexing, indexerStatus?.state, isSyncingMetadata]);
-
-  // Navigate into subfolder
-  const handleNavigate = (newSubPath: string) => {
-    setSubPath(newSubPath);
-    setSearchTerm("");
+  useEffect(() => {
+    loadDirectory("");
+    fetchIndexerStatus();
     setSelectedKeys(new Set());
+    setLastSelectedKey(null);
+  }, [mount.id, loadDirectory, fetchIndexerStatus]);
+
+  // Handle Navigate Subpath
+  const handleNavigate = (newSubPath: string) => {
+    setSelectedKeys(new Set());
+    setLastSelectedKey(null);
     loadDirectory(newSubPath);
   };
 
-  // Format bytes helper
-  const formatBytes = (bytes: number) => {
-    if (!bytes || bytes === 0) return "0 B";
-    const k = 1024;
-    const sizes = ["B", "KB", "MB", "GB", "TB"];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
-  };
+  // Raw items from API
+  const rawItems = useMemo(() => {
+    return browseData?.items || [];
+  }, [browseData]);
 
-  // Format date helper
-  const formatDate = (dateStr: string) => {
-    try {
-      const d = new Date(dateStr);
-      return d.toLocaleDateString("id-ID", {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-    } catch {
-      return dateStr;
-    }
-  };
-
-  // Filter items based on search query and category
-  const rawItems = browseData?.items || [];
-
+  // Filter items by search & category
   const filteredItems = useMemo(() => {
     return rawItems.filter((item) => {
       const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase());
       if (!matchesSearch) return false;
 
       if (categoryFilter === "ALL") return true;
-      if (item.isDirectory) return true; // Keep folders visible or toggleable
+      if (item.isDirectory) return true;
 
       if (categoryFilter === "IMAGE") return item.isImage;
       if (categoryFilter === "VIDEO") return item.isVideo;
@@ -353,7 +324,7 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
     });
   }, [filteredItems, sortBy, sortOrder]);
 
-  // Combined visible items for keyboard & multi-selection
+  // Combined visible items
   const allVisibleItems = useMemo(() => {
     const list: { key: string; type: "folder" | "file"; item: MountFileItem }[] = [];
     sortedDirectories.forEach((d) => list.push({ key: `folder_${d.id}`, type: "folder", item: d }));
@@ -370,6 +341,10 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
   }, [sortedFiles, selectedKeys]);
 
   const selectedCount = selectedKeys.size;
+
+  const selectedMountItems = useMemo(() => {
+    return allVisibleItems.filter((it) => selectedKeys.has(it.key)).map((it) => it.item);
+  }, [allVisibleItems, selectedKeys]);
 
   // Selection Click Handler
   const handleItemClick = (
@@ -525,6 +500,191 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
     }
   };
 
+  // Internal Drag & Drop item handlers
+  const handleDragStart = (e: React.DragEvent, key: string, type: "folder" | "file", item: MountFileItem) => {
+    e.stopPropagation();
+
+    let itemsToMove: MountFileItem[] = [];
+
+    if (!selectedKeys.has(key)) {
+      setSelectedKeys(new Set([key]));
+      setLastSelectedKey(key);
+      itemsToMove = [item];
+    } else {
+      allVisibleItems.forEach((it) => {
+        if (selectedKeys.has(it.key)) {
+          itemsToMove.push(it.item);
+        }
+      });
+      if (!itemsToMove.some((it) => it.id === item.id)) {
+        itemsToMove.push(item);
+      }
+    }
+
+    const sourcePaths = itemsToMove.map((it) => it.relativePath);
+
+    setActiveDragItem({ key, type, relativePath: item.relativePath, id: item.id });
+    e.dataTransfer.setData("application/mounted-drive-items", JSON.stringify({ sourcePaths }));
+    e.dataTransfer.effectAllowed = "move";
+
+    try {
+      const totalCount = itemsToMove.length;
+      const primaryName = item.name;
+
+      const ghost = document.createElement("div");
+      ghost.id = "custom-drag-ghost-preview";
+      ghost.style.position = "fixed";
+      ghost.style.top = "-9999px";
+      ghost.style.left = "-9999px";
+      ghost.style.zIndex = "999999";
+      ghost.style.pointerEvents = "none";
+
+      const isFolder = type === "folder";
+      const iconBg = isFolder ? "#fef3c7" : "#eff6ff";
+      const iconColor = isFolder ? "#d97706" : "#2563eb";
+      const iconSvg = isFolder
+        ? `<svg width="18" height="18" viewBox="0 0 24 24" fill="${iconColor}" stroke="${iconColor}" stroke-width="1.5"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg>`
+        : `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="${iconColor}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>`;
+
+      const countDetail =
+        totalCount > 1
+          ? `${totalCount} item dipilih`
+          : isFolder
+          ? "1 Folder dipilih"
+          : "1 Berkas dipilih";
+
+      const escapeHtml = (text: string) =>
+        text
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+
+      ghost.innerHTML = `
+        <div style="position: relative; display: inline-flex; align-items: center; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+          ${
+            totalCount > 1
+              ? `<div style="position: absolute; inset: 0; transform: translate(4px, 4px); background: #e0e7ff; border: 1.5px solid #c7d2fe; border-radius: 14px; opacity: 0.85; z-index: 0;"></div>`
+              : ""
+          }
+          <div style="position: relative; z-index: 1; display: flex; align-items: center; gap: 10px; padding: 9px 14px; background: #ffffff; border: 1.5px solid #6366f1; border-radius: 14px; box-shadow: 0 14px 28px -4px rgba(79, 70, 229, 0.28), 0 8px 12px -4px rgba(15, 23, 42, 0.12); min-width: 190px; max-width: 280px;">
+            <div style="width: 32px; height: 32px; border-radius: 8px; background: ${iconBg}; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+              ${iconSvg}
+            </div>
+            <div style="display: flex; flex-direction: column; min-width: 0; flex: 1;">
+              <span style="font-size: 12.5px; font-weight: 700; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 165px;">
+                ${escapeHtml(primaryName)}
+              </span>
+              <span style="font-size: 10.5px; font-weight: 600; color: ${totalCount > 1 ? "#4f46e5" : "#64748b"}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                ${countDetail}
+              </span>
+            </div>
+            ${
+              totalCount > 1
+                ? `<div style="position: absolute; top: -7px; right: -7px; background: #4f46e5; color: #ffffff; font-size: 11px; font-weight: 800; border-radius: 9999px; height: 22px; min-width: 22px; padding: 0 6px; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 5px rgba(79,70,229,0.4); border: 2px solid #ffffff; letter-spacing: -0.2px;">
+                    ${totalCount}
+                  </div>`
+                : ""
+            }
+          </div>
+        </div>
+      `;
+
+      document.body.appendChild(ghost);
+      e.dataTransfer.setDragImage(ghost, 25, 25);
+      setTimeout(() => {
+        if (ghost.parentNode) {
+          ghost.parentNode.removeChild(ghost);
+        }
+      }, 0);
+    } catch {
+      // Fallback
+    }
+  };
+
+  const handleDragEnd = () => {
+    setActiveDragItem(null);
+    setActiveDragOverId(null);
+    setHoveredCrumbId(null);
+  };
+
+  const handleDragOverFolder = (e: React.DragEvent, folderRelPath: string) => {
+    if (activeDragItem) {
+      const isSelfOrSub =
+        activeDragItem.relativePath === folderRelPath ||
+        folderRelPath.startsWith(activeDragItem.relativePath + "/");
+      if (!isSelfOrSub) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.dataTransfer.dropEffect = "move";
+        setActiveDragOverId(folderRelPath);
+      }
+    }
+  };
+
+  const handleDragLeaveFolder = (e: React.DragEvent) => {
+    setActiveDragOverId(null);
+  };
+
+  const handleDropOnFolder = async (e: React.DragEvent, targetSubPath: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setActiveDragOverId(null);
+    setHoveredCrumbId(null);
+
+    let sourcePaths: string[] = [];
+    const dragData = e.dataTransfer.getData("application/mounted-drive-items");
+    if (dragData) {
+      try {
+        const parsed = JSON.parse(dragData);
+        if (parsed.sourcePaths) sourcePaths = parsed.sourcePaths;
+      } catch (err) {
+        console.warn("Failed to parse drag data:", err);
+      }
+    }
+
+    if (sourcePaths.length === 0 && activeDragItem) {
+      sourcePaths = [activeDragItem.relativePath];
+    }
+
+    if (sourcePaths.length > 0) {
+      setOperationLoading({
+        isOpen: true,
+        title: "Memindahkan Item...",
+        message: `Memindahkan ${sourcePaths.length} item ke folder tujuan`,
+        type: "sync",
+      });
+      try {
+        const res = await api.bulkMoveMountItems(mount.id, sourcePaths, targetSubPath);
+        showToast(res.message, "success");
+        setSelectedKeys(new Set());
+        loadDirectory(subPath);
+      } catch (err: any) {
+        showAlert({
+          title: "Gagal Memindahkan Item",
+          message: err.message || "Terjadi kesalahan saat memindahkan item.",
+          type: "error",
+        });
+      } finally {
+        setOperationLoading({ isOpen: false, title: "" });
+        setActiveDragItem(null);
+      }
+    }
+  };
+
+  // Handle Share Item
+  const handleShareItem = (item: MountFileItem) => {
+    if (item.isDirectory) {
+      const folderObj = mountDirToFolder(item);
+      setShareFolderModal(folderObj);
+    } else {
+      const link = `${window.location.origin}${api.getMountFileViewUrl(mount.id, item.relativePath)}`;
+      navigator.clipboard.writeText(link);
+      showToast(`Tautan berkas "${item.name}" berhasil disalin ke papan klip!`, "success");
+    }
+  };
+
   // Handle Create Folder
   const handleCreateFolder = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -549,179 +709,192 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
 
   // Listen for global background mount upload completion events
   useEffect(() => {
-    const handleMountRefresh = () => {
+    const handleMountUploadComplete = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      if (customEvent.detail?.mountId === mount.id) {
+        loadDirectory(subPath);
+      }
+    };
+    window.addEventListener("mountUploadCompleted", handleMountUploadComplete);
+    return () => {
+      window.removeEventListener("mountUploadCompleted", handleMountUploadComplete);
+    };
+  }, [mount.id, subPath, loadDirectory]);
+
+  // Handle Upload Files
+  const handleUploadFiles = async (fileList: File[]) => {
+    if (fileList.length === 0) return;
+    setIsUploading(true);
+
+    try {
+      if (fileList.length === 1) {
+        setOperationLoading({
+          isOpen: true,
+          title: "Mengunggah Berkas...",
+          message: `Mengunggah ${fileList[0].name} ke storage ${mount.name}`,
+          type: "upload",
+        });
+
+        await startMountUploadWithProgress({
+          mountId: mount.id,
+          mountName: mount.name,
+          subPath,
+          files: fileList,
+        });
+
+        showToast(`Berkas "${fileList[0].name}" berhasil diunggah`, "success");
+      } else {
+        showToast(
+          `Memulai pengunggahan ${fileList.length} berkas ke antrean latar belakang...`,
+          "info"
+        );
+        startMountUploadWithProgress({
+          mountId: mount.id,
+          mountName: mount.name,
+          subPath,
+          files: fileList,
+        });
+      }
+
       loadDirectory(subPath);
       onRefreshMounts();
-    };
-    window.addEventListener("powerdrive:refresh-mounts", handleMountRefresh);
-    return () => {
-      window.removeEventListener("powerdrive:refresh-mounts", handleMountRefresh);
-    };
-  }, [subPath, loadDirectory, onRefreshMounts]);
+    } catch (err: any) {
+      console.error("Mount upload error:", err);
+      showAlert({
+        title: "Gagal Mengunggah Berkas",
+        message: err.message || "Terjadi kesalahan saat mengunggah berkas ke storage.",
+        type: "error",
+      });
+    } finally {
+      setIsUploading(false);
+      setOperationLoading({ isOpen: false, title: "" });
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
 
-  // Handle File Upload
-  const handleUploadFiles = async (fileList: File[]) => {
-    if (!fileList || fileList.length === 0) return;
-    if (fileInputRef.current) fileInputRef.current.value = "";
-
-    await startMountUploadWithProgress({
-      mountId: mount.id,
-      mountName: mount.name,
-      subPath: subPath,
-      files: fileList,
-      onComplete: () => {
-        loadDirectory(subPath);
-        onRefreshMounts();
-      },
+  // Handle Sync Metadata
+  const handleSyncMetadata = async () => {
+    setIsSyncingMetadata(true);
+    setOperationLoading({
+      isOpen: true,
+      title: "Menyingkronkan Metadata Storage",
+      message: "Memindai ulang direktori fisik dan mengindeks seluruh berkas ke database PostgreSQL...",
+      type: "sync",
     });
+
+    try {
+      const res = await api.syncMount(mount.id);
+      showToast(res.message || "Metadata storage berhasil disinkronkan ke PostgreSQL", "success");
+      loadDirectory(subPath);
+      fetchIndexerStatus();
+      onRefreshMounts();
+    } catch (err: any) {
+      showAlert({
+        title: "Gagal Sinkronisasi DB",
+        message: err.message || "Terjadi kesalahan saat memindai ulang metadata storage.",
+        type: "error",
+      });
+    } finally {
+      setIsSyncingMetadata(false);
+      setOperationLoading({ isOpen: false, title: "" });
+    }
   };
 
   // Handle Delete Single Item
   const handleDeleteItem = async (item: MountFileItem) => {
     const isDir = item.isDirectory;
     const confirmed = await showConfirm({
-      title: isDir ? "Hapus Folder Mount?" : "Hapus Berkas Mount?",
-      message: isDir
-        ? `Apakah Anda yakin ingin menghapus folder "${item.name}" beserta seluruh isinya secara permanen dari sistem penyimpanan lokal?`
-        : `Apakah Anda yakin ingin menghapus berkas "${item.name}" secara permanen dari sistem penyimpanan lokal?`,
-      isDanger: true,
+      title: `Hapus ${isDir ? "Folder" : "Berkas"}`,
+      message: `Apakah Anda yakin ingin menghapus "${item.name}" secara permanen dari storage terpasang? Tindakan ini tidak dapat dibatalkan.`,
       confirmText: "Hapus Permanen",
       cancelText: "Batal",
+      isDanger: true,
     });
 
-    if (!confirmed) return;
-
-    setOperationLoading({
-      isOpen: true,
-      title: isDir ? "Menghapus Folder" : "Menghapus Berkas",
-      message: `Menghapus "${item.name}" dari ${mount.name}...`,
-      type: "delete",
-    });
-
-    try {
-      await api.deleteMountItem(mount.id, item.relativePath);
-      showToast(`"${item.name}" berhasil dihapus`, "success");
-      loadDirectory(subPath);
-      onRefreshMounts();
-    } catch (err: any) {
-      showAlert({
-        title: "Gagal Menghapus Item",
-        message: err.message || "Terjadi kesalahan saat menghapus item.",
-        type: "error",
-      });
-    } finally {
-      setOperationLoading({ isOpen: false, title: "" });
+    if (confirmed) {
+      try {
+        await api.deleteMountItem(mount.id, item.relativePath);
+        showToast(`"${item.name}" berhasil dihapus`, "success");
+        setSelectedKeys((prev) => {
+          const next = new Set(prev);
+          next.delete(isDir ? `folder_${item.id}` : `file_${item.id}`);
+          return next;
+        });
+        loadDirectory(subPath);
+        onRefreshMounts();
+      } catch (err: any) {
+        showAlert({
+          title: "Gagal Menghapus Item",
+          message: err.message || "Terjadi kesalahan saat menghapus item dari storage.",
+          type: "error",
+        });
+      }
     }
   };
 
-  // Handle Batch Delete
-  const handleBatchDelete = async () => {
+  // Handle Bulk Delete
+  const handleBulkDelete = async () => {
     if (selectedCount === 0) return;
-
     const confirmed = await showConfirm({
-      title: `Hapus ${selectedCount} Item Terpilih?`,
-      message: `Apakah Anda yakin ingin menghapus ${selectedCount} item yang dipilih secara permanen dari penyimpanan ${mount.name}? Tindakan ini tidak dapat dibatalkan.`,
-      isDanger: true,
+      title: `Hapus ${selectedCount} Item Terpilih`,
+      message: `Apakah Anda yakin ingin menghapus ${selectedCount} item terpilih dari storage terpasang secara permanen?`,
       confirmText: "Hapus Semua",
       cancelText: "Batal",
+      isDanger: true,
     });
 
-    if (!confirmed) return;
+    if (confirmed) {
+      let deleted = 0;
+      setOperationLoading({
+        isOpen: true,
+        title: "Menghapus Item...",
+        message: `Menghapus ${selectedCount} item terpilih`,
+        type: "delete",
+      });
 
-    setOperationLoading({
-      isOpen: true,
-      title: "Menghapus Item Terpilih",
-      message: `Menghapus ${selectedCount} item...`,
-      type: "delete",
-    });
-
-    try {
-      let successCount = 0;
-      for (const dir of selectedFolders) {
-        await api.deleteMountItem(mount.id, dir.relativePath).catch(() => {});
-        successCount++;
+      try {
+        for (const item of selectedMountItems) {
+          try {
+            await api.deleteMountItem(mount.id, item.relativePath);
+            deleted++;
+          } catch (err) {
+            console.error(`Failed to delete ${item.name}:`, err);
+          }
+        }
+        showToast(`Berhasil menghapus ${deleted} item dari storage`, "success");
+        setSelectedKeys(new Set());
+        loadDirectory(subPath);
+        onRefreshMounts();
+      } finally {
+        setOperationLoading({ isOpen: false, title: "" });
       }
-      for (const file of selectedFiles) {
-        await api.deleteMountItem(mount.id, file.relativePath).catch(() => {});
-        successCount++;
-      }
-      showToast(`${successCount} item berhasil dihapus`, "success");
-      setSelectedKeys(new Set());
-      loadDirectory(subPath);
-      onRefreshMounts();
-    } catch (err: any) {
-      showAlert({
-        title: "Gagal Menghapus Batch",
-        message: err.message || "Terjadi kesalahan saat menghapus item terpilih.",
-        type: "error",
-      });
-    } finally {
-      setOperationLoading({ isOpen: false, title: "" });
     }
   };
 
-  // Handle Batch Download
-  const handleBatchDownload = () => {
-    if (selectedFiles.length === 0) {
-      showToast("Pilih setidaknya satu berkas untuk diunduh", "warning");
-      return;
-    }
-    selectedFiles.forEach((file, index) => {
-      setTimeout(() => {
-        startFileDownload(file.id, file.name, file.size);
-      }, index * 200);
-    });
-    showToast(`Mengunduh ${selectedFiles.length} berkas...`, "info");
-  };
-
-  // Handle Single File Download
-  const handleDownloadFile = (file: MountFileItem) => {
-    startFileDownload(file.id, file.name, file.size);
-  };
-
-  // Handle Sync Metadata
-  const handleSyncMetadata = async () => {
-    setIsSyncingMetadata(true);
-    showToast("Memulai sinkronisasi metadata dengan database...", "info");
+  // Format Date Helper
+  const formatDate = (dateStr: string) => {
+    if (!dateStr) return "-";
     try {
-      await api.syncMount(mount.id);
-      showToast("Sinkronisasi metadata database selesai", "success");
-      loadDirectory(subPath);
-      onRefreshMounts();
-    } catch (err: any) {
-      showAlert({
-        title: "Gagal Sinkronisasi",
-        message: err.message || "Terjadi kesalahan saat menyinkronkan metadata.",
-        type: "error",
+      const d = new Date(dateStr);
+      return d.toLocaleDateString("id-ID", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
       });
-    } finally {
-      setIsSyncingMetadata(false);
+    } catch {
+      return dateStr;
     }
   };
 
-  // Handle Execute Import to Google Drive
-  const handleExecuteImport = async () => {
-    if (!importingItem || !selectedTargetFolderId) return;
-
-    setIsImporting(true);
-    try {
-      const res = await api.importMountFileToDrive(
-        mount.id,
-        importingItem.relativePath,
-        selectedTargetFolderId
-      );
-      showToast(res.message || "Berkas berhasil diantrekan ke Google Drive", "success");
-      setImportingItem(null);
-      onRefreshMounts();
-    } catch (err: any) {
-      showAlert({
-        title: "Gagal Mengimpor ke Google Drive",
-        message: err.message || "Terjadi kesalahan saat mengimpor berkas.",
-        type: "error",
-      });
-    } finally {
-      setIsImporting(false);
-    }
+  // Format Bytes Helper
+  const formatBytes = (bytes: number) => {
+    if (bytes === 0) return "0 B";
+    const k = 1024;
+    const sizes = ["B", "KB", "MB", "GB", "TB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
   };
 
   // Handle Save Rename
@@ -796,7 +969,7 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
     return <FileText className="w-5 h-5 text-slate-500" />;
   };
 
-  // Drag & Drop Handlers for Canvas
+  // Drag & Drop Handlers for Canvas (Desktop File Drop)
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -940,7 +1113,7 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
             {/* New Folder Button */}
             <button
               onClick={() => setIsCreatingFolder(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 hover:border-slate-300 transition-colors shadow-sm"
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 hover:border-slate-300 transition-colors shadow-sm cursor-pointer"
               title="Buat folder baru di path saat ini"
             >
               <FolderPlus className="w-4 h-4 text-amber-500" />
@@ -951,7 +1124,7 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={isUploading}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg shadow-sm shadow-blue-200 transition-colors"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg shadow-sm shadow-blue-200 transition-colors cursor-pointer"
               title="Unggah berkas ke folder saat ini"
             >
               {isUploading ? (
@@ -965,7 +1138,7 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
             {/* Share Drive Button */}
             <button
               onClick={() => setShareFolderModal(mountToRootFolder())}
-              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 hover:border-slate-300 transition-colors shadow-sm"
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 hover:border-slate-300 transition-colors shadow-sm cursor-pointer"
               title="Bagikan akses tautan publik untuk storage ini"
             >
               <Share2 className="w-4 h-4 text-blue-600" />
@@ -976,7 +1149,7 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
             <button
               onClick={handleSyncMetadata}
               disabled={isSyncingMetadata}
-              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 hover:border-slate-300 transition-colors shadow-sm disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 hover:border-slate-300 transition-colors shadow-sm disabled:opacity-50 cursor-pointer"
               title="Pindai ulang dan sinkronkan metadata ke PostgreSQL"
             >
               <RefreshCw
@@ -991,7 +1164,7 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
             <button
               onClick={() => loadDirectory(subPath)}
               disabled={isLoading}
-              className="p-2 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
+              className="p-2 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
               title="Segarkan data folder"
             >
               <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} />
@@ -1015,7 +1188,7 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
               <button
                 type="submit"
                 disabled={!newFolderName.trim()}
-                className="px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg shadow-sm"
+                className="px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg shadow-sm cursor-pointer"
               >
                 Buat
               </button>
@@ -1025,7 +1198,7 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
                   setIsCreatingFolder(false);
                   setNewFolderName("");
                 }}
-                className="px-2.5 py-1.5 text-xs text-slate-600 hover:bg-slate-200/60 rounded-lg"
+                className="px-2.5 py-1.5 text-xs text-slate-600 hover:bg-slate-200/60 rounded-lg cursor-pointer"
               >
                 Batal
               </button>
@@ -1039,8 +1212,19 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
           <nav className="flex items-center gap-1 overflow-x-auto text-xs py-1 scrollbar-none">
             <button
               onClick={() => handleNavigate("")}
-              className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md transition-colors ${
-                subPath === ""
+              onDragOver={(e) => {
+                if (activeDragItem && subPath !== "") {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setHoveredCrumbId("root");
+                }
+              }}
+              onDragLeave={() => setHoveredCrumbId(null)}
+              onDrop={(e) => handleDropOnFolder(e, "")}
+              className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md transition-colors cursor-pointer ${
+                hoveredCrumbId === "root"
+                  ? "bg-indigo-100 text-indigo-700 ring-2 ring-indigo-400 font-bold"
+                  : subPath === ""
                   ? "font-semibold text-blue-700 bg-blue-50"
                   : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
               }`}
@@ -1056,8 +1240,19 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
                   <ChevronRight className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
                   <button
                     onClick={() => handleNavigate(crumb.subPath)}
-                    className={`px-2 py-1 rounded-md whitespace-nowrap transition-colors ${
-                      isLast
+                    onDragOver={(e) => {
+                      if (activeDragItem && subPath !== crumb.subPath) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setHoveredCrumbId(crumb.subPath);
+                      }
+                    }}
+                    onDragLeave={() => setHoveredCrumbId(null)}
+                    onDrop={(e) => handleDropOnFolder(e, crumb.subPath)}
+                    className={`px-2 py-1 rounded-md whitespace-nowrap transition-colors cursor-pointer ${
+                      hoveredCrumbId === crumb.subPath
+                        ? "bg-indigo-100 text-indigo-700 ring-2 ring-indigo-400 font-bold"
+                        : isLast
                         ? "font-semibold text-blue-700 bg-blue-50"
                         : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
                     }`}
@@ -1084,7 +1279,7 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
               {searchTerm && (
                 <button
                   onClick={() => setSearchTerm("")}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -1095,9 +1290,9 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
             <div className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200/80">
               <button
                 onClick={() => setViewMode("grid")}
-                className={`p-1.5 rounded-md transition-colors ${
+                className={`p-1.5 rounded-md transition-colors cursor-pointer ${
                   viewMode === "grid"
-                    ? "bg-white text-blue-600 shadow-xs"
+                    ? "bg-white text-blue-600 shadow-xs font-bold"
                     : "text-slate-500 hover:text-slate-800"
                 }`}
                 title="Tampilan Grid"
@@ -1106,9 +1301,9 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
               </button>
               <button
                 onClick={() => setViewMode("list")}
-                className={`p-1.5 rounded-md transition-colors ${
+                className={`p-1.5 rounded-md transition-colors cursor-pointer ${
                   viewMode === "list"
-                    ? "bg-white text-blue-600 shadow-xs"
+                    ? "bg-white text-blue-600 shadow-xs font-bold"
                     : "text-slate-500 hover:text-slate-800"
                 }`}
                 title="Tampilan Daftar"
@@ -1119,25 +1314,108 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
           </div>
         </div>
 
-        {/* CATEGORY FILTER CHIPS */}
-        <div className="mt-2.5 flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-none text-xs">
-          {categoryFilters.map((cat) => {
-            const isActive = categoryFilter === cat.id;
-            return (
+        {/* MULTI-SELECTION FLOATING ACTION TOOLBAR */}
+        {selectedCount > 0 ? (
+          <div className="mt-3 p-2.5 bg-indigo-950 text-white rounded-2xl shadow-xl flex flex-wrap items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2">
+            <div className="flex items-center gap-2">
+              <span className="px-2.5 py-1 rounded-full bg-indigo-800 text-indigo-100 font-bold text-xs">
+                {selectedCount} Terpilih
+              </span>
               <button
-                key={cat.id}
-                onClick={() => setCategoryFilter(cat.id)}
-                className={`px-2.5 py-1 rounded-full whitespace-nowrap font-medium transition-all ${
-                  isActive
-                    ? "bg-blue-600 text-white shadow-xs"
-                    : "bg-slate-100 text-slate-600 hover:bg-slate-200/70"
-                }`}
+                onClick={() => setSelectedKeys(new Set())}
+                className="text-xs text-indigo-200 hover:text-white underline cursor-pointer"
               >
-                {cat.label}
+                Batal Pilih
               </button>
-            );
-          })}
-        </div>
+              <button
+                onClick={handleSelectAll}
+                className="text-xs text-indigo-200 hover:text-white underline ml-1 cursor-pointer"
+              >
+                Pilih Semua ({allVisibleItems.length})
+              </button>
+            </div>
+
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {/* Preview single file */}
+              {selectedFiles.length === 1 && selectedFolders.length === 0 && (
+                <button
+                  onClick={() => setPreviewFile(mountFileToFileItem(selectedFiles[0]))}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-indigo-800 hover:bg-indigo-700 text-white text-xs font-semibold transition-all cursor-pointer"
+                  title="Pratinjau berkas terpilih"
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                  <span>Pratinjau</span>
+                </button>
+              )}
+
+              {/* Download files */}
+              {selectedFiles.length > 0 && (
+                <button
+                  onClick={() => {
+                    selectedFiles.forEach((file) => {
+                      startFileDownload(file.id, file.name, file.size);
+                    });
+                  }}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition-all cursor-pointer shadow-xs"
+                  title="Unduh berkas terpilih"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Unduh ({selectedFiles.length})</span>
+                </button>
+              )}
+
+              {/* Copy Actions */}
+              <button
+                onClick={() => setShowMoveCopyModal("copy")}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition-all cursor-pointer shadow-xs"
+                title="Salin item terpilih ke folder lain"
+              >
+                <Copy className="w-3.5 h-3.5" />
+                <span>Salin</span>
+              </button>
+
+              {/* Move Actions */}
+              <button
+                onClick={() => setShowMoveCopyModal("move")}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition-all cursor-pointer shadow-xs"
+                title="Pindahkan item terpilih ke folder lain"
+              >
+                <Move className="w-3.5 h-3.5" />
+                <span>Pindahkan</span>
+              </button>
+
+              {/* Delete Button */}
+              <button
+                onClick={handleBulkDelete}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold transition-all cursor-pointer shadow-xs"
+                title="Hapus item terpilih"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Hapus ({selectedCount})</span>
+              </button>
+            </div>
+          </div>
+        ) : (
+          /* CATEGORY FILTER CHIPS */
+          <div className="mt-2.5 flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-none text-xs">
+            {categoryFilters.map((cat) => {
+              const isActive = categoryFilter === cat.id;
+              return (
+                <button
+                  key={cat.id}
+                  onClick={() => setCategoryFilter(cat.id)}
+                  className={`px-2.5 py-1 rounded-full whitespace-nowrap font-medium transition-all cursor-pointer ${
+                    isActive
+                      ? "bg-blue-600 text-white shadow-xs font-bold"
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200/70"
+                  }`}
+                >
+                  {cat.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* MAIN CONTENT AREA */}
@@ -1164,14 +1442,14 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
             <div className="mt-5 flex items-center gap-2">
               <button
                 onClick={() => setIsCreatingFolder(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 shadow-xs"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 shadow-xs cursor-pointer"
               >
                 <FolderPlus className="w-4 h-4 text-amber-500" />
                 <span>Buat Folder</span>
               </button>
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm"
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm cursor-pointer"
               >
                 <UploadCloud className="w-4 h-4" />
                 <span>Unggah Berkas</span>
@@ -1193,6 +1471,7 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
                     const itemKey = `folder_${dir.id}`;
                     const isSelected = selectedKeys.has(itemKey);
                     const folderObj = mountDirToFolder(dir);
+                    const isDragOverTarget = activeDragOverId === dir.relativePath;
 
                     return (
                       <div
@@ -1201,8 +1480,16 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
                         onClick={(e) => handleItemClick(e, itemKey, "folder", dir)}
                         onDoubleClick={() => handleNavigate(dir.relativePath)}
                         onContextMenu={(e) => handleContextMenu(e, "folder", dir)}
-                        className={`group relative p-3 rounded-2xl border transition-all cursor-pointer select-none ${
-                          isSelected
+                        draggable="true"
+                        onDragStart={(e) => handleDragStart(e, itemKey, "folder", dir)}
+                        onDragEnd={handleDragEnd}
+                        onDragOver={(e) => handleDragOverFolder(e, dir.relativePath)}
+                        onDragLeave={handleDragLeaveFolder}
+                        onDrop={(e) => handleDropOnFolder(e, dir.relativePath)}
+                        className={`group relative p-3.5 rounded-2xl border transition-all cursor-pointer select-none ${
+                          isDragOverTarget
+                            ? "border-indigo-500 ring-2 ring-indigo-500/50 bg-indigo-50/40 shadow-md scale-[1.02]"
+                            : isSelected
                             ? "bg-blue-50/70 border-blue-400 ring-2 ring-blue-400/30 shadow-sm"
                             : "bg-white border-slate-200/80 hover:border-slate-300 hover:shadow-sm"
                         }`}
@@ -1217,10 +1504,10 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
                             </span>
                           </div>
 
-                          {/* Hover Checkbox */}
+                          {/* Checkbox Trigger */}
                           <div
                             onClick={(e) => handleToggleSelectKey(e, itemKey)}
-                            className={`p-1 rounded transition-opacity ${
+                            className={`p-1 rounded transition-opacity cursor-pointer ${
                               isSelected
                                 ? "text-blue-600 opacity-100"
                                 : "text-slate-400 opacity-0 group-hover:opacity-100 hover:text-slate-600"
@@ -1238,38 +1525,35 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
                         <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
                           <span className="truncate">{formatDate(dir.modifiedAt)}</span>
                           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            {/* Share Folder */}
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setShareFolderModal(folderObj);
+                                handleShareItem(dir);
                               }}
-                              className="p-1 hover:text-blue-600 hover:bg-blue-50 rounded"
+                              className="p-1 hover:text-blue-600 hover:bg-blue-50 rounded cursor-pointer"
                               title="Bagikan folder"
                             >
                               <Share2 className="w-3.5 h-3.5" />
                             </button>
-                            {/* Rename Folder */}
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setRenameItem({ type: "folder", data: folderObj, mountItem: dir });
                               }}
-                              className="p-1 hover:text-slate-700 hover:bg-slate-100 rounded"
+                              className="p-1 hover:text-slate-700 hover:bg-slate-100 rounded cursor-pointer"
                               title="Ubah nama"
                             >
                               <Edit3 className="w-3.5 h-3.5" />
                             </button>
-                            {/* Delete Folder */}
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleDeleteItem(dir);
+                                setDetailsItem({ type: "folder", data: folderObj });
                               }}
-                              className="p-1 hover:text-red-600 hover:bg-red-50 rounded"
-                              title="Hapus folder"
+                              className="p-1 hover:text-indigo-600 hover:bg-indigo-50 rounded cursor-pointer"
+                              title="Detail"
                             >
-                              <Trash2 className="w-3.5 h-3.5" />
+                              <Info className="w-3.5 h-3.5" />
                             </button>
                           </div>
                         </div>
@@ -1300,132 +1584,105 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
                         onClick={(e) => handleItemClick(e, itemKey, "file", file)}
                         onDoubleClick={() => setPreviewFile(fileObj)}
                         onContextMenu={(e) => handleContextMenu(e, "file", file)}
-                        className={`group relative flex flex-col rounded-2xl border transition-all cursor-pointer select-none overflow-hidden ${
+                        draggable="true"
+                        onDragStart={(e) => handleDragStart(e, itemKey, "file", file)}
+                        onDragEnd={handleDragEnd}
+                        className={`group relative p-3 rounded-2xl border transition-all cursor-pointer select-none flex flex-col justify-between ${
                           isSelected
                             ? "bg-blue-50/70 border-blue-400 ring-2 ring-blue-400/30 shadow-sm"
                             : "bg-white border-slate-200/80 hover:border-slate-300 hover:shadow-sm"
                         }`}
                       >
-                        {/* File Thumbnail / Preview Area */}
-                        <div className="h-28 bg-slate-100/70 relative flex items-center justify-center overflow-hidden border-b border-slate-100">
+                        <div>
+                          {/* File Header & Icon */}
+                          <div className="flex items-start justify-between gap-2 mb-2">
+                            <div className="w-9 h-9 rounded-xl bg-slate-50 flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform border border-slate-100">
+                              {renderItemIcon(file)}
+                            </div>
+
+                            <div className="flex items-center gap-1">
+                              {/* Checkbox */}
+                              <div
+                                onClick={(e) => handleToggleSelectKey(e, itemKey)}
+                                className={`p-1 rounded transition-opacity cursor-pointer ${
+                                  isSelected
+                                    ? "text-blue-600 opacity-100"
+                                    : "text-slate-400 opacity-0 group-hover:opacity-100 hover:text-slate-600"
+                                }`}
+                              >
+                                {isSelected ? (
+                                  <CheckSquare className="w-4 h-4" />
+                                ) : (
+                                  <Square className="w-4 h-4" />
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Thumbnail / Image Preview Tile if file is image */}
                           {file.isImage ? (
-                            <img
-                              src={api.getMountFileViewUrl(mount.id, file.relativePath)}
-                              alt={file.name}
-                              referrerPolicy="no-referrer"
-                              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                              loading="lazy"
-                            />
-                          ) : file.isVideo ? (
-                            <div className="relative w-full h-full flex items-center justify-center bg-slate-900">
-                              <Video className="w-8 h-8 text-rose-400 opacity-60" />
-                              <div className="absolute inset-0 flex items-center justify-center">
-                                <div className="w-8 h-8 rounded-full bg-white/20 backdrop-blur-xs flex items-center justify-center text-white">
-                                  <Play className="w-4 h-4 fill-white translate-x-0.5" />
-                                </div>
-                              </div>
+                            <div className="h-24 w-full rounded-xl bg-slate-100 mb-2 overflow-hidden border border-slate-100 relative group-hover:shadow-inner">
+                              <img
+                                src={api.getMountFileViewUrl(mount.id, file.relativePath)}
+                                alt={file.name}
+                                className="w-full h-full object-cover transition-transform group-hover:scale-105"
+                                loading="lazy"
+                              />
                             </div>
-                          ) : (
-                            <div className="flex flex-col items-center justify-center">
-                              <div className="p-3 rounded-xl bg-white shadow-xs border border-slate-200/60">
-                                {renderItemIcon(file)}
-                              </div>
-                            </div>
-                          )}
+                          ) : null}
 
-                          {/* Extension Badge */}
-                          <div className="absolute top-2 left-2 px-1.5 py-0.5 bg-black/60 backdrop-blur-xs text-white text-[10px] font-mono font-bold rounded">
-                            {file.extension.toUpperCase() || "FILE"}
-                          </div>
-
-                          {/* Top-Right Selection Checkbox */}
-                          <div
-                            onClick={(e) => handleToggleSelectKey(e, itemKey)}
-                            className={`absolute top-2 right-2 p-1 rounded-md bg-white/80 backdrop-blur-xs shadow-xs transition-opacity ${
-                              isSelected
-                                ? "text-blue-600 opacity-100"
-                                : "text-slate-400 opacity-0 group-hover:opacity-100 hover:text-slate-700"
-                            }`}
-                          >
-                            {isSelected ? (
-                              <CheckSquare className="w-4 h-4" />
-                            ) : (
-                              <Square className="w-4 h-4" />
-                            )}
-                          </div>
+                          {/* File Name & Extension */}
+                          <h4 className="text-xs font-semibold text-slate-800 truncate" title={file.name}>
+                            {file.name}
+                          </h4>
+                          <span className="text-[10px] text-slate-400 font-mono mt-0.5 block">
+                            {formatBytes(file.size)}
+                          </span>
                         </div>
 
-                        {/* File Details Deck */}
-                        <div className="p-3 flex-1 flex flex-col justify-between">
-                          <div>
-                            <span className="text-xs font-semibold text-slate-800 line-clamp-1 group-hover:text-blue-600 transition-colors" title={file.name}>
-                              {file.name}
-                            </span>
-                            <p className="text-[11px] text-slate-400 mt-0.5">
-                              {formatBytes(file.size)} • {formatDate(file.modifiedAt)}
-                            </p>
-                          </div>
-
-                          {/* Quick Bottom Action Buttons */}
-                          <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity">
-                            {/* Preview */}
+                        {/* File Footer Quick Actions */}
+                        <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
+                          <span className="truncate">{formatDate(file.modifiedAt)}</span>
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setPreviewFile(fileObj);
                               }}
-                              className="p-1 hover:text-blue-600 hover:bg-blue-50 rounded"
+                              className="p-1 hover:text-blue-600 hover:bg-blue-50 rounded cursor-pointer"
                               title="Pratinjau berkas"
                             >
                               <Eye className="w-3.5 h-3.5" />
                             </button>
-
-                            {/* Download */}
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleDownloadFile(file);
+                                startFileDownload(file.id, file.name, file.size);
                               }}
-                              className="p-1 hover:text-emerald-600 hover:bg-emerald-50 rounded"
+                              className="p-1 hover:text-emerald-600 hover:bg-emerald-50 rounded cursor-pointer"
                               title="Unduh berkas"
                             >
                               <Download className="w-3.5 h-3.5" />
                             </button>
-
-                            {/* Import to Google Drive */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleShareItem(file);
+                              }}
+                              className="p-1 hover:text-indigo-600 hover:bg-indigo-50 rounded cursor-pointer"
+                              title="Bagikan tautan"
+                            >
+                              <Share2 className="w-3.5 h-3.5" />
+                            </button>
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setImportingItem(file);
                               }}
-                              className="p-1 hover:text-blue-600 hover:bg-blue-50 rounded"
+                              className="p-1 hover:text-amber-600 hover:bg-amber-50 rounded cursor-pointer"
                               title="Impor ke Google Drive"
                             >
-                              <UploadCloud className="w-3.5 h-3.5" />
-                            </button>
-
-                            {/* Rename */}
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setRenameItem({ type: "file", data: fileObj, mountItem: file });
-                              }}
-                              className="p-1 hover:text-slate-700 hover:bg-slate-100 rounded"
-                              title="Ubah nama"
-                            >
-                              <Edit3 className="w-3.5 h-3.5" />
-                            </button>
-
-                            {/* Delete */}
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDeleteItem(file);
-                              }}
-                              className="p-1 hover:text-red-600 hover:bg-red-50 rounded"
-                              title="Hapus berkas"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
+                              <Cloud className="w-3.5 h-3.5" />
                             </button>
                           </div>
                         </div>
@@ -1437,38 +1694,38 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
             )}
           </div>
         ) : (
-          /* LIST VIEW TABLE */
+          /* LIST VIEW */
           <div className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-xs">
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs border-collapse">
+              <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="bg-slate-50/80 border-b border-slate-200/80 text-slate-500 font-semibold uppercase tracking-wider text-[11px]">
+                  <tr className="bg-slate-50/80 border-b border-slate-200/80 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                     <th className="py-3 px-4 w-10">
-                      <div
+                      <button
                         onClick={handleSelectAll}
-                        className="cursor-pointer text-slate-400 hover:text-slate-600"
+                        className="text-slate-400 hover:text-slate-600 cursor-pointer"
                         title="Pilih Semua"
                       >
-                        {selectedCount > 0 && selectedCount === allVisibleItems.length ? (
+                        {selectedCount === allVisibleItems.length && allVisibleItems.length > 0 ? (
                           <CheckSquare className="w-4 h-4 text-blue-600" />
                         ) : (
                           <Square className="w-4 h-4" />
                         )}
-                      </div>
+                      </button>
                     </th>
                     <th className="py-3 px-4">Nama</th>
-                    <th className="py-3 px-4 hidden md:table-cell">Ukuran</th>
-                    <th className="py-3 px-4 hidden lg:table-cell">Tipe</th>
-                    <th className="py-3 px-4 hidden sm:table-cell">Terakhir Diubah</th>
+                    <th className="py-3 px-4">Terakhir Diubah</th>
+                    <th className="py-3 px-4">Ukuran</th>
                     <th className="py-3 px-4 text-right">Aksi</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {/* DIRECTORIES IN LIST */}
+                <tbody className="divide-y divide-slate-100 text-xs">
+                  {/* Folders List Rows */}
                   {sortedDirectories.map((dir) => {
                     const itemKey = `folder_${dir.id}`;
                     const isSelected = selectedKeys.has(itemKey);
                     const folderObj = mountDirToFolder(dir);
+                    const isDragOverTarget = activeDragOverId === dir.relativePath;
 
                     return (
                       <tr
@@ -1477,44 +1734,49 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
                         onClick={(e) => handleItemClick(e, itemKey, "folder", dir)}
                         onDoubleClick={() => handleNavigate(dir.relativePath)}
                         onContextMenu={(e) => handleContextMenu(e, "folder", dir)}
-                        className={`group cursor-pointer transition-colors ${
-                          isSelected ? "bg-blue-50/60" : "hover:bg-slate-50/70"
+                        draggable="true"
+                        onDragStart={(e) => handleDragStart(e, itemKey, "folder", dir)}
+                        onDragEnd={handleDragEnd}
+                        onDragOver={(e) => handleDragOverFolder(e, dir.relativePath)}
+                        onDragLeave={handleDragLeaveFolder}
+                        onDrop={(e) => handleDropOnFolder(e, dir.relativePath)}
+                        className={`group transition-colors cursor-pointer ${
+                          isDragOverTarget
+                            ? "bg-indigo-50 border-y-2 border-indigo-500"
+                            : isSelected
+                            ? "bg-blue-50/70 text-blue-900 font-medium"
+                            : "hover:bg-slate-50 text-slate-700"
                         }`}
                       >
-                        <td className="py-2.5 px-4">
-                          <div
+                        <td className="py-3 px-4">
+                          <button
                             onClick={(e) => handleToggleSelectKey(e, itemKey)}
-                            className={isSelected ? "text-blue-600" : "text-slate-300 group-hover:text-slate-400"}
+                            className="text-slate-400 hover:text-slate-600 cursor-pointer"
                           >
                             {isSelected ? (
-                              <CheckSquare className="w-4 h-4" />
+                              <CheckSquare className="w-4 h-4 text-blue-600" />
                             ) : (
                               <Square className="w-4 h-4" />
                             )}
-                          </div>
+                          </button>
                         </td>
-                        <td className="py-2.5 px-4">
+                        <td className="py-3 px-4 font-semibold text-slate-800">
                           <div className="flex items-center gap-2.5">
-                            <FolderIcon className="w-4 h-4 text-amber-500 fill-amber-500/20 flex-shrink-0" />
-                            <span className="font-semibold text-slate-800 group-hover:text-blue-600 transition-colors">
-                              {dir.name}
-                            </span>
+                            <FolderIcon className="w-4 h-4 text-amber-500 fill-amber-500/20 shrink-0" />
+                            <span className="truncate max-w-xs sm:max-w-md">{dir.name}</span>
                           </div>
                         </td>
-                        <td className="py-2.5 px-4 text-slate-400 hidden md:table-cell">—</td>
-                        <td className="py-2.5 px-4 text-slate-500 hidden lg:table-cell">Folder</td>
-                        <td className="py-2.5 px-4 text-slate-500 hidden sm:table-cell">
-                          {formatDate(dir.modifiedAt)}
-                        </td>
-                        <td className="py-2.5 px-4 text-right">
+                        <td className="py-3 px-4 text-slate-500">{formatDate(dir.modifiedAt)}</td>
+                        <td className="py-3 px-4 text-slate-400 font-mono">-</td>
+                        <td className="py-3 px-4 text-right">
                           <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setShareFolderModal(folderObj);
+                                handleShareItem(dir);
                               }}
-                              className="p-1 hover:text-blue-600 hover:bg-blue-50 rounded"
-                              title="Bagikan folder"
+                              className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded cursor-pointer"
+                              title="Bagikan"
                             >
                               <Share2 className="w-3.5 h-3.5" />
                             </button>
@@ -1523,8 +1785,8 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
                                 e.stopPropagation();
                                 setRenameItem({ type: "folder", data: folderObj, mountItem: dir });
                               }}
-                              className="p-1 hover:text-slate-700 hover:bg-slate-100 rounded"
-                              title="Ubah nama"
+                              className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded cursor-pointer"
+                              title="Ubah Nama"
                             >
                               <Edit3 className="w-3.5 h-3.5" />
                             </button>
@@ -1533,8 +1795,8 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
                                 e.stopPropagation();
                                 handleDeleteItem(dir);
                               }}
-                              className="p-1 hover:text-red-600 hover:bg-red-50 rounded"
-                              title="Hapus folder"
+                              className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded cursor-pointer"
+                              title="Hapus"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
@@ -1544,7 +1806,7 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
                     );
                   })}
 
-                  {/* FILES IN LIST */}
+                  {/* Files List Rows */}
                   {sortedFiles.map((file) => {
                     const itemKey = `file_${file.id}`;
                     const isSelected = selectedKeys.has(itemKey);
@@ -1557,88 +1819,86 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
                         onClick={(e) => handleItemClick(e, itemKey, "file", file)}
                         onDoubleClick={() => setPreviewFile(fileObj)}
                         onContextMenu={(e) => handleContextMenu(e, "file", file)}
-                        className={`group cursor-pointer transition-colors ${
-                          isSelected ? "bg-blue-50/60" : "hover:bg-slate-50/70"
+                        draggable="true"
+                        onDragStart={(e) => handleDragStart(e, itemKey, "file", file)}
+                        onDragEnd={handleDragEnd}
+                        className={`group transition-colors cursor-pointer ${
+                          isSelected
+                            ? "bg-blue-50/70 text-blue-900 font-medium"
+                            : "hover:bg-slate-50 text-slate-700"
                         }`}
                       >
-                        <td className="py-2.5 px-4">
-                          <div
+                        <td className="py-3 px-4">
+                          <button
                             onClick={(e) => handleToggleSelectKey(e, itemKey)}
-                            className={isSelected ? "text-blue-600" : "text-slate-300 group-hover:text-slate-400"}
+                            className="text-slate-400 hover:text-slate-600 cursor-pointer"
                           >
                             {isSelected ? (
-                              <CheckSquare className="w-4 h-4" />
+                              <CheckSquare className="w-4 h-4 text-blue-600" />
                             ) : (
                               <Square className="w-4 h-4" />
                             )}
-                          </div>
+                          </button>
                         </td>
-                        <td className="py-2.5 px-4">
+                        <td className="py-3 px-4 font-semibold text-slate-800">
                           <div className="flex items-center gap-2.5">
                             {renderItemIcon(file)}
-                            <span className="font-medium text-slate-800 group-hover:text-blue-600 transition-colors">
-                              {file.name}
-                            </span>
+                            <span className="truncate max-w-xs sm:max-w-md">{file.name}</span>
                           </div>
                         </td>
-                        <td className="py-2.5 px-4 text-slate-500 font-mono hidden md:table-cell">
+                        <td className="py-3 px-4 text-slate-500">{formatDate(file.modifiedAt)}</td>
+                        <td className="py-3 px-4 text-slate-500 font-mono">
                           {formatBytes(file.size)}
                         </td>
-                        <td className="py-2.5 px-4 text-slate-400 font-mono uppercase hidden lg:table-cell">
-                          {file.extension || "FILE"}
-                        </td>
-                        <td className="py-2.5 px-4 text-slate-500 hidden sm:table-cell">
-                          {formatDate(file.modifiedAt)}
-                        </td>
-                        <td className="py-2.5 px-4 text-right">
+                        <td className="py-3 px-4 text-right">
                           <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setPreviewFile(fileObj);
                               }}
-                              className="p-1 hover:text-blue-600 hover:bg-blue-50 rounded"
-                              title="Pratinjau berkas"
+                              className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded cursor-pointer"
+                              title="Pratinjau"
                             >
                               <Eye className="w-3.5 h-3.5" />
                             </button>
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleDownloadFile(file);
+                                startFileDownload(file.id, file.name, file.size);
                               }}
-                              className="p-1 hover:text-emerald-600 hover:bg-emerald-50 rounded"
-                              title="Unduh berkas"
+                              className="p-1 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded cursor-pointer"
+                              title="Unduh"
                             >
                               <Download className="w-3.5 h-3.5" />
                             </button>
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setImportingItem(file);
+                                handleShareItem(file);
                               }}
-                              className="p-1 hover:text-blue-600 hover:bg-blue-50 rounded"
-                              title="Impor ke Google Drive"
+                              className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded cursor-pointer"
+                              title="Bagikan Tautan"
                             >
-                              <UploadCloud className="w-3.5 h-3.5" />
+                              <Share2 className="w-3.5 h-3.5" />
                             </button>
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setRenameItem({ type: "file", data: fileObj, mountItem: file });
+                                setImportingItem(file);
                               }}
-                              className="p-1 hover:text-slate-700 hover:bg-slate-100 rounded"
-                              title="Ubah nama"
+                              className="p-1 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded cursor-pointer"
+                              title="Impor ke Google Drive"
                             >
-                              <Edit3 className="w-3.5 h-3.5" />
+                              <Cloud className="w-3.5 h-3.5" />
                             </button>
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
                                 handleDeleteItem(file);
                               }}
-                              className="p-1 hover:text-red-600 hover:bg-red-50 rounded"
-                              title="Hapus berkas"
+                              className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded cursor-pointer"
+                              title="Hapus"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
@@ -1654,99 +1914,72 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
         )}
       </div>
 
-      {/* MULTI-ITEM FLOATING SELECTION TOOLBAR */}
-      {selectedCount > 0 && (
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-40 bg-slate-900/95 text-white px-5 py-2.5 rounded-2xl shadow-2xl border border-slate-700 backdrop-blur-md flex items-center gap-4 animate-in slide-in-from-bottom-5">
-          <div className="flex items-center gap-2 text-xs font-semibold">
-            <span className="w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center text-[10px]">
-              {selectedCount}
-            </span>
-            <span>Item Dipilih</span>
-          </div>
-
-          <div className="h-4 w-px bg-slate-700" />
-
-          <div className="flex items-center gap-1.5">
-            {selectedFiles.length > 0 && (
-              <button
-                onClick={handleBatchDownload}
-                className="inline-flex items-center gap-1 px-3 py-1 text-xs font-medium bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors text-slate-200"
-              >
-                <Download className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Unduh ({selectedFiles.length})</span>
-              </button>
-            )}
-
-            <button
-              onClick={handleBatchDelete}
-              className="inline-flex items-center gap-1 px-3 py-1 text-xs font-medium bg-red-600/80 hover:bg-red-600 text-white rounded-lg transition-colors"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              <span>Hapus ({selectedCount})</span>
-            </button>
-          </div>
-
-          <div className="h-4 w-px bg-slate-700" />
-
-          <button
-            onClick={() => setSelectedKeys(new Set())}
-            className="text-xs text-slate-400 hover:text-white transition-colors"
-          >
-            Batal
-          </button>
-        </div>
+      {/* FILE PREVIEW MODAL */}
+      {previewFile && (
+        <FilePreviewModal file={previewFile} onClose={() => setPreviewFile(null)} />
       )}
 
-      {/* MODAL: SHARE FOLDER / MOUNT */}
+      {/* SHARE FOLDER MODAL */}
       {shareFolderModal && (
         <ShareFolderModal
           folder={shareFolderModal}
           onClose={() => setShareFolderModal(null)}
-          onPermissionUpdated={(updated) => {
-            showToast("Izin berbagi berhasil diperbarui", "success");
+          onPermissionsUpdated={() => {
+            loadDirectory(subPath);
+            onRefreshMounts();
           }}
         />
       )}
 
-      {/* MODAL: INLINE RENAME */}
+      {/* RENAME MODAL */}
       {renameItem && (
         <InlineRenameModal
-          item={renameItem}
+          type={renameItem.type}
+          currentName={
+            renameItem.type === "folder"
+              ? (renameItem.data as Folder).name
+              : (renameItem.data as FileItem).originalName
+          }
           onClose={() => setRenameItem(null)}
           onSave={handleSaveRename}
         />
       )}
 
-      {/* DRAWER: ITEM DETAILS */}
+      {/* MOVE & COPY MOUNT MODAL */}
+      {showMoveCopyModal && (
+        <MoveCopyMountModal
+          mountId={mount.id}
+          items={selectedMountItems}
+          mode={showMoveCopyModal}
+          onClose={() => setShowMoveCopyModal(null)}
+          onSuccess={(msg) => {
+            showToast(msg, "success");
+            setSelectedKeys(new Set());
+            loadDirectory(subPath);
+            onRefreshMounts();
+          }}
+        />
+      )}
+
+      {/* DETAILS DRAWER */}
       {detailsItem && (
         <ItemDetailsDrawer
-          item={detailsItem}
+          type={detailsItem.type}
+          folder={detailsItem.type === "folder" ? (detailsItem.data as Folder) : undefined}
+          file={detailsItem.type === "file" ? (detailsItem.data as FileItem) : undefined}
           onClose={() => setDetailsItem(null)}
-          onPreviewFile={(f) => setPreviewFile(f)}
-          onShareFolder={(f) => setShareFolderModal(f)}
         />
       )}
 
-      {/* MODAL: FILE PREVIEW */}
-      {previewFile && (
-        <FilePreviewModal
-          file={previewFile}
-          onClose={() => setPreviewFile(null)}
-          onDownload={(f) => startFileDownload(f.id, f.originalName, f.size)}
-        />
-      )}
-
-      {/* MODAL: IMPORT TO GOOGLE DRIVE */}
+      {/* IMPORT TO GOOGLE DRIVE MODAL */}
       {importingItem && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 border border-slate-200 animate-in zoom-in-95">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-blue-50 rounded-xl text-blue-600">
-                  <UploadCloud className="w-5 h-5" />
-                </div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn">
+          <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-xl border border-slate-100 animate-scaleUp">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <Cloud className="w-5 h-5 text-blue-600" />
                 <div>
-                  <h3 className="text-base font-bold text-slate-800">
+                  <h3 className="text-sm font-bold text-slate-800">
                     Impor ke Google Drive
                   </h3>
                   <p className="text-xs text-slate-500 mt-0.5 truncate max-w-xs">
@@ -1756,7 +1989,7 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
               </div>
               <button
                 onClick={() => setImportingItem(null)}
-                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100"
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1793,15 +2026,36 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
               <button
                 type="button"
                 onClick={() => setImportingItem(null)}
-                className="px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                className="px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
               >
                 Batal
               </button>
               <button
                 type="button"
-                onClick={handleExecuteImport}
+                onClick={async () => {
+                  if (!importingItem || !selectedTargetFolderId) return;
+                  setIsImporting(true);
+                  try {
+                    const res = await api.importMountFileToDrive(
+                      mount.id,
+                      importingItem.relativePath,
+                      selectedTargetFolderId
+                    );
+                    showToast(res.message || "Berkas berhasil diantrekan ke Google Drive", "success");
+                    setImportingItem(null);
+                    onRefreshMounts();
+                  } catch (err: any) {
+                    showAlert({
+                      title: "Gagal Mengimpor ke Google Drive",
+                      message: err.message || "Terjadi kesalahan saat mengimpor berkas.",
+                      type: "error",
+                    });
+                  } finally {
+                    setIsImporting(false);
+                  }
+                }}
                 disabled={isImporting || !selectedTargetFolderId}
-                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg shadow-sm transition-colors"
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg shadow-sm transition-colors cursor-pointer"
               >
                 {isImporting ? (
                   <>
@@ -1831,6 +2085,8 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
               : f.name;
             handleNavigate(rel);
           }}
+          onCopyFolder={() => setShowMoveCopyModal("copy")}
+          onMoveFolder={() => setShowMoveCopyModal("move")}
           onShareFolder={(f) => setShareFolderModal(f)}
           onRenameFolder={(f) => {
             const match = sortedDirectories.find((d) => d.id === f.id);
@@ -1843,6 +2099,12 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
           }}
           onPreviewFile={(f) => setPreviewFile(f)}
           onDownloadFile={(f) => startFileDownload(f.id, f.originalName, f.size)}
+          onCopyFile={() => setShowMoveCopyModal("copy")}
+          onMoveFile={() => setShowMoveCopyModal("move")}
+          onShareFile={(f) => {
+            const match = sortedFiles.find((file) => file.id === f.id);
+            if (match) handleShareItem(match);
+          }}
           onRenameFile={(f) => {
             const match = sortedFiles.find((file) => file.id === f.id);
             setRenameItem({ type: "file", data: f, mountItem: match });
