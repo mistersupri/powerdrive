@@ -14,8 +14,8 @@ export class GoogleController {
       res.status(200).json({
         success: true,
         data: {
-          clientId: process.env.GOOGLE_CLIENT_ID || "",
-          hasClientSecret: Boolean(process.env.GOOGLE_CLIENT_SECRET),
+          clientId: (process.env.GOOGLE_CLIENT_ID || "").trim(),
+          hasClientSecret: Boolean((process.env.GOOGLE_CLIENT_SECRET || "").trim()),
           redirectUri,
           appUrl,
         },

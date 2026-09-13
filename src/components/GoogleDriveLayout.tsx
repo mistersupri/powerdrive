@@ -176,9 +176,11 @@ export const GoogleDriveLayout: React.FC<GoogleDriveLayoutProps> = ({
 
   const pendingFilesCount = files.filter(
     (f) =>
-      f.syncStatus === SyncStatus.PENDING ||
-      f.syncStatus === SyncStatus.PROCESSING ||
-      f.syncStatus === SyncStatus.RETRYING
+      !f.isTrashed &&
+      !f.trashedAt &&
+      (f.syncStatus === SyncStatus.PENDING ||
+        f.syncStatus === SyncStatus.PROCESSING ||
+        f.syncStatus === SyncStatus.RETRYING)
   ).length;
 
   const currentSelectedMount = mounts.find((m) => m.id === selectedMountId) || mounts[0];

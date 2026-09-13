@@ -470,13 +470,35 @@ export const GoogleDriveExplorer: React.FC<GoogleDriveExplorerProps> = ({
     return null;
   }, [selectedCount, selectedFolders, selectedFiles]);
 
-  // Touch & Hold (Long-press) handling for Mobile (One-click = open, Hold = select)
+  const selectedKeysRef = useRef<Set<string>>(selectedKeys);
+  useEffect(() => {
+    selectedKeysRef.current = selectedKeys;
+  }, [selectedKeys]);
+
+  // Floating touch drag overlay badge state for Mobile
+  const [touchDragState, setTouchDragState] = useState<{
+    x: number;
+    y: number;
+    count: number;
+    name: string;
+    type: "folder" | "file";
+  } | null>(null);
+
+  // Touch & Hold (Long-press) & Touch Drag handling for Mobile
   const touchTimerRef = useRef<{
     timer: any;
+    contextMenuTimer: any;
     startX: number;
     startY: number;
-    isLongPress: boolean;
-    key: string;
+    startTime: number;
+    touchKey: string;
+    type: "folder" | "file";
+    data: Folder | FileItem;
+    isHoldCompleted: boolean;
+    isContextMenuOpened: boolean;
+    isDragging: boolean;
+    filesToMove: string[];
+    foldersToMove: string[];
   } | null>(null);
   const touchHandledRef = useRef<boolean>(false);
 
@@ -492,38 +514,79 @@ export const GoogleDriveExplorer: React.FC<GoogleDriveExplorerProps> = ({
     if (touchTimerRef.current?.timer) {
       clearTimeout(touchTimerRef.current.timer);
     }
+    if (touchTimerRef.current?.contextMenuTimer) {
+      clearTimeout(touchTimerRef.current.contextMenuTimer);
+    }
+
+    const startTime = Date.now();
+    const touchX = touch.clientX;
+    const touchY = touch.clientY;
 
     const timer = setTimeout(() => {
       if (touchTimerRef.current) {
-        touchTimerRef.current.isLongPress = true;
+        touchTimerRef.current.isHoldCompleted = true;
         // Haptic feedback vibration on mobile if supported
         if (typeof navigator !== "undefined" && navigator.vibrate) {
           try {
-            navigator.vibrate(40);
+            navigator.vibrate(50);
           } catch {
             // ignore
           }
         }
-        // Enter multi-select mode and toggle/select this item
+        // Enter multi-select mode and select this item
         setSelectedKeys((prev) => {
           const next = new Set(prev);
-          if (next.has(key)) {
-            next.delete(key);
-          } else {
-            next.add(key);
-          }
+          next.add(key);
           return next;
         });
         setLastSelectedKey(key);
       }
-    }, 450); // 450ms hold to select
+    }, 1000); // 1.0s hold in still state to activate drag mode & select item
+
+    const contextMenuTimer = setTimeout(() => {
+      if (touchTimerRef.current && !touchTimerRef.current.isDragging) {
+        touchTimerRef.current.isContextMenuOpened = true;
+        if (typeof navigator !== "undefined" && navigator.vibrate) {
+          try {
+            navigator.vibrate(70);
+          } catch {
+            // ignore
+          }
+        }
+        setSelectedKeys((prev) => {
+          const next = new Set(prev);
+          next.add(key);
+          return next;
+        });
+        setLastSelectedKey(key);
+
+        const folderObj = type === "folder" ? (data as Folder) : undefined;
+        const fileObj = type === "file" ? (data as FileItem) : undefined;
+
+        setContextMenu({
+          x: touchX,
+          y: touchY,
+          type,
+          folder: folderObj,
+          file: fileObj,
+        });
+      }
+    }, 2000); // 2.0s (2000ms) hold in still state triggers context menu
 
     touchTimerRef.current = {
       timer,
-      startX: touch.clientX,
-      startY: touch.clientY,
-      isLongPress: false,
-      key,
+      contextMenuTimer,
+      startX: touchX,
+      startY: touchY,
+      startTime,
+      touchKey: key,
+      type,
+      data,
+      isHoldCompleted: false,
+      isContextMenuOpened: false,
+      isDragging: false,
+      filesToMove: [],
+      foldersToMove: [],
     };
   };
 
@@ -532,10 +595,101 @@ export const GoogleDriveExplorer: React.FC<GoogleDriveExplorerProps> = ({
     const touch = e.touches[0];
     const dx = Math.abs(touch.clientX - touchTimerRef.current.startX);
     const dy = Math.abs(touch.clientY - touchTimerRef.current.startY);
-    // If finger moves more than 8px (user is scrolling), cancel hold
+
+    // If movement > 8px
     if (dx > 8 || dy > 8) {
-      clearTimeout(touchTimerRef.current.timer);
-      touchTimerRef.current = null;
+      const elapsed = Date.now() - touchTimerRef.current.startTime;
+
+      if (touchTimerRef.current.contextMenuTimer) {
+        clearTimeout(touchTimerRef.current.contextMenuTimer);
+        touchTimerRef.current.contextMenuTimer = null;
+      }
+
+      // If moved before 0.5s (500ms) OR moved before the 1.0s hold completed OR context menu opened:
+      // Drag mode is NOT activated -> cancel hold timer and allow normal page scrolling
+      if (
+        elapsed < 500 ||
+        !touchTimerRef.current.isHoldCompleted ||
+        touchTimerRef.current.isContextMenuOpened
+      ) {
+        if (touchTimerRef.current.timer) {
+          clearTimeout(touchTimerRef.current.timer);
+          touchTimerRef.current.timer = null;
+        }
+        touchTimerRef.current = null;
+        return;
+      }
+
+      // If 1.0s hold was completed in still state: initiate TOUCH DRAG
+      if (touchTimerRef.current.isHoldCompleted) {
+        if (touchTimerRef.current.timer) {
+          clearTimeout(touchTimerRef.current.timer);
+          touchTimerRef.current.timer = null;
+        }
+
+        if (!touchTimerRef.current.isDragging) {
+          touchTimerRef.current.isDragging = true;
+
+          // Ensure dragged key is selected
+          const currentKeys = new Set<string>(selectedKeysRef.current);
+          if (!currentKeys.has(touchTimerRef.current.touchKey)) {
+            currentKeys.add(touchTimerRef.current.touchKey);
+            setSelectedKeys(currentKeys);
+          }
+
+          const fToMove: string[] = [];
+          const foldToMove: string[] = [];
+          currentKeys.forEach((k: string) => {
+            if (k.startsWith("file_")) fToMove.push(k.replace(/^file_/, ""));
+            else if (k.startsWith("folder_")) foldToMove.push(k.replace(/^folder_/, ""));
+          });
+
+          touchTimerRef.current.filesToMove = fToMove;
+          touchTimerRef.current.foldersToMove = foldToMove;
+
+          setActiveDragItem({
+            key: touchTimerRef.current.touchKey,
+            type: touchTimerRef.current.type,
+            id: (touchTimerRef.current.data as any).id,
+          });
+        }
+
+        e.preventDefault();
+
+        const totalCount =
+          touchTimerRef.current.filesToMove.length + touchTimerRef.current.foldersToMove.length;
+        const name =
+          touchTimerRef.current.type === "file"
+            ? (touchTimerRef.current.data as FileItem).originalName
+            : (touchTimerRef.current.data as Folder).name;
+
+        setTouchDragState({
+          x: touch.clientX,
+          y: touch.clientY,
+          count: totalCount,
+          name,
+          type: touchTimerRef.current.type,
+        });
+
+        // Detect hover target folder under finger
+        const elUnderTouch = document.elementFromPoint(touch.clientX, touch.clientY);
+        const folderCard = elUnderTouch?.closest("[data-selectable-key]");
+        if (folderCard) {
+          const keyAttr = folderCard.getAttribute("data-selectable-key");
+          if (keyAttr && keyAttr.startsWith("folder_")) {
+            const targetFolderId = keyAttr.replace(/^folder_/, "");
+            if (!touchTimerRef.current.foldersToMove.includes(targetFolderId)) {
+              setActiveDragOverId(targetFolderId);
+            } else {
+              setActiveDragOverId(null);
+            }
+          } else {
+            setActiveDragOverId(null);
+          }
+        } else {
+          setActiveDragOverId(null);
+        }
+      }
     }
   };
 
@@ -546,12 +700,49 @@ export const GoogleDriveExplorer: React.FC<GoogleDriveExplorerProps> = ({
     data: Folder | FileItem
   ) => {
     if (!touchTimerRef.current) return;
-    clearTimeout(touchTimerRef.current.timer);
+    if (touchTimerRef.current.timer) {
+      clearTimeout(touchTimerRef.current.timer);
+    }
+    if (touchTimerRef.current.contextMenuTimer) {
+      clearTimeout(touchTimerRef.current.contextMenuTimer);
+    }
 
-    const wasLongPress = touchTimerRef.current.isLongPress;
+    const wasDragging = touchTimerRef.current.isDragging;
+    const wasHoldCompleted = touchTimerRef.current.isHoldCompleted;
+    const wasContextMenuOpened = touchTimerRef.current.isContextMenuOpened;
+    const fToMove = touchTimerRef.current.filesToMove;
+    const foldToMove = touchTimerRef.current.foldersToMove;
+
     touchTimerRef.current = null;
+    setTouchDragState(null);
 
-    if (wasLongPress) {
+    if (wasContextMenuOpened) {
+      touchHandledRef.current = true;
+      e.preventDefault();
+      setTimeout(() => {
+        touchHandledRef.current = false;
+      }, 300);
+      return;
+    }
+
+    if (wasDragging) {
+      e.preventDefault();
+      touchHandledRef.current = true;
+      setTimeout(() => {
+        touchHandledRef.current = false;
+      }, 300);
+
+      const targetFolderId = activeDragOverId;
+      setActiveDragItem(null);
+      setActiveDragOverId(null);
+
+      if (targetFolderId && (fToMove.length > 0 || foldToMove.length > 0)) {
+        executeMoveItems(targetFolderId, { files: fToMove, folders: foldToMove });
+      }
+      return;
+    }
+
+    if (wasHoldCompleted) {
       // Long press already handled selection
       touchHandledRef.current = true;
       e.preventDefault();
@@ -561,14 +752,16 @@ export const GoogleDriveExplorer: React.FC<GoogleDriveExplorerProps> = ({
       return;
     }
 
-    // It was a short tap!
+    // Short tap
     touchHandledRef.current = true;
     setTimeout(() => {
       touchHandledRef.current = false;
     }, 300);
 
-    // If currently in selection mode: tap toggles selection
-    if (selectedKeys.size > 0) {
+    const isSelectionMode = selectedKeysRef.current.size > 0;
+
+    // If currently in selection mode: tap toggles selection (select multiple items)
+    if (isSelectionMode) {
       e.preventDefault();
       setSelectedKeys((prev) => {
         const next = new Set(prev);
@@ -610,15 +803,7 @@ export const GoogleDriveExplorer: React.FC<GoogleDriveExplorerProps> = ({
       window.innerWidth < 768 ||
       (typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches);
 
-    // On mobile screens when NOT in multi-selection mode: single click opens!
-    if (isTouchOrMobile && selectedKeys.size === 0 && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
-      if (type === "folder") {
-        onNavigateFolder((data as Folder).id);
-      } else {
-        setPreviewFile(data as FileItem);
-      }
-      return;
-    }
+    const isSelectionMode = selectedKeys.size > 0;
 
     // 1. Shift + Click (Range Selection)
     if (e.shiftKey && lastSelectedKey) {
@@ -637,8 +822,8 @@ export const GoogleDriveExplorer: React.FC<GoogleDriveExplorerProps> = ({
       }
     }
 
-    // 2. Ctrl / Cmd + Click (Toggle Item) or clicking while selection mode is active on mobile
-    if (e.ctrlKey || e.metaKey || (isTouchOrMobile && selectedKeys.size > 0)) {
+    // 2. Selection Mode Active OR Ctrl / Cmd + Click: toggle item selection
+    if (isSelectionMode || e.ctrlKey || e.metaKey) {
       const newKeys = new Set(selectedKeys);
       if (newKeys.has(key)) {
         newKeys.delete(key);
@@ -650,7 +835,17 @@ export const GoogleDriveExplorer: React.FC<GoogleDriveExplorerProps> = ({
       return;
     }
 
-    // 3. Normal Single Click on Desktop (Select only this item)
+    // 3. On mobile screens when NOT in multi-selection mode: single click opens!
+    if (isTouchOrMobile) {
+      if (type === "folder") {
+        onNavigateFolder((data as Folder).id);
+      } else {
+        setPreviewFile(data as FileItem);
+      }
+      return;
+    }
+
+    // 4. Normal Single Click on Desktop (Select only this item)
     setSelectedKeys(new Set([key]));
     setLastSelectedKey(key);
   };
@@ -3222,6 +3417,39 @@ export const GoogleDriveExplorer: React.FC<GoogleDriveExplorerProps> = ({
 
       {/* OPERATION LOADING MODAL */}
       <OperationLoadingModal {...operationLoading} />
+
+      {/* TOUCH DRAG FLOATING OVERLAY BADGE FOR MOBILE */}
+      {touchDragState && (
+        <div
+          className="fixed pointer-events-none z-[999999] -translate-x-1/2 -translate-y-12 flex items-center gap-2.5 px-3.5 py-2.5 bg-white border-2 border-indigo-600 rounded-2xl shadow-2xl animate-in zoom-in-95 duration-150"
+          style={{ left: touchDragState.x, top: touchDragState.y }}
+        >
+          <div
+            className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+              touchDragState.type === "folder" ? "bg-amber-100 text-amber-600" : "bg-blue-100 text-blue-600"
+            }`}
+          >
+            {touchDragState.type === "folder" ? (
+              <FolderIcon className="w-5 h-5 fill-amber-400 text-amber-500" />
+            ) : (
+              <FileText className="w-5 h-5 text-blue-600" />
+            )}
+          </div>
+          <div className="flex flex-col min-w-0 pr-1">
+            <span className="text-xs font-bold text-slate-900 truncate max-w-[140px]">
+              {touchDragState.name}
+            </span>
+            <span className="text-[10px] font-bold text-indigo-600">
+              Memindahkan {touchDragState.count} item
+            </span>
+          </div>
+          {touchDragState.count > 1 && (
+            <span className="bg-indigo-600 text-white text-[11px] font-extrabold px-2 py-0.5 rounded-full shadow-xs">
+              {touchDragState.count}
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 };

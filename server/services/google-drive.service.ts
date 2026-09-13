@@ -54,8 +54,8 @@ export class GoogleDriveService {
    * automatically deriving redirect URI from application hostname.
    */
   public static createOAuth2Client(explicitToken?: string, reqHostnameOrOrigin?: string) {
-    const clientId = process.env.GOOGLE_CLIENT_ID || "";
-    const clientSecret = process.env.GOOGLE_CLIENT_SECRET || "";
+    const clientId = (process.env.GOOGLE_CLIENT_ID || "").trim();
+    const clientSecret = (process.env.GOOGLE_CLIENT_SECRET || "").trim();
     const redirectUri = GoogleDriveService.getRedirectUri(reqHostnameOrOrigin);
 
     const oauth2Client = new google.auth.OAuth2(clientId, clientSecret, redirectUri);

@@ -297,6 +297,316 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
       .map((it) => it.item);
   }, [allVisibleItems, selectedKeys]);
 
+  const selectedKeysRef = useRef<Set<string>>(selectedKeys);
+  useEffect(() => {
+    selectedKeysRef.current = selectedKeys;
+  }, [selectedKeys]);
+
+  // Floating touch drag overlay badge state for Mobile
+  const [touchDragState, setTouchDragState] = useState<{
+    x: number;
+    y: number;
+    count: number;
+    name: string;
+    type: "folder" | "file";
+  } | null>(null);
+
+  // Touch & Hold (Long-press) & Touch Drag handling for Mobile
+  const touchTimerRef = useRef<{
+    timer: any;
+    contextMenuTimer: any;
+    startX: number;
+    startY: number;
+    startTime: number;
+    touchKey: string;
+    type: "folder" | "file";
+    item: MountFileItem;
+    isHoldCompleted: boolean;
+    isContextMenuOpened: boolean;
+    isDragging: boolean;
+    sourcePathsToMove: string[];
+  } | null>(null);
+  const touchHandledRef = useRef<boolean>(false);
+
+  const handleTouchStart = (
+    e: React.TouchEvent,
+    key: string,
+    type: "folder" | "file",
+    item: MountFileItem
+  ) => {
+    if (e.touches.length !== 1) return;
+    const touch = e.touches[0];
+
+    if (touchTimerRef.current?.timer) {
+      clearTimeout(touchTimerRef.current.timer);
+    }
+    if (touchTimerRef.current?.contextMenuTimer) {
+      clearTimeout(touchTimerRef.current.contextMenuTimer);
+    }
+
+    const startTime = Date.now();
+    const touchX = touch.clientX;
+    const touchY = touch.clientY;
+
+    const timer = setTimeout(() => {
+      if (touchTimerRef.current) {
+        touchTimerRef.current.isHoldCompleted = true;
+        if (typeof navigator !== "undefined" && navigator.vibrate) {
+          try {
+            navigator.vibrate(50);
+          } catch {
+            // ignore
+          }
+        }
+        setSelectedKeys((prev) => {
+          const next = new Set(prev);
+          next.add(key);
+          return next;
+        });
+        setLastSelectedKey(key);
+      }
+    }, 1000); // 1.0s hold in still state to activate drag mode & select item
+
+    const contextMenuTimer = setTimeout(() => {
+      if (touchTimerRef.current && !touchTimerRef.current.isDragging) {
+        touchTimerRef.current.isContextMenuOpened = true;
+        if (typeof navigator !== "undefined" && navigator.vibrate) {
+          try {
+            navigator.vibrate(70);
+          } catch {
+            // ignore
+          }
+        }
+        setSelectedKeys((prev) => {
+          const next = new Set(prev);
+          next.add(key);
+          return next;
+        });
+        setLastSelectedKey(key);
+
+        const folderObj = type === "folder" ? mountDirToFolder(item) : undefined;
+        const fileObj = type === "file" ? mountFileToFileItem(item) : undefined;
+
+        setContextMenu({
+          x: touchX,
+          y: touchY,
+          type,
+          folder: folderObj,
+          file: fileObj,
+        });
+      }
+    }, 2000); // 2.0s (2000ms) hold in still state triggers context menu
+
+    touchTimerRef.current = {
+      timer,
+      contextMenuTimer,
+      startX: touchX,
+      startY: touchY,
+      startTime,
+      touchKey: key,
+      type,
+      item,
+      isHoldCompleted: false,
+      isContextMenuOpened: false,
+      isDragging: false,
+      sourcePathsToMove: [],
+    };
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!touchTimerRef.current) return;
+    const touch = e.touches[0];
+    const dx = Math.abs(touch.clientX - touchTimerRef.current.startX);
+    const dy = Math.abs(touch.clientY - touchTimerRef.current.startY);
+
+    if (dx > 8 || dy > 8) {
+      const elapsed = Date.now() - touchTimerRef.current.startTime;
+
+      if (touchTimerRef.current.contextMenuTimer) {
+        clearTimeout(touchTimerRef.current.contextMenuTimer);
+        touchTimerRef.current.contextMenuTimer = null;
+      }
+
+      // If moved before 0.5s (500ms) OR moved before 1.0s hold completed OR context menu opened:
+      // Drag mode is NOT activated -> cancel hold timer and allow normal page scrolling
+      if (
+        elapsed < 500 ||
+        !touchTimerRef.current.isHoldCompleted ||
+        touchTimerRef.current.isContextMenuOpened
+      ) {
+        if (touchTimerRef.current.timer) {
+          clearTimeout(touchTimerRef.current.timer);
+          touchTimerRef.current.timer = null;
+        }
+        touchTimerRef.current = null;
+        return;
+      }
+
+      // If 1.0s hold was completed in still state: initiate TOUCH DRAG
+      if (touchTimerRef.current.isHoldCompleted) {
+        if (touchTimerRef.current.timer) {
+          clearTimeout(touchTimerRef.current.timer);
+          touchTimerRef.current.timer = null;
+        }
+
+        if (!touchTimerRef.current.isDragging) {
+          touchTimerRef.current.isDragging = true;
+
+          const currentKeys = new Set(selectedKeysRef.current);
+          if (!currentKeys.has(touchTimerRef.current.touchKey)) {
+            currentKeys.add(touchTimerRef.current.touchKey);
+            setSelectedKeys(currentKeys);
+          }
+
+          const paths: string[] = [];
+          allVisibleItems.forEach((v) => {
+            if (currentKeys.has(v.key)) {
+              paths.push(v.item.relativePath);
+            }
+          });
+          if (paths.length === 0) {
+            paths.push(touchTimerRef.current.item.relativePath);
+          }
+
+          touchTimerRef.current.sourcePathsToMove = paths;
+
+          setActiveDragItem({
+            key: touchTimerRef.current.touchKey,
+            type: touchTimerRef.current.type,
+            id: touchTimerRef.current.item.id,
+            relativePath: touchTimerRef.current.item.relativePath,
+          });
+        }
+
+        e.preventDefault();
+
+        const totalCount = touchTimerRef.current.sourcePathsToMove.length;
+        const name = touchTimerRef.current.item.name;
+
+        setTouchDragState({
+          x: touch.clientX,
+          y: touch.clientY,
+          count: totalCount,
+          name,
+          type: touchTimerRef.current.type,
+        });
+
+        // Detect target folder under touch point
+        const elUnderTouch = document.elementFromPoint(touch.clientX, touch.clientY);
+        const folderCard = elUnderTouch?.closest("[data-selectable-key]");
+        if (folderCard) {
+          const keyAttr = folderCard.getAttribute("data-selectable-key");
+          if (keyAttr && keyAttr.startsWith("folder_")) {
+            const targetFolderId = keyAttr.replace(/^folder_/, "");
+            const targetItem = currentFolders.find((f) => f.id === targetFolderId);
+            if (targetItem && !touchTimerRef.current.sourcePathsToMove.includes(targetItem.relativePath)) {
+              setActiveDragOverId(targetFolderId);
+            } else {
+              setActiveDragOverId(null);
+            }
+          } else {
+            setActiveDragOverId(null);
+          }
+        } else {
+          setActiveDragOverId(null);
+        }
+      }
+    }
+  };
+
+  const handleTouchEnd = (
+    e: React.TouchEvent,
+    key: string,
+    type: "folder" | "file",
+    item: MountFileItem
+  ) => {
+    if (!touchTimerRef.current) return;
+    if (touchTimerRef.current.timer) {
+      clearTimeout(touchTimerRef.current.timer);
+    }
+    if (touchTimerRef.current.contextMenuTimer) {
+      clearTimeout(touchTimerRef.current.contextMenuTimer);
+    }
+
+    const wasDragging = touchTimerRef.current.isDragging;
+    const wasHoldCompleted = touchTimerRef.current.isHoldCompleted;
+    const wasContextMenuOpened = touchTimerRef.current.isContextMenuOpened;
+    const pathsToMove = touchTimerRef.current.sourcePathsToMove;
+
+    touchTimerRef.current = null;
+    setTouchDragState(null);
+
+    if (wasContextMenuOpened) {
+      touchHandledRef.current = true;
+      e.preventDefault();
+      setTimeout(() => {
+        touchHandledRef.current = false;
+      }, 300);
+      return;
+    }
+
+    if (wasDragging) {
+      e.preventDefault();
+      touchHandledRef.current = true;
+      setTimeout(() => {
+        touchHandledRef.current = false;
+      }, 300);
+
+      const targetFolderId = activeDragOverId;
+      setActiveDragItem(null);
+      setActiveDragOverId(null);
+
+      if (targetFolderId && pathsToMove.length > 0) {
+        const targetItem = currentFolders.find((f) => f.id === targetFolderId);
+        if (targetItem) {
+          executeMoveItems(targetItem.relativePath, { sourcePaths: pathsToMove });
+        }
+      }
+      return;
+    }
+
+    if (wasHoldCompleted) {
+      touchHandledRef.current = true;
+      e.preventDefault();
+      setTimeout(() => {
+        touchHandledRef.current = false;
+      }, 300);
+      return;
+    }
+
+    touchHandledRef.current = true;
+    setTimeout(() => {
+      touchHandledRef.current = false;
+    }, 300);
+
+    const isSelectionMode = selectedKeysRef.current.size > 0;
+
+    if (isSelectionMode) {
+      e.preventDefault();
+      setSelectedKeys((prev) => {
+        const next = new Set(prev);
+        if (next.has(key)) {
+          next.delete(key);
+        } else {
+          next.add(key);
+        }
+        return next;
+      });
+      setLastSelectedKey(key);
+      return;
+    }
+
+    // Normal short tap (NOT in selection mode): ONE CLICK = OPEN!
+    e.preventDefault();
+    if (type === "folder") {
+      setSelectedKeys(new Set());
+      setLastSelectedKey(null);
+      loadDirectory(item.relativePath);
+    } else {
+      setPreviewFile(mountFileToFileItem(item));
+    }
+  };
+
   // Selection Click Handler
   const handleItemClick = (
     e: React.MouseEvent,
@@ -304,8 +614,18 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
     type: "folder" | "file",
     item: MountFileItem
   ) => {
+    e.stopPropagation();
+
+    if (touchHandledRef.current) return;
     if (hasDraggedMarqueeRef.current) return;
 
+    const isTouchOrMobile =
+      window.innerWidth < 768 ||
+      (typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches);
+
+    const isSelectionMode = selectedKeys.size > 0;
+
+    // 1. Shift + Click (Range Selection)
     if (e.shiftKey && lastSelectedKey) {
       const allKeys = allVisibleItems.map((i) => i.key);
       const startIndex = allKeys.indexOf(lastSelectedKey);
@@ -323,7 +643,8 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
       }
     }
 
-    if (e.ctrlKey || e.metaKey) {
+    // 2. Selection Mode Active OR Ctrl / Cmd + Click: toggle item selection
+    if (isSelectionMode || e.ctrlKey || e.metaKey) {
       const newKeys = new Set(selectedKeys);
       if (newKeys.has(key)) {
         newKeys.delete(key);
@@ -335,7 +656,19 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
       return;
     }
 
-    // Standard single click
+    // 3. Normal Single Click on Mobile (NOT in selection mode): ONE CLICK = OPEN!
+    if (isTouchOrMobile) {
+      if (type === "folder") {
+        setSelectedKeys(new Set());
+        setLastSelectedKey(null);
+        loadDirectory(item.relativePath);
+      } else {
+        setPreviewFile(mountFileToFileItem(item));
+      }
+      return;
+    }
+
+    // 4. Desktop Single Click (when selection mode is empty)
     setSelectedKeys(new Set([key]));
     setLastSelectedKey(key);
   };
@@ -583,12 +916,29 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
     type: "folder" | "file",
     item: MountFileItem
   ) => {
+    e.stopPropagation();
+
     let sourcePaths: string[] = [];
-    if (selectedKeys.has(key)) {
-      sourcePaths = selectedMountItems.map((it) => it.relativePath);
-    } else {
+    let filesCount = 0;
+    let foldersCount = 0;
+
+    const newSelected = new Set(selectedKeys);
+    if (!newSelected.has(key)) {
+      newSelected.add(key);
+      setSelectedKeys(newSelected);
+      setLastSelectedKey(key);
+    }
+
+    const itemsToMove = allVisibleItems.filter((i) => newSelected.has(i.key));
+    sourcePaths = itemsToMove.map((i) => i.item.relativePath);
+    itemsToMove.forEach((i) => {
+      if (i.item.isDirectory) foldersCount++;
+      else filesCount++;
+    });
+    if (sourcePaths.length === 0) {
       sourcePaths = [item.relativePath];
-      setSelectedKeys(new Set([key]));
+      if (item.isDirectory) foldersCount = 1;
+      else filesCount = 1;
     }
 
     setActiveDragItem({
@@ -597,11 +947,88 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
       id: item.id,
       relativePath: item.relativePath,
     });
+
     e.dataTransfer.setData(
       "application/mounted-drive-items",
       JSON.stringify({ sourcePaths })
     );
     e.dataTransfer.effectAllowed = "move";
+
+    // Custom Drag Preview Card following the cursor with counter badge
+    try {
+      const totalCount = sourcePaths.length;
+      const primaryName = item.name;
+
+      const ghost = document.createElement("div");
+      ghost.id = "custom-drag-ghost-preview-mounted";
+      ghost.style.position = "fixed";
+      ghost.style.top = "-9999px";
+      ghost.style.left = "-9999px";
+      ghost.style.zIndex = "999999";
+      ghost.style.pointerEvents = "none";
+
+      const isFolder = type === "folder" || item.isDirectory;
+      const iconBg = isFolder ? "#fef3c7" : "#eff6ff";
+      const iconColor = isFolder ? "#d97706" : "#2563eb";
+      const iconSvg = isFolder
+        ? `<svg width="18" height="18" viewBox="0 0 24 24" fill="${iconColor}" stroke="${iconColor}" stroke-width="1.5"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg>`
+        : `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="${iconColor}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>`;
+
+      const countDetail =
+        totalCount > 1
+          ? `${totalCount} item (${filesCount > 0 ? `${filesCount} berkas` : ""}${filesCount > 0 && foldersCount > 0 ? ", " : ""}${foldersCount > 0 ? `${foldersCount} folder` : ""})`
+          : isFolder
+          ? "1 Folder dipilih"
+          : "1 Berkas dipilih";
+
+      const escapeHtml = (text: string) =>
+        text
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+
+      ghost.innerHTML = `
+        <div style="position: relative; display: inline-flex; align-items: center; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+          ${
+            totalCount > 1
+              ? `<div style="position: absolute; inset: 0; transform: translate(4px, 4px); background: #e0e7ff; border: 1.5px solid #c7d2fe; border-radius: 14px; opacity: 0.85; z-index: 0;"></div>`
+              : ""
+          }
+          <div style="position: relative; z-index: 1; display: flex; align-items: center; gap: 10px; padding: 9px 14px; background: #ffffff; border: 1.5px solid #6366f1; border-radius: 14px; box-shadow: 0 14px 28px -4px rgba(79, 70, 229, 0.28), 0 8px 12px -4px rgba(15, 23, 42, 0.12); min-width: 190px; max-width: 280px;">
+            <div style="width: 32px; height: 32px; border-radius: 8px; background: ${iconBg}; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+              ${iconSvg}
+            </div>
+            <div style="display: flex; flex-direction: column; min-width: 0; flex: 1;">
+              <span style="font-size: 12.5px; font-weight: 700; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 165px;">
+                ${escapeHtml(primaryName)}
+              </span>
+              <span style="font-size: 10.5px; font-weight: 600; color: ${totalCount > 1 ? "#4f46e5" : "#64748b"}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                ${countDetail}
+              </span>
+            </div>
+            ${
+              totalCount > 1
+                ? `<div style="position: absolute; top: -7px; right: -7px; background: #4f46e5; color: #ffffff; font-size: 11px; font-weight: 800; border-radius: 9999px; height: 22px; min-width: 22px; padding: 0 6px; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 5px rgba(79,70,229,0.4); border: 2px solid #ffffff; letter-spacing: -0.2px;">
+                    ${totalCount}
+                  </div>`
+                : ""
+            }
+          </div>
+        </div>
+      `;
+
+      document.body.appendChild(ghost);
+      e.dataTransfer.setDragImage(ghost, 25, 25);
+      setTimeout(() => {
+        if (ghost.parentNode) {
+          ghost.parentNode.removeChild(ghost);
+        }
+      }, 0);
+    } catch {
+      // Fallback
+    }
   };
 
   const handleDragEnd = () => {
@@ -1402,6 +1829,9 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
                           <div
                             key={dir.id}
                             data-selectable-key={itemKey}
+                            onTouchStart={(e) => handleTouchStart(e, itemKey, "folder", dir)}
+                            onTouchMove={handleTouchMove}
+                            onTouchEnd={(e) => handleTouchEnd(e, itemKey, "folder", dir)}
                             onClick={(e) => handleItemClick(e, itemKey, "folder", dir)}
                             onDoubleClick={(e) => {
                               e.stopPropagation();
@@ -1510,6 +1940,9 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
                           <div
                             key={file.id}
                             data-selectable-key={itemKey}
+                            onTouchStart={(e) => handleTouchStart(e, itemKey, "file", file)}
+                            onTouchMove={handleTouchMove}
+                            onTouchEnd={(e) => handleTouchEnd(e, itemKey, "file", file)}
                             onClick={(e) => handleItemClick(e, itemKey, "file", file)}
                             onDoubleClick={(e) => {
                               e.stopPropagation();
@@ -1662,6 +2095,9 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
                                 <tr
                                   key={dir.id}
                                   data-selectable-key={itemKey}
+                                  onTouchStart={(e) => handleTouchStart(e, itemKey, "folder", dir)}
+                                  onTouchMove={handleTouchMove}
+                                  onTouchEnd={(e) => handleTouchEnd(e, itemKey, "folder", dir)}
                                   onClick={(e) => handleItemClick(e, itemKey, "folder", dir)}
                                   onDoubleClick={(e) => {
                                     e.stopPropagation();
@@ -1806,6 +2242,9 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
                                 <tr
                                   key={file.id}
                                   data-selectable-key={itemKey}
+                                  onTouchStart={(e) => handleTouchStart(e, itemKey, "file", file)}
+                                  onTouchMove={handleTouchMove}
+                                  onTouchEnd={(e) => handleTouchEnd(e, itemKey, "file", file)}
                                   onClick={(e) => handleItemClick(e, itemKey, "file", file)}
                                   onDoubleClick={(e) => {
                                     e.stopPropagation();
@@ -2133,6 +2572,39 @@ export const MountedDriveExplorer: React.FC<MountedDriveExplorerProps> = ({
             }
           }}
         />
+      )}
+
+      {/* TOUCH DRAG FLOATING OVERLAY BADGE FOR MOBILE */}
+      {touchDragState && (
+        <div
+          className="fixed pointer-events-none z-[999999] -translate-x-1/2 -translate-y-12 flex items-center gap-2.5 px-3.5 py-2.5 bg-white border-2 border-indigo-600 rounded-2xl shadow-2xl animate-in zoom-in-95 duration-150"
+          style={{ left: touchDragState.x, top: touchDragState.y }}
+        >
+          <div
+            className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+              touchDragState.type === "folder" ? "bg-amber-100 text-amber-600" : "bg-blue-100 text-blue-600"
+            }`}
+          >
+            {touchDragState.type === "folder" ? (
+              <FolderIcon className="w-5 h-5 fill-amber-400 text-amber-500" />
+            ) : (
+              <FileText className="w-5 h-5 text-blue-600" />
+            )}
+          </div>
+          <div className="flex flex-col min-w-0 pr-1">
+            <span className="text-xs font-bold text-slate-900 truncate max-w-[140px]">
+              {touchDragState.name}
+            </span>
+            <span className="text-[10px] font-bold text-indigo-600">
+              Memindahkan {touchDragState.count} item
+            </span>
+          </div>
+          {touchDragState.count > 1 && (
+            <span className="bg-indigo-600 text-white text-[11px] font-extrabold px-2 py-0.5 rounded-full shadow-xs">
+              {touchDragState.count}
+            </span>
+          )}
+        </div>
       )}
     </div>
   );

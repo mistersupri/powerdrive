@@ -134,7 +134,9 @@ export async function getGoogleClientId(clientIdOverride?: string): Promise<stri
     console.warn("[GoogleAuth] Could not fetch Google client ID from server:", err);
   }
 
-  return "814238549112-clouddrive.apps.googleusercontent.com";
+  throw new Error(
+    "GOOGLE_CLIENT_ID belum terkonfigurasi di Environment Variables AI Studio / server. Silakan tambahkan GOOGLE_CLIENT_ID pada menu Settings > Environment Variables."
+  );
 }
 
 /**
