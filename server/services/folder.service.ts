@@ -107,17 +107,21 @@ export class FolderService {
     // Check if ID belongs to a mounted storage point or subfolder in /mnt
     try {
       const { mountService } = await import("./mount.service.ts");
-      const { mountIndexerService } = await import("./mount-indexer.service.ts");
       const mounts = mountService.listMounts();
       
       const matchedMount = mounts.find((m) => m.id === id || m.mountPoint === id);
       if (matchedMount) {
-        await mountIndexerService.indexFolderOnDemand(
-          matchedMount.mountPoint,
-          matchedMount.mountPoint,
-          matchedMount.id
-        );
-        return await db.folder.findUnique({ where: { id } });
+        return {
+          id: matchedMount.id,
+          name: matchedMount.name,
+          parentId: null,
+          userId: "system",
+          isTrashed: false,
+          trashedAt: null,
+          trashedBy: null,
+          createdAt: new Date(matchedMount.createdAt),
+          updatedAt: new Date(matchedMount.updatedAt),
+        } as any;
       }
     } catch (err) {
       console.warn("[FolderService] Mount fallback resolution notice:", err);

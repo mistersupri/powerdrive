@@ -6,8 +6,6 @@ import { apiRouter } from "./server/routes/index.ts";
 import { db } from "./server/db/index.ts";
 import { SyncEngineService } from "./server/services/sync-engine.service.ts";
 import { PreviewService } from "./server/services/preview.service.ts";
-import { mountIndexerService } from "./server/services/mount-indexer.service.ts";
-import { mountWatcherService } from "./server/services/mount-watcher.service.ts";
 
 const PORT = 3000;
 
@@ -20,10 +18,6 @@ async function startServer() {
 
   // Start background file preview rendering worker
   PreviewService.startWorker(3000);
-
-  // Start background Storage Mount Indexer and Filesystem Watcher
-  mountIndexerService.startPeriodicReconciliation(180000);
-  mountWatcherService.startWatcher();
 
   const app = express();
 

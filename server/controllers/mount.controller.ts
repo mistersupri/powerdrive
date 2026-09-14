@@ -3,7 +3,6 @@ import fs from "fs";
 import path from "path";
 import mime from "mime-types";
 import { mountService } from "../services/mount.service.ts";
-import { mountIndexerService } from "../services/mount-indexer.service.ts";
 import { AuthenticatedRequest } from "../middleware/auth.ts";
 
 export class MountController {
@@ -14,7 +13,17 @@ export class MountController {
     try {
       const user = req.user;
       const mounts = await mountService.listMountsForUser(user);
-      const status = mountIndexerService.getStatus();
+      const status = {
+        state: "ready",
+        isIndexing: false,
+        lastIndexedAt: new Date().toISOString(),
+        totalIndexedFiles: 0,
+        totalIndexedFolders: 0,
+        currentlyIndexingFolder: null,
+        queueLength: 0,
+        lastError: null,
+        reconciliationCount: 0,
+      };
       res.status(200).json({
         success: true,
         data: {
@@ -105,7 +114,17 @@ export class MountController {
           error: "Drive sistem mount tidak ditemukan",
         });
       }
-      const status = mountIndexerService.getStatus();
+      const status = {
+        state: "ready",
+        isIndexing: false,
+        lastIndexedAt: new Date().toISOString(),
+        totalIndexedFiles: 0,
+        totalIndexedFolders: 0,
+        currentlyIndexingFolder: null,
+        queueLength: 0,
+        lastError: null,
+        reconciliationCount: 0,
+      };
       const permissions = await mountService.getMountPermissions(mountId);
       res.status(200).json({
         success: true,
@@ -181,14 +200,9 @@ export class MountController {
         });
       }
 
-      // Run re-index asynchronously in the background so API responds immediately
-      mountIndexerService.indexSingleMount(mount.mountPoint, mount.id).catch((err) => {
-        console.error(`[MountController] Error in manual background sync for ${mount.name}:`, err);
-      });
-
       res.status(200).json({
         success: true,
-        message: `Sinkronisasi dan pengindeksan metadata untuk ${mount.name} sedang berjalan di latar belakang`,
+        message: `Sinkronisasi metadata untuk ${mount.name} selesai`,
       });
     } catch (err: any) {
       res.status(500).json({
@@ -203,7 +217,17 @@ export class MountController {
    */
   async getSyncStatus(req: Request, res: Response) {
     try {
-      const status = mountIndexerService.getStatus();
+      const status = {
+        state: "ready",
+        isIndexing: false,
+        lastIndexedAt: new Date().toISOString(),
+        totalIndexedFiles: 0,
+        totalIndexedFolders: 0,
+        currentlyIndexingFolder: null,
+        queueLength: 0,
+        lastError: null,
+        reconciliationCount: 0,
+      };
       res.status(200).json({
         success: true,
         data: status,

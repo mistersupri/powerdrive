@@ -5,7 +5,20 @@ import crypto from "crypto";
 import { execSync } from "child_process";
 import { db, prisma } from "../db/index.ts";
 import { ActivityAction, FileRecord, SyncStatus } from "../types/index.ts";
-import { mountIndexerService, IndexerStatus, IndexingState } from "./mount-indexer.service.ts";
+
+export type IndexingState = "pending" | "indexing" | "ready" | "error";
+
+export interface IndexerStatus {
+  state: IndexingState;
+  isIndexing: boolean;
+  lastIndexedAt: string | null;
+  totalIndexedFiles: number;
+  totalIndexedFolders: number;
+  currentlyIndexingFolder: string | null;
+  queueLength: number;
+  lastError: string | null;
+  reconciliationCount: number;
+}
 
 export interface MountInfo {
   id: string;
@@ -123,7 +136,6 @@ export class MountService {
     this.ensureMountBaseDir();
     const systemMounts = this.getSystemMountPoints();
     const result: MountInfo[] = [];
-    const indexerStatus = mountIndexerService.getStatus();
 
     try {
       if (!fs.existsSync(this.baseMountPath)) {
@@ -151,7 +163,7 @@ export class MountService {
           createdAt: stat.birthtime.toISOString(),
           updatedAt: stat.mtime.toISOString(),
           isWritable: true,
-          isIndexing: indexerStatus.isIndexing,
+          isIndexing: false,
         });
       }
 
@@ -196,8 +208,8 @@ export class MountService {
             createdAt: stat.birthtime.toISOString(),
             updatedAt: stat.mtime.toISOString(),
             isWritable,
-            isIndexing: indexerStatus.isIndexing,
-            indexingState: indexerStatus.state,
+            isIndexing: false,
+            indexingState: "ready",
           });
         }
       }
@@ -332,10 +344,6 @@ export class MountService {
     if (!mount) {
       throw new Error(`Gagal membuat titik pasang (mount point) pada ${targetPath}`);
     }
-    // Instantly trigger background scan for this mount point
-    mountIndexerService.indexSingleMount(mount.mountPoint, mount.id).catch((err) => {
-      console.error(`[MountService] Failed to perform initial scan on mount:`, err);
-    });
     return mount;
   }
 
@@ -512,7 +520,7 @@ export class MountService {
     }
 
     const indexerStatus = {
-      state: "idle" as IndexingState,
+      state: "ready" as IndexingState,
       isIndexing: false,
       totalIndexedFolders: 0,
       totalIndexedFiles: 0,
