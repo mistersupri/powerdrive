@@ -114,7 +114,6 @@ export async function getGoogleClientId(clientIdOverride?: string): Promise<stri
   // 1. Check Vite env GOOGLE_CLIENT_ID or process.env.GOOGLE_CLIENT_ID
   const envVal =
     ((import.meta as any).env?.GOOGLE_CLIENT_ID as string) ||
-    ((import.meta as any).env?.VITE_GOOGLE_CLIENT_ID as string) ||
     (typeof process !== "undefined" ? (process.env as any)?.GOOGLE_CLIENT_ID : "");
 
   if (envVal && envVal.trim()) {
