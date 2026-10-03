@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from "react";
-import { 
-  Share2, X, Eye, Edit3, Link as LinkIcon, Copy, Check, 
-  ShieldCheck, KeyRound, Loader2, CheckCircle2, Lock, Unlock, Mail, EyeOff 
-} from "lucide-react";
-import { Folder, FolderPermission, FileItem } from "../types/frontend";
-import { api } from "../services/api";
+import React, { useCallback, useEffect, useState } from "react";
+import { Check, Copy, Eye, Link as LinkIcon, Share2, Upload } from "lucide-react";
+import { FileItem, Folder, FolderPermission } from "../types/frontend.ts";
+import { api } from "../services/api.ts";
+import { Dialog, DialogBody, DialogFooter, DialogHeader } from "../ui/Dialog.tsx";
+import { Button } from "../ui/Button.tsx";
+import { Field, TextInput } from "../ui/Field.tsx";
+import { cn } from "../lib/cn.ts";
 
 interface ShareFolderModalProps {
   folder?: Folder | null;
@@ -13,489 +14,219 @@ interface ShareFolderModalProps {
   onPermissionUpdated?: (updatedFolder: Folder) => void;
 }
 
-// Client-side SHA-256 helper for password hashing
 async function sha256(message: string): Promise<string> {
-  if (!message) return "";
-  const msgBuffer = new TextEncoder().encode(message);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", msgBuffer);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(message));
+  return Array.from(new Uint8Array(buf))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
-export const ShareFolderModal: React.FC<ShareFolderModalProps> = ({
-  folder,
-  file,
-  onClose,
-  onPermissionUpdated,
-}) => {
-  const isFile = !!file;
-  const item = file || folder;
+interface ShareLink {
+  url: string;
+}
 
-  if (!item) return null;
-
-  const [copiedType, setCopiedType] = useState<"view" | "edit" | null>(null);
-  const [currentBasePerm, setCurrentBasePerm] = useState<FolderPermission>(
-    folder?.permission || FolderPermission.VIEW
-  );
-  const [isUpdatingBasePerm, setIsUpdatingBasePerm] = useState(false);
-  const [permUpdateMessage, setPermUpdateMessage] = useState<string | null>(null);
-
-  // Security restrictions states
-  const [isPasswordEnabled, setIsPasswordEnabled] = useState(false);
-  const [password, setPassword] = useState("");
-  const [showPasswordText, setShowPasswordText] = useState(false);
-
-  const [isEmailRestrictionEnabled, setIsEmailRestrictionEnabled] = useState(false);
-  const [emails, setEmails] = useState("");
-
-  const [isLoadingLinks, setIsLoadingLinks] = useState(true);
-  const [shareData, setShareData] = useState<{
-    viewLink: { permission: string; signature: string; url: string; name: string; description: string };
-    editLink?: { permission: string; signature: string; url: string; name: string; description: string };
-  } | null>(null);
-
-  const fetchLinks = async () => {
-    setIsLoadingLinks(true);
+function LinkRow({ icon, title, description, link }: { icon: React.ReactNode; title: string; description: string; link?: ShareLink }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    if (!link) return;
     try {
-      const pwdHash = isPasswordEnabled && password ? await sha256(password) : undefined;
-      const emailsList = isEmailRestrictionEnabled && emails ? emails : undefined;
-
-      const origin = window.location.origin + window.location.pathname;
-
-      if (isFile && file) {
-        const res = await api.getFileShareLinks(file.id, pwdHash, emailsList);
-        if (res.links) {
-          let suffix = "";
-          if (pwdHash) suffix += `&pwdHash=${encodeURIComponent(pwdHash)}`;
-          if (emailsList) suffix += `&emails=${encodeURIComponent(emailsList)}`;
-
-          setShareData({
-            viewLink: {
-              ...res.links.viewLink,
-              url: `${origin}?fileId=${encodeURIComponent(file.id)}&perm=VIEW&sig=${res.links.viewLink.signature}${suffix}`,
-            },
-          });
-        }
-      } else if (folder) {
-        const res = await api.getFolderShareLinks(folder.id, pwdHash, emailsList);
-        if (res.links) {
-          let suffix = "";
-          if (pwdHash) suffix += `&pwdHash=${encodeURIComponent(pwdHash)}`;
-          if (emailsList) suffix += `&emails=${encodeURIComponent(emailsList)}`;
-
-          setShareData({
-            viewLink: {
-              ...res.links.viewLink,
-              url: `${origin}?folderId=${encodeURIComponent(folder.id)}&perm=VIEW&sig=${res.links.viewLink.signature}${suffix}`,
-            },
-            editLink: {
-              ...res.links.editLink,
-              url: `${origin}?folderId=${encodeURIComponent(folder.id)}&perm=EDIT&sig=${res.links.editLink.signature}${suffix}`,
-            },
-          });
-        }
-      }
-    } catch (err) {
-      console.error("Failed to load share links:", err);
-    } finally {
-      setIsLoadingLinks(false);
-    }
-  };
-
-  // Load server-generated cryptographic signed links
-  useEffect(() => {
-    fetchLinks();
-  }, [isFile ? file?.id : folder?.id]);
-
-  const handleCopy = async (url: string, type: "view" | "edit") => {
-    try {
-      await navigator.clipboard.writeText(url);
-      setCopiedType(type);
-      setTimeout(() => setCopiedType(null), 3000);
+      await navigator.clipboard.writeText(link.url);
     } catch {
-      const el = document.getElementById(`input-share-${type}`) as HTMLInputElement;
-      if (el) {
-        el.select();
-        document.execCommand("copy");
-        setCopiedType(type);
-        setTimeout(() => setCopiedType(null), 3000);
-      }
+      // Clipboard API unavailable (insecure context): the field is selectable instead.
+      return;
     }
-  };
-
-  const handleUpdateBasePermission = async (newPerm: FolderPermission) => {
-    if (newPerm === currentBasePerm || isFile || !folder) return;
-    setIsUpdatingBasePerm(true);
-    setPermUpdateMessage(null);
-    try {
-      const res = await api.updateFolder(folder.id, { permission: newPerm });
-      setCurrentBasePerm(newPerm);
-      setPermUpdateMessage("Izin standar folder berhasil diperbarui!");
-      onPermissionUpdated?.(res.folder);
-      setTimeout(() => setPermUpdateMessage(null), 4000);
-    } catch (err: any) {
-      setPermUpdateMessage(`Gagal memperbarui izin: ${err.message}`);
-    } finally {
-      setIsUpdatingBasePerm(false);
-    }
-  };
-
-  const handleApplySecuritySettings = (e: React.FormEvent) => {
-    e.preventDefault();
-    fetchLinks();
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 animate-fade-in">
-      <div className="bg-surface rounded-2xl max-w-xl w-full p-6 shadow-float border border-ink-200 text-ink-900 max-h-[90vh] overflow-y-auto">
-        
-        {/* Modal Header */}
-        <div className="flex items-center justify-between pb-4 border-b border-ink-100 mb-5">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-accent-50 text-accent-600 flex items-center justify-center shadow-card">
-              <Share2 className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="font-bold text-base text-ink-900">
-                {isFile ? "Bagikan Berkas via Tautan" : "Bagikan Folder & Kelola Izin Akses"}
-              </h3>
-              <p className="text-xs text-ink-500 truncate max-w-[280px] sm:max-w-md">
-                {isFile ? "Berkas: " : "Folder: "} 
-                <strong className="text-ink-800 font-semibold">"{file ? file.originalName : folder?.name}"</strong>
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-xl text-ink-400 hover:text-ink-700 hover:bg-ink-100 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+    <div className="rounded-xl border border-ink-200 p-3.5">
+      <div className="flex items-start gap-3">
+        <span className="w-8 h-8 rounded-lg bg-ink-100 text-ink-700 flex items-center justify-center shrink-0">{icon}</span>
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-semibold text-ink-900">{title}</div>
+          <p className="text-xs text-ink-500 mt-0.5 leading-relaxed">{description}</p>
         </div>
-
-        {/* Security Feature Banner */}
-        <div className="mb-5 p-3 rounded-xl bg-ink-900 text-white flex items-start gap-3 shadow-card">
-          <KeyRound className="w-5 h-5 text-warn-400 shrink-0 mt-0.5" />
-          <div className="text-xs space-y-1">
-            <div className="font-bold text-ink-100 flex items-center gap-1.5">
-              <span>Keamanan Kriptografi HMAC (Anti-Manipulasi URL)</span>
-              <span className="px-1.5 py-0.2 rounded bg-warn-400/20 text-warn-300 text-[10px] font-mono">
-                SHA-256 SIGNED
-              </span>
-            </div>
-            <p className="text-[11px] text-ink-300 leading-relaxed">
-              Setiap tautan memiliki tanda tangan digital terenkripsi yang unik.
-              Pengguna tidak dapat mengakses dokumen atau folder yang dilindungi jika tautan diubah secara ilegal.
-            </p>
-          </div>
+      </div>
+      <div className="mt-3 flex items-center gap-2">
+        <div className="relative flex-1 min-w-0">
+          <LinkIcon className="w-3.5 h-3.5 text-ink-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+          <input
+            readOnly
+            aria-label={`Tautan: ${title}`}
+            value={link?.url || "Membuat tautan…"}
+            onFocus={(e) => e.currentTarget.select()}
+            className="w-full h-9 pl-8 pr-2 rounded-lg bg-ink-50 border border-ink-200 text-xs font-mono text-ink-700 truncate focus:outline-none focus:border-accent-600"
+          />
         </div>
-
-        {/* SECURITY SETTINGS FORM */}
-        <form onSubmit={handleApplySecuritySettings} className="mb-5 p-4 rounded-xl bg-ink-50 border border-ink-200/80 space-y-4">
-          <h4 className="text-xs font-bold text-ink-800 flex items-center gap-1.5">
-            <Lock className="w-3.5 h-3.5 text-accent-600" />
-            <span>Pengaturan Keamanan Tautan</span>
-          </h4>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Password Toggle & Input */}
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 text-xs font-semibold text-ink-700 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={isPasswordEnabled}
-                  onChange={(e) => {
-                    setIsPasswordEnabled(e.target.checked);
-                    if (!e.target.checked) setPassword("");
-                  }}
-                  className="rounded text-accent-600 focus:ring-accent-500 w-3.5 h-3.5"
-                />
-                <span>Proteksi Kata Sandi</span>
-              </label>
-              {isPasswordEnabled && (
-                <div className="relative flex items-center">
-                  <span className="absolute left-2.5 text-ink-400">
-                    <KeyRound className="w-3.5 h-3.5" />
-                  </span>
-                  <input
-                    type={showPasswordText ? "text" : "password"}
-                    placeholder="Masukkan kata sandi..."
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                    className="w-full pl-8 pr-8 py-1.5 text-xs bg-surface border border-ink-300 rounded-lg text-ink-900 focus:outline-none focus:ring-1 focus:ring-accent-500"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPasswordText(!showPasswordText)}
-                    className="absolute right-2.5 text-ink-400 hover:text-ink-600"
-                  >
-                    {showPasswordText ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Email Restrictions Toggle & Input */}
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 text-xs font-semibold text-ink-700 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={isEmailRestrictionEnabled}
-                  onChange={(e) => {
-                    setIsEmailRestrictionEnabled(e.target.checked);
-                    if (!e.target.checked) setEmails("");
-                  }}
-                  className="rounded text-accent-600 focus:ring-accent-500 w-3.5 h-3.5"
-                />
-                <span>Batasi Email Penerima</span>
-              </label>
-              {isEmailRestrictionEnabled && (
-                <div className="relative flex items-center">
-                  <span className="absolute left-2.5 text-ink-400">
-                    <Mail className="w-3.5 h-3.5" />
-                  </span>
-                  <input
-                    type="text"
-                    placeholder="Contoh: user1@email.com, user2@email.com"
-                    value={emails}
-                    onChange={(e) => setEmails(e.target.value)}
-                    required
-                    className="w-full pl-8 py-1.5 text-xs bg-surface border border-ink-300 rounded-lg text-ink-900 focus:outline-none focus:ring-1 focus:ring-accent-500"
-                  />
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="flex justify-end pt-1">
-            <button
-              type="submit"
-              className="px-3 py-1.5 bg-accent-600 hover:bg-accent-700 text-accent-fg font-semibold text-xs rounded-lg shadow-card transition-colors flex items-center gap-1.5"
-            >
-              <ShieldCheck className="w-3.5 h-3.5" />
-              <span>Terapkan Keamanan &amp; Perbarui Tautan</span>
-            </button>
-          </div>
-        </form>
-
-        {/* GENERATED LINKS DISPLAY */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <label className="block text-xs font-bold text-ink-800">
-              Tautan Bagikan Berkas / Folder:
-            </label>
-            <span className="text-[11px] text-ink-500 font-medium">
-              Tanda Tangan Kriptografi Aktif
-            </span>
-          </div>
-
-          {isLoadingLinks ? (
-            <div className="py-8 text-center space-y-2 bg-ink-50 rounded-2xl border border-ink-200">
-              <Loader2 className="w-6 h-6 animate-spin text-accent-600 mx-auto" />
-              <p className="text-xs text-ink-500">Menghasilkan tanda tangan kriptografi tautan...</p>
-            </div>
-          ) : shareData ? (
-            <div className="space-y-3.5">
-              
-              {/* LINK 1: HANYA LIHAT (VIEW ONLY) */}
-              <div className="p-4 rounded-2xl border border-warn-200 bg-warn-50/40 hover:bg-warn-50/60 transition-colors">
-                <div className="flex items-center justify-between gap-2 mb-2">
-                  <div className="flex items-center gap-2">
-                    <span className="w-7 h-7 rounded-lg bg-warn-100 text-warn-700 flex items-center justify-center">
-                      <Eye className="w-4 h-4" />
-                    </span>
-                    <div>
-                      <div className="font-bold text-xs text-warn-950 flex items-center gap-1.5">
-                        <span>{isFile ? 'Tautan Khusus Pratinjau Berkas (VIEW)' : '1. Tautan Khusus "Hanya Lihat" (VIEW)'}</span>
-                        <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-warn-200/80 text-warn-900 border border-warn-300">
-                          Hanya Baca / Unduh
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <p className="text-[11px] text-warn-900/80 mb-2.5">
-                  {isFile 
-                    ? "Penerima tautan ini dapat melihat pratinjau langsung secara instan dan mengunduh berkas ini."
-                    : "Penerima tautan ini hanya dapat melihat pratinjau dan mengunduh berkas. Tindakan mengunggah, menghapus, atau mengubah nama dikunci."
-                  }
-                </p>
-
-                {/* Input with Copy Button */}
-                <div className="flex items-center gap-2 p-1.5 bg-surface rounded-xl border border-warn-200 shadow-card">
-                  <LinkIcon className="w-3.5 h-3.5 text-warn-500 shrink-0 ml-1.5" />
-                  <input
-                    id="input-share-view"
-                    type="text"
-                    readOnly
-                    value={shareData.viewLink.url}
-                    onClick={(e) => (e.target as HTMLInputElement).select()}
-                    className="w-full bg-transparent text-xs text-ink-800 font-mono focus:outline-none select-all truncate"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => handleCopy(shareData.viewLink.url, "view")}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition shrink-0 active:scale-95 ${
-                      copiedType === "view"
-                        ? "bg-ok-600 text-white shadow-card"
-                        : "bg-warn-600 hover:bg-warn-500 text-white shadow-card"
-                    }`}
-                  >
-                    {copiedType === "view" ? (
-                      <>
-                        <Check className="w-3.5 h-3.5" />
-                        <span>Tersalin!</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-3.5 h-3.5" />
-                        <span>Salin Tautan</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-
-              {/* LINK 2: BISA MENGEDIT (EDIT ALLOWED) - Only for Folders */}
-              {!isFile && shareData.editLink && (
-                <div className="p-4 rounded-2xl border border-ok-200 bg-ok-50/40 hover:bg-ok-50/60 transition-colors">
-                  <div className="flex items-center justify-between gap-2 mb-2">
-                    <div className="flex items-center gap-2">
-                      <span className="w-7 h-7 rounded-lg bg-ok-100 text-ok-700 flex items-center justify-center">
-                        <Edit3 className="w-4 h-4" />
-                      </span>
-                      <div>
-                        <div className="font-bold text-xs text-ok-950 flex items-center gap-1.5">
-                          <span>2. Tautan Khusus "Bisa Mengedit" (EDIT)</span>
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-ok-200/80 text-ok-900 border border-ok-300">
-                            Akses Penuh
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <p className="text-[11px] text-ok-900/80 mb-2.5">
-                    Penerima tautan ini <strong>diizinkan mengunggah dokumen baru, mengubah nama berkas, dan mengelola konten</strong> di dalam folder ini.
-                  </p>
-
-                  {/* Input with Copy Button */}
-                  <div className="flex items-center gap-2 p-1.5 bg-surface rounded-xl border border-ok-200 shadow-card">
-                    <LinkIcon className="w-3.5 h-3.5 text-ok-500 shrink-0 ml-1.5" />
-                    <input
-                      id="input-share-edit"
-                      type="text"
-                      readOnly
-                      value={shareData.editLink.url}
-                      onClick={(e) => (e.target as HTMLInputElement).select()}
-                      className="w-full bg-transparent text-xs text-ink-800 font-mono focus:outline-none select-all truncate"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => handleCopy(shareData.editLink.url, "edit")}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition shrink-0 active:scale-95 ${
-                        copiedType === "edit"
-                          ? "bg-ok-600 text-white shadow-card"
-                          : "bg-ok-600 hover:bg-ok-505 text-white shadow-card"
-                      }`}
-                    >
-                      {copiedType === "edit" ? (
-                        <>
-                          <Check className="w-3.5 h-3.5" />
-                          <span>Tersalin!</span>
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="w-3.5 h-3.5" />
-                          <span>Salin Tautan Edit</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </div>
-              )}
-
-            </div>
-          ) : null}
-
-          {/* FOLDER BASE PERMISSION INTEGRATION - Only for Folders */}
-          {!isFile && folder && (
-            <div className="pt-2 border-t border-ink-100">
-              <label className="block text-xs font-bold text-ink-700 mb-1.5">
-                Izin Standar Folder Aplikasi:
-              </label>
-              <p className="text-[11px] text-ink-500 mb-3">
-                Menentukan izin default saat folder diakses melalui navigasi umum (tanpa tautan ber-token):
-              </p>
-
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  disabled={isUpdatingBasePerm}
-                  onClick={() => handleUpdateBasePermission(FolderPermission.EDIT)}
-                  className={`p-3 rounded-xl border text-left transition ${
-                    currentBasePerm === FolderPermission.EDIT
-                      ? "border-ok-500 bg-ok-50 text-ok-950 ring-2 ring-ok-500/20 font-bold"
-                      : "border-ink-200 hover:border-ink-300 text-ink-700 bg-surface"
-                  }`}
-                >
-                  <div className="flex items-center gap-1.5 text-xs mb-0.5">
-                    <Edit3 className="w-3.5 h-3.5 text-ok-600" />
-                    <span>Standar: Bisa Mengedit</span>
-                  </div>
-                  <span className="text-[10px] text-ink-500 font-normal">
-                    Semua staf terautentikasi dapat mengunggah
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  disabled={isUpdatingBasePerm}
-                  onClick={() => handleUpdateBasePermission(FolderPermission.VIEW)}
-                  className={`p-3 rounded-xl border text-left transition ${
-                    currentBasePerm === FolderPermission.VIEW
-                      ? "border-warn-500 bg-warn-50 text-warn-950 ring-2 ring-warn-500/20 font-bold"
-                      : "border-ink-200 hover:border-ink-300 text-ink-700 bg-surface"
-                  }`}
-                >
-                  <div className="flex items-center gap-1.5 text-xs mb-0.5">
-                    <Eye className="w-3.5 h-3.5 text-warn-600" />
-                    <span>Standar: Hanya Lihat</span>
-                  </div>
-                  <span className="text-[10px] text-ink-500 font-normal">
-                    Hanya pemilik &amp; admin yang dapat mengunggah
-                  </span>
-                </button>
-              </div>
-
-              {permUpdateMessage && (
-                <p className="text-xs font-semibold text-ok-600 mt-2 flex items-center gap-1">
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  {permUpdateMessage}
-                </p>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Modal Footer */}
-        <div className="mt-6 pt-4 border-t border-ink-100 flex items-center justify-between">
-          <div className="flex items-center gap-1.5 text-[11px] text-ink-400">
-            <ShieldCheck className="w-3.5 h-3.5 text-ok-600" />
-            <span>Tanda tangan kriptografi aktif &amp; tervalidasi</span>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 bg-ink-900 hover:bg-ink-800 text-white text-xs font-bold rounded-xl transition-colors shadow-card"
-          >
-            Tutup
-          </button>
-        </div>
-
+        <Button variant="primary" onClick={copy} disabled={!link} icon={copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}>
+          {copied ? "Tersalin" : "Salin"}
+        </Button>
       </div>
     </div>
+  );
+}
+
+export const ShareFolderModal: React.FC<ShareFolderModalProps> = ({ folder, file, onClose, onPermissionUpdated }) => {
+  const isFile = !!file;
+  const itemId = file?.id || folder?.id || "";
+  const itemName = file ? file.originalName : folder?.name || "";
+
+  const [links, setLinks] = useState<{ view?: ShareLink; edit?: ShareLink }>({});
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [restrict, setRestrict] = useState(false);
+  const [password, setPassword] = useState("");
+  const [emails, setEmails] = useState("");
+  const [applying, setApplying] = useState(false);
+  const [basePerm, setBasePerm] = useState<FolderPermission>(folder?.permission || FolderPermission.VIEW);
+  const [permStatus, setPermStatus] = useState<{ busy: boolean; error?: string }>({ busy: false });
+
+  const fetchLinks = useCallback(
+    async (pwd?: string, emailList?: string) => {
+      setLoadError(null);
+      try {
+        const pwdHash = pwd ? await sha256(pwd) : undefined;
+        const emailsParam = emailList?.trim() || undefined;
+        const base = window.location.origin + window.location.pathname;
+        let suffix = "";
+        if (pwdHash) suffix += `&pwdHash=${encodeURIComponent(pwdHash)}`;
+        if (emailsParam) suffix += `&emails=${encodeURIComponent(emailsParam)}`;
+
+        if (isFile) {
+          const res = await api.getFileShareLinks(itemId, pwdHash, emailsParam);
+          setLinks({ view: { url: `${base}?fileId=${encodeURIComponent(itemId)}&perm=VIEW&sig=${res.links.viewLink.signature}${suffix}` } });
+        } else {
+          const res = await api.getFolderShareLinks(itemId, pwdHash, emailsParam);
+          setLinks({
+            view: { url: `${base}?folderId=${encodeURIComponent(itemId)}&perm=VIEW&sig=${res.links.viewLink.signature}${suffix}` },
+            edit: res.links.editLink
+              ? { url: `${base}?folderId=${encodeURIComponent(itemId)}&perm=EDIT&sig=${res.links.editLink.signature}${suffix}` }
+              : undefined,
+          });
+        }
+      } catch (err: any) {
+        setLoadError(err?.message || "Tautan tidak dapat dibuat.");
+      }
+    },
+    [isFile, itemId]
+  );
+
+  useEffect(() => {
+    if (itemId) fetchLinks();
+  }, [itemId, fetchLinks]);
+
+  const applyRestrictions = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setApplying(true);
+    setLinks({});
+    await fetchLinks(restrict ? password : undefined, restrict ? emails : undefined);
+    setApplying(false);
+  };
+
+  const changeBasePermission = async (next: FolderPermission) => {
+    if (!folder || next === basePerm) return;
+    setPermStatus({ busy: true });
+    try {
+      const res = await api.updateFolder(folder.id, { permission: next });
+      setBasePerm(next);
+      setPermStatus({ busy: false });
+      onPermissionUpdated?.(res.folder);
+    } catch (err: any) {
+      setPermStatus({ busy: false, error: err?.message || "Izin gagal diubah." });
+    }
+  };
+
+  if (!itemId) return null;
+
+  return (
+    <Dialog open onClose={onClose} size="md">
+      <DialogHeader
+        icon={<Share2 className="w-4 h-4" />}
+        title={isFile ? "Bagikan berkas" : "Bagikan folder"}
+        description={<span className="break-all">{itemName}</span>}
+        onClose={onClose}
+      />
+      <DialogBody className="space-y-3 pb-2">
+        {loadError ? (
+          <p role="alert" className="text-sm text-danger-700 bg-danger-50 rounded-lg px-3 py-2">
+            {loadError}
+          </p>
+        ) : (
+          <>
+            <LinkRow
+              icon={<Eye className="w-4 h-4" />}
+              title="Bisa melihat"
+              description={isFile ? "Penerima bisa melihat pratinjau dan mengunduh berkas ini." : "Penerima bisa melihat dan mengunduh isi folder, tanpa bisa mengubahnya."}
+              link={links.view}
+            />
+            {!isFile && (
+              <LinkRow
+                icon={<Upload className="w-4 h-4" />}
+                title="Bisa mengunggah"
+                description="Penerima juga bisa mengunggah berkas ke folder ini. Bagikan hanya ke orang yang Anda percaya."
+                link={links.edit}
+              />
+            )}
+          </>
+        )}
+
+        <form onSubmit={applyRestrictions} className="rounded-xl border border-ink-200 p-3.5">
+          <label className="flex items-center gap-2.5 text-sm font-semibold text-ink-900">
+            <input type="checkbox" checked={restrict} onChange={(e) => setRestrict(e.target.checked)} className="w-4 h-4 rounded" />
+            Minta kata sandi atau email sebelum dibuka
+          </label>
+          {restrict && (
+            <div className="mt-3 space-y-3">
+              <Field label="Kata sandi" hint="Opsional">
+                <TextInput type="text" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="off" />
+              </Field>
+              <Field label="Email yang diizinkan" hint="Pisahkan dengan koma">
+                <TextInput value={emails} onChange={(e) => setEmails(e.target.value)} placeholder="nama@contoh.id, staf@contoh.id" />
+              </Field>
+              <p className="text-xs text-ink-500 leading-relaxed">
+                Ini hanya pengingat bagi penerima, bukan pengaman: siapa pun yang memegang tautan lengkap tetap bisa membukanya.
+              </p>
+              <Button type="submit" loading={applying}>
+                Buat tautan baru
+              </Button>
+            </div>
+          )}
+        </form>
+
+        {!isFile && folder && (
+          <div className="pt-2">
+            <div className="text-sm font-semibold text-ink-900">Akses standar folder</div>
+            <p className="text-xs text-ink-500 mt-0.5 mb-2.5">Berlaku saat folder dibuka tanpa tautan khusus.</p>
+            <div role="radiogroup" aria-label="Akses standar folder" className="grid grid-cols-2 gap-1 p-1 rounded-xl bg-ink-100">
+              {[
+                { value: FolderPermission.VIEW, label: "Hanya lihat" },
+                { value: FolderPermission.EDIT, label: "Bisa mengunggah" },
+              ].map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={basePerm === opt.value}
+                  disabled={permStatus.busy}
+                  onClick={() => changeBasePermission(opt.value)}
+                  className={cn(
+                    "h-9 rounded-lg text-sm font-semibold transition-colors",
+                    basePerm === opt.value ? "bg-surface text-ink-900 shadow-card" : "text-ink-500 hover:text-ink-900"
+                  )}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            {permStatus.error && <p className="text-xs text-danger-600 mt-2">{permStatus.error}</p>}
+          </div>
+        )}
+      </DialogBody>
+      <DialogFooter>
+        <Button variant="secondary" size="md" onClick={onClose}>
+          Selesai
+        </Button>
+      </DialogFooter>
+    </Dialog>
   );
 };

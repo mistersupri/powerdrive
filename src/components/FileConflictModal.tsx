@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { Dialog } from "../ui/Dialog.tsx";
 import {
   AlertTriangle,
   Layers,
@@ -112,8 +113,7 @@ export const FileConflictModal: React.FC<FileConflictModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-night-950/45 animate-fade-in">
-      <div className="bg-surface w-full max-w-3xl rounded-2xl shadow-float border border-ink-200 overflow-hidden flex flex-col max-h-[90vh]">
+    <Dialog open onClose={handleClose} size="xl" className="max-w-3xl" label="Nama berkas sudah ada">
         {/* Header */}
         <div className="px-6 py-4 border-b border-ink-100 bg-warn-50/70 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -409,7 +409,6 @@ export const FileConflictModal: React.FC<FileConflictModalProps> = ({
             <ArrowRight className="w-4 h-4" />
           </button>
         </div>
-      </div>
-    </div>
+    </Dialog>
   );
 };

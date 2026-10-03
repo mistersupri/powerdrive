@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { Dialog, DialogHeader } from "../ui/Dialog.tsx";
 import {
   Archive,
   Download,
@@ -13,7 +14,6 @@ import {
   Sparkles,
   ChevronRight,
   ArrowDownToLine,
-  Zap,
 } from "lucide-react";
 import { ArchiveSession, FileItem, Folder } from "../types/frontend.ts";
 import { api } from "../services/api.ts";
@@ -28,11 +28,11 @@ interface MultiPartZipModalProps {
 }
 
 const PART_SIZE_PRESETS = [
-  { label: "25 MB / Part", bytes: 25 * 1024 * 1024 },
-  { label: "50 MB / Part (Rekomendasi)", bytes: 50 * 1024 * 1024 },
-  { label: "100 MB / Part", bytes: 100 * 1024 * 1024 },
-  { label: "250 MB / Part", bytes: 250 * 1024 * 1024 },
-  { label: "500 MB / Part", bytes: 500 * 1024 * 1024 },
+  { label: "25 MB per bagian", bytes: 25 * 1024 * 1024 },
+  { label: "50 MB per bagian", bytes: 50 * 1024 * 1024 },
+  { label: "100 MB per bagian", bytes: 100 * 1024 * 1024 },
+  { label: "250 MB per bagian", bytes: 250 * 1024 * 1024 },
+  { label: "500 MB per bagian", bytes: 500 * 1024 * 1024 },
 ];
 
 export const MultiPartZipModal: React.FC<MultiPartZipModalProps> = ({
@@ -135,39 +135,23 @@ export const MultiPartZipModal: React.FC<MultiPartZipModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-night-950/45 animate-fade-in">
-      <div className="bg-surface w-full max-w-2xl rounded-2xl shadow-float border border-ink-200 overflow-hidden flex flex-col max-h-[90vh]">
-        {/* Modal Header */}
-        <div className="px-6 py-4 bg-accent-900 text-accent-fg flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-accent-500/20 border border-accent-400/30 text-accent-300 flex items-center justify-center">
-              <FolderArchive className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <span>Unduh Massal &amp; Multi-Part ZIP Zipping</span>
-              </h3>
-              <p className="text-xs text-accent-200">
-                {selectedFolder
-                  ? `Mengarsipkan isi folder "${selectedFolder.name}"`
-                  : `Mengarsipkan ${totalFilesCount} berkas terpilih (${formatFileSize(totalSizeBytes)})`}
-              </p>
-            </div>
-          </div>
-
-          <button
-            onClick={onClose}
-            className="p-1.5 text-accent-200 hover:text-white rounded-lg hover:bg-surface/10 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+    <Dialog open onClose={onClose} size="lg" label="Unduh sebagai ZIP">
+        <DialogHeader
+          icon={<FolderArchive className="w-4 h-4" />}
+          title="Unduh sebagai ZIP"
+          description={
+            selectedFolder
+              ? `Isi folder "${selectedFolder.name}"`
+              : `${totalFilesCount} berkas terpilih (${formatFileSize(totalSizeBytes)})`
+          }
+          onClose={onClose}
+        />
 
         {/* Modal Body */}
         <div className="p-6 space-y-5 overflow-y-auto flex-1 text-xs">
           {/* Mode Selector */}
           <div className="space-y-2">
-            <label className="text-xs font-bold text-ink-800">Pilih Mode Unduhan Kompresi ZIP:</label>
+            <span className="text-sm font-semibold text-ink-800">Cara mengunduh</span>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {/* Multipart Option */}
               <div
@@ -309,8 +293,7 @@ export const MultiPartZipModal: React.FC<MultiPartZipModalProps> = ({
         {/* Modal Footer Actions */}
         <div className="px-6 py-4 bg-ink-50 border-t border-ink-200 flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="text-[11px] text-ink-500 flex items-center gap-1.5">
-            <Zap className="w-3.5 h-3.5 text-warn-500 shrink-0" />
-            <span>Progress unduhan streaming akan dipantau real-time di pojok kanan bawah.</span>
+                        <span>Kemajuan unduhan tampil di pojok kanan bawah.</span>
           </div>
 
           <div className="flex items-center gap-2 w-full sm:w-auto">
@@ -333,13 +316,12 @@ export const MultiPartZipModal: React.FC<MultiPartZipModalProps> = ({
               )}
               <span>
                 {session?.parts.length === 1
-                  ? "Unduh Arsip ZIP (Real-Time)"
+                  ? "Unduh ZIP"
                   : `Unduh Semua ${session?.parts.length || 0} Part ZIP`}
               </span>
             </button>
           </div>
         </div>
-      </div>
-    </div>
+    </Dialog>
   );
 };

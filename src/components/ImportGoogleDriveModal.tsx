@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { Dialog } from "../ui/Dialog.tsx";
 import {
   Folder,
   FolderOpen,
@@ -254,8 +255,7 @@ export const ImportGoogleDriveModal: React.FC<ImportGoogleDriveModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-night-950/45 animate-fade-in">
-      <div className="bg-surface rounded-2xl shadow-float border border-ink-200 w-full max-w-3xl overflow-hidden flex flex-col max-h-[90vh]">
+    <Dialog open onClose={onClose} size="xl" className="max-w-3xl" label="Impor dari Google Drive">
         {/* Modal Header */}
         <div className="px-6 py-4 border-b border-ink-200 flex items-center justify-between bg-ink-50">
           <div className="flex items-center gap-3">
@@ -591,7 +591,6 @@ export const ImportGoogleDriveModal: React.FC<ImportGoogleDriveModalProps> = ({
             )}
           </button>
         </div>
-      </div>
-    </div>
+    </Dialog>
   );
 };

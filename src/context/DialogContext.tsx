@@ -195,7 +195,7 @@ export const DialogProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       {/* Toasts sit above the mobile bottom nav and pause while hovered. */}
       <div
         aria-live="polite"
-        className="fixed z-[100] left-3 right-3 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] md:left-auto md:right-5 md:bottom-5 md:w-80 flex flex-col gap-2 pointer-events-none"
+        className="fixed z-[100] left-3 right-3 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] md:left-auto md:right-5 md:bottom-auto md:top-[4.25rem] md:w-80 flex flex-col gap-2 pointer-events-none"
       >
         {toasts.map((toast) => (
           <div

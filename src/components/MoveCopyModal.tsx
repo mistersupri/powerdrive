@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { Dialog } from "../ui/Dialog.tsx";
 import { Folder, FileItem } from "../types/frontend.ts";
 import { api } from "../services/api.ts";
 import {
@@ -68,7 +69,10 @@ export const MoveCopyModal: React.FC<MoveCopyModalProps> = ({
   }, []);
 
   // Filter folders by search query
+  // Moving into the folder the files are already in would do nothing.
+  const sourceFolderIds = new Set(files.map((f) => f.folderId));
   const filteredFolders = folders.filter((folder) => {
+    if (mode === "move" && sourceFolderIds.size === 1 && sourceFolderIds.has(folder.id)) return false;
     const term = searchQuery.toLowerCase();
     return (
       folder.name.toLowerCase().includes(term) ||
@@ -114,8 +118,7 @@ export const MoveCopyModal: React.FC<MoveCopyModalProps> = ({
   const selectedFolder = folders.find((f) => f.id === selectedFolderId);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-night-950/45 animate-fade-in" id="move-copy-modal-overlay">
-      <div className="bg-surface rounded-2xl w-full max-w-lg shadow-float border border-ink-100 overflow-hidden flex flex-col max-h-[90vh] animate-scaleUp">
+    <Dialog open onClose={onClose} size="md" className="max-w-lg" label="Pindahkan atau salin berkas">
         {/* Header */}
         <div className="px-6 py-4 border-b border-ink-100 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -289,7 +292,6 @@ export const MoveCopyModal: React.FC<MoveCopyModalProps> = ({
             </button>
           </div>
         </div>
-      </div>
-    </div>
+    </Dialog>
   );
 };

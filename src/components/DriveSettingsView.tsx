@@ -378,14 +378,11 @@ export const DriveSettingsView: React.FC<DriveSettingsViewProps> = ({
     <div className="space-y-6 animate-fade-in">
       
       {/* Header Panel */}
-      <div className="bg-surface rounded-xl border border-ink-200 p-5 shadow-card flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
-          <h2 className="text-lg font-bold text-ink-900 tracking-tight flex items-center gap-2">
-            <Database className="w-5 h-5 text-accent-600" />
-            Pengaturan &amp; Pemantauan Sistem Power Drive
-          </h2>
-          <p className="text-xs text-ink-500 mt-1">
-            Status koneksi Google Drive, antrean sinkronisasi berkas otomatis, hak akses registrasi, dan konfigurasi server email SMTP.
+          <h1 className="text-xl font-bold text-ink-900">Pengaturan</h1>
+          <p className="text-sm text-ink-500 mt-1">
+            Koneksi Google Drive, antrean sinkronisasi, pendaftaran akun, dan email SMTP.
           </p>
         </div>
 
@@ -528,7 +525,7 @@ export const DriveSettingsView: React.FC<DriveSettingsViewProps> = ({
             <div className="p-4 rounded-xl bg-warn-50/80 border border-warn-200 text-xs text-warn-900 space-y-2">
               <div className="font-bold flex items-center gap-1.5 text-warn-800">
                 <Info className="w-4 h-4 text-warn-600" />
-                Aturan &amp; Persyaratan Koneksi Google Drive:
+                Sebelum menghubungkan Google Drive
               </div>
               <ul className="list-disc list-inside space-y-1 text-warn-800 text-[11px]">
                 <li>
@@ -601,31 +598,31 @@ export const DriveSettingsView: React.FC<DriveSettingsViewProps> = ({
             </div>
           </div>
 
-          <div className="p-4 rounded-xl bg-ok-50/60 border border-ok-200 space-y-1">
-            <div className="flex items-center justify-between text-ok-800 text-xs">
+          <div className="p-4 rounded-xl bg-ink-50 border border-ink-200/80 space-y-1">
+            <div className="flex items-center justify-between text-ink-500 text-xs">
               <span className="font-semibold">Tersinkron di Drive</span>
               <CheckCircle2 className="w-4 h-4 text-ok-600" />
             </div>
-            <div className="text-xl font-extrabold text-ok-900">{syncedFiles}</div>
-            <div className="text-[10px] text-ok-700 font-medium">{syncRate}% dari total berkas</div>
+            <div className="text-xl font-extrabold text-ink-900 tabular">{syncedFiles}</div>
+            <div className="text-[11px] text-ink-500">{syncRate}% dari total berkas</div>
           </div>
 
-          <div className="p-4 rounded-xl bg-warn-50/60 border border-warn-200 space-y-1">
-            <div className="flex items-center justify-between text-warn-800 text-xs">
+          <div className="p-4 rounded-xl bg-ink-50 border border-ink-200/80 space-y-1">
+            <div className="flex items-center justify-between text-ink-500 text-xs">
               <span className="font-semibold">Dalam Antrean</span>
               <Clock className="w-4 h-4 text-warn-600" />
             </div>
-            <div className="text-xl font-extrabold text-warn-900">{pendingFiles}</div>
-            <div className="text-[10px] text-warn-700 font-medium">Menunggu giliran upload</div>
+            <div className="text-xl font-extrabold text-ink-900 tabular">{pendingFiles}</div>
+            <div className="text-[11px] text-ink-500">Menunggu giliran upload</div>
           </div>
 
-          <div className="p-4 rounded-xl bg-danger-50/60 border border-danger-200 space-y-1">
-            <div className="flex items-center justify-between text-danger-800 text-xs">
+          <div className="p-4 rounded-xl bg-ink-50 border border-ink-200/80 space-y-1">
+            <div className="flex items-center justify-between text-ink-500 text-xs">
               <span className="font-semibold">Gagal Sinkron</span>
               <AlertCircle className="w-4 h-4 text-danger-600" />
             </div>
-            <div className="text-xl font-extrabold text-danger-900">{failedFiles}</div>
-            <div className="text-[10px] text-danger-700 font-medium">
+            <div className="text-xl font-extrabold text-ink-900 tabular">{failedFiles}</div>
+            <div className="text-[11px] text-ink-500">
               {failedFiles > 0 ? "Perlu dicoba ulang" : "Semua berkas aman"}
             </div>
           </div>
@@ -670,20 +667,20 @@ export const DriveSettingsView: React.FC<DriveSettingsViewProps> = ({
         {/* Background Worker Diagnostics Info */}
         <div className="p-3.5 rounded-xl bg-ink-50 border border-ink-200/80 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
           <div>
-            <span className="text-ink-400 block text-[10px] uppercase font-bold">Status Background Worker</span>
+            <span className="text-ink-500 block text-xs font-semibold">Status Background Worker</span>
             <span className="font-bold text-ink-800 flex items-center gap-1.5 mt-0.5">
               <span className="w-2 h-2 rounded-full bg-ok-500"></span>
               {syncStats?.workerActive !== false ? "Berjalan Normal (Loop 3s)" : "Tidak Aktif"}
             </span>
           </div>
           <div>
-            <span className="text-ink-400 block text-[10px] uppercase font-bold">Sinkronisasi Terakhir</span>
+            <span className="text-ink-500 block text-xs font-semibold">Sinkronisasi Terakhir</span>
             <span className="font-medium text-ink-700 mt-0.5 block">
               {syncStats?.lastTickAt ? new Date(syncStats.lastTickAt).toLocaleTimeString("id-ID") : "Baru saja"}
             </span>
           </div>
           <div>
-            <span className="text-ink-400 block text-[10px] uppercase font-bold">Penyimpanan Lokal Server</span>
+            <span className="text-ink-500 block text-xs font-semibold">Penyimpanan Lokal Server</span>
             <span className="font-mono text-ink-700 text-[11px] mt-0.5 block truncate">
               {storageStats?.storageBasePath || "./storage"}
             </span>

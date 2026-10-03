@@ -551,6 +551,7 @@ export const GoogleDriveExplorer: React.FC<GoogleDriveExplorerProps> = ({
       <FileConflictModal
         isOpen={!!actions.conflicts}
         conflicts={actions.conflicts?.items || []}
+        targetFolderName={currentName}
         onClose={actions.cancelConflicts}
         onResolve={actions.resolveConflicts}
       />

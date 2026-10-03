@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Folder, FileItem, SyncStatus, FolderPermission, GoogleDriveStatus, AuditLog } from "../types/frontend.ts";
 import { api } from "../services/api.ts";
 import { useTransfer } from "../context/TransferContext.tsx";
@@ -58,6 +58,17 @@ export const ItemDetailsDrawer: React.FC<ItemDetailsDrawerProps> = ({
   const { startFileDownload } = useTransfer();
   const [copiedHash, setCopiedHash] = useState(false);
   const [activeTab, setActiveTab] = useState<"metadata" | "history">("metadata");
+
+  // Escape closes the drawer (dialogs opened on top of it consume Escape first).
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeRef.current();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const [activities, setActivities] = useState<AuditLog[]>([]);
   const [isLoadingActivities, setIsLoadingActivities] = useState(false);
   const [activitiesError, setActivitiesError] = useState<string | null>(null);
@@ -336,13 +347,17 @@ export const ItemDetailsDrawer: React.FC<ItemDetailsDrawerProps> = ({
   };
 
   return (
-    <div className="fixed inset-y-0 right-0 z-40 w-full max-w-sm bg-surface border-l border-ink-200 shadow-float flex flex-col animate-slide-in-right font-sans text-ink-900">
+    <div
+      role="dialog"
+      aria-label="Detail item"
+      className="fixed inset-y-0 right-0 z-40 w-full max-w-sm bg-surface border-l border-ink-200 shadow-float flex flex-col animate-slide-in-right font-sans text-ink-900"
+    >
       {/* Header */}
       <div className="p-4 border-b border-ink-100 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-xl bg-accent-50 text-accent-600 flex items-center justify-center">
             {item.type === "folder" ? (
-              <FolderIcon className="w-4 h-4 text-warn-500 fill-warn-400" />
+              <FolderIcon className="w-4 h-4 text-ink-700 fill-ink-200" />
             ) : (
               <FileText className="w-4 h-4 text-accent-600" />
             )}
@@ -405,7 +420,7 @@ export const ItemDetailsDrawer: React.FC<ItemDetailsDrawerProps> = ({
         <div className="flex flex-col items-center justify-center p-5 bg-ink-50 rounded-2xl border border-ink-100 text-center">
           <div className="w-16 h-16 rounded-2xl bg-surface shadow-card border border-ink-200 flex items-center justify-center mb-3 relative">
             {item.type === "folder" ? (
-              <FolderIcon className="w-9 h-9 text-warn-500 fill-warn-400" />
+              <FolderIcon className="w-9 h-9 text-ink-700 fill-ink-200" />
             ) : (
               <FileText className="w-9 h-9 text-accent-600" />
             )}

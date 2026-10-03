@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { Dialog } from "../ui/Dialog.tsx";
 import { MountFileItem } from "../types/frontend.ts";
 import { api } from "../services/api.ts";
 import {
@@ -93,8 +94,7 @@ export const MoveCopyMountModal: React.FC<MoveCopyMountModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-night-950/45 animate-fade-in">
-      <div className="bg-surface rounded-2xl w-full max-w-lg shadow-float border border-ink-100 overflow-hidden flex flex-col max-h-[80vh] animate-scaleUp">
+    <Dialog open onClose={onClose} size="md" className="max-w-lg" label="Pindahkan atau salin item">
         {/* Header */}
         <div className="px-6 py-4 border-b border-ink-100 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -232,7 +232,6 @@ export const MoveCopyMountModal: React.FC<MoveCopyMountModalProps> = ({
             </button>
           </div>
         </div>
-      </div>
-    </div>
+    </Dialog>
   );
 };

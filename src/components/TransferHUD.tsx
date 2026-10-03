@@ -9,7 +9,6 @@ import {
   CheckCircle2,
   AlertCircle,
   Clock,
-  Zap,
   RotateCw,
   Trash2,
   Maximize2,
@@ -83,7 +82,7 @@ export const TransferHUD: React.FC = () => {
       case "ACTIVE":
         return (
           <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-accent-700 bg-accent-50 px-2 py-0.5 rounded-full border border-accent-200 animate-pulse">
-            <Zap className="w-3 h-3 text-accent-600" />
+            <RotateCw className="w-3 h-3 text-ink-500" />
             {transfer.type === "UPLOAD" ? "Mengunggah" : "Mengunduh"} ({transfer.percentage}%)
           </span>
         );
@@ -117,11 +116,11 @@ export const TransferHUD: React.FC = () => {
       <div className="fixed bottom-16 left-3 right-3 sm:left-auto sm:right-4 sm:w-auto md:bottom-4 md:right-4 z-40 animate-fade-in">
         <button
           onClick={() => setIsMinimized(false)}
-          className="flex items-center gap-3 px-4 py-2.5 rounded-full bg-ink-900 text-white shadow-float hover:bg-ink-800 border border-ink-700 transition text-xs font-semibold w-full sm:w-auto justify-between sm:justify-start"
+          className="flex items-center gap-3 px-4 py-2.5 rounded-full bg-night-900 text-white shadow-float hover:bg-night-800 ring-1 ring-white/10 transition text-xs font-semibold w-full sm:w-auto justify-between sm:justify-start"
         >
           <div className="flex items-center gap-2.5">
             {activeCount > 0 ? (
-              <RotateCw className="w-4 h-4 text-accent-400 animate-spin shrink-0" />
+              <RotateCw className="w-4 h-4 text-night-300 animate-spin shrink-0" />
             ) : (
               <CheckCircle2 className="w-4 h-4 text-ok-400 shrink-0" />
             )}
@@ -135,12 +134,12 @@ export const TransferHUD: React.FC = () => {
 
           <div className="flex items-center gap-2 shrink-0">
             {activeItem && activeItem.speedBytesPerSec > 0 && (
-              <span className="text-[11px] text-accent-300 font-mono bg-ink-800 px-2 py-0.5 rounded-full">
+              <span className="text-[11px] text-night-300 font-mono bg-night-800 px-2 py-0.5 rounded-full">
                 {formatSpeed(activeItem.speedBytesPerSec)}
               </span>
             )}
 
-            <ChevronUp className="w-4 h-4 text-ink-400 ml-1" />
+            <ChevronUp className="w-4 h-4 text-night-400 ml-1" />
           </div>
         </button>
       </div>
@@ -148,35 +147,34 @@ export const TransferHUD: React.FC = () => {
   }
 
   return (
-    <div className="fixed bottom-16 left-3 right-3 sm:left-auto sm:right-4 sm:w-96 md:bottom-4 md:right-4 z-40 bg-surface rounded-2xl shadow-float border border-ink-200 overflow-hidden animate-slideUp">
+    <div className="fixed bottom-16 left-3 right-3 sm:left-auto sm:right-4 sm:w-96 md:bottom-4 md:right-4 z-40 bg-surface rounded-2xl shadow-float border border-night-200 overflow-hidden animate-slide-up">
       {/* Header */}
-      <div className="px-4 py-3 bg-ink-900 text-white flex items-center justify-between">
+      <div className="px-4 py-3 bg-night-900 text-white flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-accent-500/20 text-accent-400 flex items-center justify-center">
+          <div className="w-7 h-7 rounded-lg bg-white/10 text-night-300 flex items-center justify-center">
             {activeCount > 0 ? (
-              <Zap className="w-4 h-4 text-accent-400 animate-pulse" />
+              <RotateCw className="w-4 h-4 text-night-300 animate-spin" />
             ) : (
               <HardDrive className="w-4 h-4 text-ok-400" />
             )}
           </div>
           <div>
             <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
-              <span>Pusat Transfer Berkas</span>
+              <span>Transfer berkas</span>
               {activeCount > 0 && (
-                <span className="px-1.5 py-0.2 rounded-full bg-accent-600 text-[10px] font-mono">
+                <span className="px-1.5 py-0.2 rounded-full bg-white/15 text-[10px] font-mono">
                   {activeCount}
                 </span>
               )}
             </h4>
-            <p className="text-[10px] text-ink-400">Real-time Speed &amp; Progress</p>
-          </div>
+                      </div>
         </div>
 
         <div className="flex items-center gap-1">
           {transfers.some((t) => t.status === "COMPLETED" || t.status === "CANCELLED" || t.status === "ERROR") && (
             <button
               onClick={clearCompleted}
-              className="p-1 text-ink-400 hover:text-white rounded transition-colors text-[10px] px-1.5"
+              className="p-1 text-night-400 hover:text-white rounded transition-colors text-[10px] px-1.5"
               title="Bersihkan riwayat selesai"
             >
               Bersihkan
@@ -185,7 +183,7 @@ export const TransferHUD: React.FC = () => {
 
           <button
             onClick={() => setIsMinimized(true)}
-            className="p-1 text-ink-400 hover:text-white rounded transition-colors"
+            className="p-1 text-night-400 hover:text-white rounded transition-colors"
             title="Kecilkan"
           >
             <Minimize2 className="w-3.5 h-3.5" />
@@ -199,7 +197,7 @@ export const TransferHUD: React.FC = () => {
                 setIsMinimized(true);
               }
             }}
-            className="p-1 text-ink-400 hover:text-white rounded transition-colors"
+            className="p-1 text-night-400 hover:text-white rounded transition-colors"
             title="Tutup"
           >
             <X className="w-3.5 h-3.5" />

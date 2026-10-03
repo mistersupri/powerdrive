@@ -1,3 +1,4 @@
+import { Dialog } from "../ui/Dialog.tsx";
 import React, { useState } from "react";
 import {
   UploadCloud,
@@ -8,7 +9,6 @@ import {
   CheckCircle2,
   AlertCircle,
   Clock,
-  Zap,
   HardDrive,
   Layers,
   FileText,
@@ -118,28 +118,28 @@ export const ChunkUploadModal: React.FC<ChunkUploadModalProps> = () => {
   // ==========================================
   if (viewMode === "compact") {
     return (
-      <div className="fixed bottom-16 left-3 right-3 sm:left-auto sm:right-4 sm:w-[420px] md:bottom-4 md:right-4 z-40 bg-surface rounded-2xl shadow-float border border-ink-200 overflow-hidden animate-slideUp">
+      <div className="fixed bottom-16 left-3 right-3 sm:left-auto sm:right-4 sm:w-[420px] md:bottom-4 md:right-4 z-40 bg-surface rounded-2xl shadow-float border border-ink-200 overflow-hidden animate-slide-up">
         {/* Compact Header */}
-        <div className="px-4 py-3 bg-ink-900 text-white flex items-center justify-between gap-2">
+        <div className="px-4 py-3 bg-night-900 text-white flex items-center justify-between gap-2">
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-7 h-7 rounded-lg bg-accent-500/20 text-accent-400 flex items-center justify-center shrink-0">
+            <div className="w-7 h-7 rounded-lg bg-white/10 text-night-300 flex items-center justify-center shrink-0">
               {isAllDone ? (
                 <CheckCircle2 className="w-4 h-4 text-ok-400" />
               ) : errorCount > 0 ? (
                 <AlertCircle className="w-4 h-4 text-danger-400" />
               ) : (
-                <RotateCw className="w-4 h-4 text-accent-400 animate-spin" />
+                <RotateCw className="w-4 h-4 text-night-300 animate-spin" />
               )}
             </div>
             <div className="min-w-0">
               <h4 className="text-xs font-bold text-white flex items-center gap-1.5 truncate">
                 <span>{isAllDone ? "Unggahan Selesai" : `Mengunggah ${tasks.length} Berkas`}</span>
-                <span className="px-1.5 py-0.2 rounded-full bg-accent-600 text-[10px] font-mono shrink-0">
+                <span className="px-1.5 py-0.2 rounded-full bg-white/15 text-[10px] font-mono shrink-0">
                   {overallPercentage.toFixed(0)}%
                 </span>
               </h4>
-              <p className="text-[10px] text-ink-400 truncate">
-                Folder: <span className="text-ink-200 font-medium">{targetFolderName}</span>
+              <p className="text-[10px] text-night-400 truncate">
+                Folder: <span className="text-night-200 font-medium">{targetFolderName}</span>
               </p>
             </div>
           </div>
@@ -148,7 +148,7 @@ export const ChunkUploadModal: React.FC<ChunkUploadModalProps> = () => {
             {/* Expand to Full Detail Modal Button */}
             <button
               onClick={() => setChunkSessionViewMode("full")}
-              className="px-2.5 py-1 text-[11px] font-semibold bg-accent-600 hover:bg-accent-700 text-accent-fg rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+              className="px-2.5 py-1 text-[11px] font-semibold bg-white/15 hover:bg-accent-700 text-accent-fg rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
               title="Buka rincian lengkap chunk upload"
             >
               <Maximize2 className="w-3 h-3" />
@@ -160,7 +160,7 @@ export const ChunkUploadModal: React.FC<ChunkUploadModalProps> = () => {
               isAllPaused ? (
                 <button
                   onClick={resumeAllChunkTasks}
-                  className="p-1 text-ok-400 hover:text-ok-300 hover:bg-ink-800 rounded-lg transition-colors cursor-pointer"
+                  className="p-1 text-ok-400 hover:text-ok-300 hover:bg-night-800 rounded-lg transition-colors cursor-pointer"
                   title="Lanjutkan Semua"
                 >
                   <Play className="w-3.5 h-3.5 fill-current" />
@@ -168,7 +168,7 @@ export const ChunkUploadModal: React.FC<ChunkUploadModalProps> = () => {
               ) : (
                 <button
                   onClick={pauseAllChunkTasks}
-                  className="p-1 text-warn-400 hover:text-warn-300 hover:bg-ink-800 rounded-lg transition-colors cursor-pointer"
+                  className="p-1 text-warn-400 hover:text-warn-300 hover:bg-night-800 rounded-lg transition-colors cursor-pointer"
                   title="Jeda Semua"
                 >
                   <Pause className="w-3.5 h-3.5 fill-current" />
@@ -179,7 +179,7 @@ export const ChunkUploadModal: React.FC<ChunkUploadModalProps> = () => {
             {/* Close or dismiss */}
             <button
               onClick={closeChunkSession}
-              className="p-1 text-ink-400 hover:text-white hover:bg-ink-800 rounded-lg transition-colors cursor-pointer"
+              className="p-1 text-night-400 hover:text-white hover:bg-night-800 rounded-lg transition-colors cursor-pointer"
               title={isAllDone ? "Tutup" : "Sembunyikan / Batal"}
             >
               <X className="w-4 h-4" />
@@ -291,8 +291,7 @@ export const ChunkUploadModal: React.FC<ChunkUploadModalProps> = () => {
   // 2. FULL PROGRESS DIALOG (Modal View)
   // ==========================================
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-night-950/45 animate-fade-in">
-      <div className="bg-surface w-full max-w-2xl rounded-2xl shadow-float border border-ink-200 overflow-hidden flex flex-col max-h-[90vh] animate-scaleUp">
+    <Dialog open onClose={() => setChunkSessionViewMode("compact")} size="lg" label="Unggahan berkas">
         {/* Modal Header */}
         <div className="px-6 py-4 border-b border-ink-100 flex items-center justify-between bg-ink-50/80">
           <div className="flex items-center gap-3 min-w-0">
@@ -376,7 +375,7 @@ export const ChunkUploadModal: React.FC<ChunkUploadModalProps> = () => {
 
             <div className="flex items-center gap-4 text-ink-500 text-[11px]">
               <span className="inline-flex items-center gap-1">
-                <Zap className="w-3.5 h-3.5 text-warn-500" /> {formatSpeed(activeSpeed)}
+                 {formatSpeed(activeSpeed)}
               </span>
               <span className="inline-flex items-center gap-1">
                 <Clock className="w-3.5 h-3.5 text-ink-400" /> {isAllDone ? "Selesai" : "Mengunggah..."}
@@ -546,7 +545,6 @@ export const ChunkUploadModal: React.FC<ChunkUploadModalProps> = () => {
             );
           })}
         </div>
-      </div>
-    </div>
+    </Dialog>
   );
 };

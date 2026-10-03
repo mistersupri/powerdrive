@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { Dialog } from "../ui/Dialog.tsx";
 import { HardDrive, Plus, X, Loader2, FolderPlus, Info } from "lucide-react";
 import { api } from "../services/api.ts";
 import { useDialog } from "../context/DialogContext.tsx";
@@ -53,13 +54,7 @@ export const CreateMountModal: React.FC<CreateMountModalProps> = ({
   const sampleNames = ["usb-storage", "data-nas", "backup-hdd", "media-storage"];
 
   return (
-    <div
-      className="fixed inset-0 z-50 bg-night-950/45 flex items-center justify-center p-4 animate-fade-in"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div className="bg-surface rounded-2xl max-w-md w-full p-6 shadow-float border border-ink-200 text-ink-800 animate-pop-in">
+    <Dialog open onClose={onClose} size="md" className="p-5" label="Tambah penyimpanan server">
         {/* Header */}
         <div className="flex items-center justify-between mb-4 pb-3 border-b border-ink-100">
           <div className="flex items-center gap-3">
@@ -152,7 +147,6 @@ export const CreateMountModal: React.FC<CreateMountModalProps> = ({
             </button>
           </div>
         </form>
-      </div>
-    </div>
+    </Dialog>
   );
 };

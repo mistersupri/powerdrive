@@ -997,24 +997,14 @@ export const TrashView: React.FC<TrashViewProps> = ({ onRefreshAll }) => {
   return (
     <div className="p-4 sm:p-6 max-w-7xl w-full mx-auto space-y-5 animate-fade-in">
       {/* 1. TOP NOTICE & BANNER */}
-      <div className="bg-surface border border-ink-200 rounded-2xl p-4 sm:p-5 shadow-card flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-start sm:items-center gap-3.5">
-          <div className="w-11 h-11 rounded-2xl bg-danger-50 border border-danger-100 flex items-center justify-center text-danger-600 shrink-0 shadow-card">
-            <Trash2 className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-base sm:text-lg font-bold text-ink-900">
-                Sampah &amp; Pemulihan Berkas
-              </h2>
-              <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-danger-100 text-danger-700">
-                {trashedFolders.length + trashedFiles.length} Item
-              </span>
-            </div>
-            <p className="text-xs text-ink-500 mt-0.5">
-              Tampilan hierarki pohon direktori (files tree) dimulai dari folder induk. Berkas dan folder dapat dipulihkan kembali atau dihapus secara permanen ({formatBytes(totalTrashSize)}).
-            </p>
-          </div>
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-bold text-ink-900">
+            Sampah <span className="ml-1 text-base font-semibold text-ink-500 tabular">{trashedFolders.length + trashedFiles.length}</span>
+          </h1>
+          <p className="text-sm text-ink-500 mt-1">
+            Pulihkan item ke tempat asalnya, atau hapus permanen untuk mengosongkan {formatBytes(totalTrashSize)}.
+          </p>
         </div>
 
         {/* Top Actions: Refresh & Empty Trash */}

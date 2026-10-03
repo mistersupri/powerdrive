@@ -310,12 +310,14 @@ export const GoogleDriveLayout: React.FC<GoogleDriveLayoutProps> = ({ folders, g
               <div className="p-6 text-sm text-ink-500">Penyimpanan ini tidak lagi tersedia.</div>
             )}
             {activeTab === "trash" && (
-              <TrashView
-                onRefreshAll={() => {
-                  onRefreshAll();
-                  loadTrashStats();
-                }}
-              />
+              <div className="flex-1 overflow-y-auto pb-24 md:pb-6">
+                <TrashView
+                  onRefreshAll={() => {
+                    onRefreshAll();
+                    loadTrashStats();
+                  }}
+                />
+              </div>
             )}
             {activeTab === "settings" && (
               <div className="flex-1 overflow-y-auto">
