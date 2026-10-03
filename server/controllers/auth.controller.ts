@@ -147,11 +147,7 @@ export class AuthController {
       res.status(200).json({
         success: true,
         message: result.message,
-        data: {
-          resetToken: result.resetToken,
-          expiresAt: result.expiresAt,
-          emailSent: result.emailSent,
-        },
+        data: { message: result.message },
       });
     } catch (error: any) {
       res.status(400).json({

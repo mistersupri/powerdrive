@@ -10,6 +10,12 @@ export class FolderController {
   public static async listFolders(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const { parentId, page, limit, q, search, storageId } = req.query;
+      // Signed-out visitors (share links) may only list inside a specific folder,
+      // never the whole tree or the root of every account.
+      if (!req.user && (parentId === undefined || ["", "root", "null"].includes(String(parentId)))) {
+        res.status(401).json({ success: false, error: "Authentication required. Please log in." });
+        return;
+      }
       const pageNum = Math.max(1, parseInt(String(page || "1"), 10) || 1);
       const limitNum = Math.max(1, Math.min(100, parseInt(String(limit || "20"), 10) || 20));
       const searchQuery = q || search ? String(q || search).trim() : undefined;
@@ -409,6 +415,10 @@ export class FolderController {
           success: false,
           error: "Folder not found",
         });
+        return;
+      }
+      if (req.user?.role !== "ADMIN" && folder.ownerId !== req.user?.id) {
+        res.status(403).json({ success: false, error: "Hanya pemilik folder yang dapat membuat tautan bagikan." });
         return;
       }
 

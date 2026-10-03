@@ -9,7 +9,6 @@ folderRouter.use(authenticate);
 
 // Public / Shared folder verification and read endpoints
 folderRouter.post("/verify-share-token", FolderController.verifyShareToken);
-folderRouter.get("/:id/activities", FolderController.getFolderActivities);
 folderRouter.get("/:id/breadcrumbs", FolderController.getBreadcrumbs);
 folderRouter.get("/:id", FolderController.getFolder);
 folderRouter.get("/", FolderController.listFolders);
@@ -19,6 +18,8 @@ folderRouter.use(requireAuth);
 
 folderRouter.get("/tree/google", FolderController.getGoogleFolderTree);
 folderRouter.get("/:id/share-links", FolderController.getShareLinks);
+// The activity log includes user emails and IP addresses, so it is not public.
+folderRouter.get("/:id/activities", FolderController.getFolderActivities);
 
 // Folder routes (ownership & permission validated in service)
 folderRouter.post("/", FolderController.createFolder);
