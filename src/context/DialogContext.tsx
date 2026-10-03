@@ -1,13 +1,8 @@
-import React, { createContext, useContext, useState, useCallback, ReactNode } from "react";
-import {
-  AlertCircle,
-  CheckCircle2,
-  AlertTriangle,
-  Info,
-  X,
-  Loader2,
-  HelpCircle,
-} from "lucide-react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, ReactNode } from "react";
+import { AlertCircle, AlertTriangle, CheckCircle2, Info, X } from "lucide-react";
+import { Dialog, DialogBody, DialogFooter, DialogHeader } from "../ui/Dialog.tsx";
+import { Button } from "../ui/Button.tsx";
+import { cn } from "../lib/cn.ts";
 
 export type DialogType = "info" | "success" | "warning" | "error";
 
@@ -29,6 +24,7 @@ export interface ToastItem {
   id: string;
   message: string;
   type: DialogType;
+  leaving?: boolean;
 }
 
 interface DialogContextType {
@@ -39,238 +35,206 @@ interface DialogContextType {
 
 const DialogContext = createContext<DialogContextType | undefined>(undefined);
 
+const defaultTitles: Record<DialogType, string> = {
+  error: "Terjadi kesalahan",
+  warning: "Perhatian",
+  success: "Berhasil",
+  info: "Informasi",
+};
+
+const tone: Record<DialogType, { icon: React.ReactNode; chip: string }> = {
+  error: { icon: <AlertCircle className="w-5 h-5" />, chip: "bg-danger-50 text-danger-600" },
+  warning: { icon: <AlertTriangle className="w-5 h-5" />, chip: "bg-warn-50 text-warn-600" },
+  success: { icon: <CheckCircle2 className="w-5 h-5" />, chip: "bg-ok-50 text-ok-600" },
+  info: { icon: <Info className="w-5 h-5" />, chip: "bg-ink-100 text-ink-700" },
+};
+
+const TOAST_MS = 4000;
+
 export const DialogProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  // Alert State
   const [alertState, setAlertState] = useState<{
-    isOpen: boolean;
     title: string;
     message: string;
     type: DialogType;
-    resolve?: () => void;
+    resolve: () => void;
   } | null>(null);
 
-  // Confirm State
   const [confirmState, setConfirmState] = useState<{
-    isOpen: boolean;
     title: string;
     message: string;
     confirmText: string;
     cancelText: string;
     isDanger: boolean;
-    resolve?: (val: boolean) => void;
+    resolve: (val: boolean) => void;
   } | null>(null);
 
-  // Toast State
   const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
 
   const showAlert = useCallback((options: AlertOptions | string): Promise<void> => {
     return new Promise((resolve) => {
-      const opts: AlertOptions =
-        typeof options === "string" ? { message: options, type: "info" } : options;
-
-      setAlertState({
-        isOpen: true,
-        title: opts.title || (opts.type === "error" ? "Terjadi Kesalahan" : opts.type === "warning" ? "Peringatan" : opts.type === "success" ? "Berhasil" : "Informasi"),
-        message: opts.message,
-        type: opts.type || "info",
-        resolve,
-      });
+      const opts: AlertOptions = typeof options === "string" ? { message: options, type: "info" } : options;
+      const type = opts.type || "info";
+      setAlertState({ title: opts.title || defaultTitles[type], message: opts.message, type, resolve });
     });
   }, []);
 
   const closeAlert = () => {
-    if (alertState?.resolve) {
-      alertState.resolve();
-    }
+    alertState?.resolve();
     setAlertState(null);
   };
 
   const showConfirm = useCallback((options: ConfirmOptions): Promise<boolean> => {
     return new Promise((resolve) => {
+      const isDanger = options.isDanger ?? true;
       setConfirmState({
-        isOpen: true,
-        title: options.title || "Konfirmasi Tindakan",
+        title: options.title || "Lanjutkan tindakan ini?",
         message: options.message,
-        confirmText: options.confirmText || (options.isDanger ? "Ya, Hapus" : "Ya, Lanjutkan"),
+        confirmText: options.confirmText || (isDanger ? "Hapus" : "Lanjutkan"),
         cancelText: options.cancelText || "Batal",
-        isDanger: options.isDanger ?? true,
+        isDanger,
         resolve,
       });
     });
   }, []);
 
   const handleConfirmChoice = (confirmed: boolean) => {
-    if (confirmState?.resolve) {
-      confirmState.resolve(confirmed);
-    }
+    confirmState?.resolve(confirmed);
     setConfirmState(null);
   };
 
-  const showToast = useCallback((message: string, type: DialogType = "info") => {
-    const id = Math.random().toString(36).substring(2, 9);
-    setToasts((prev) => [...prev, { id, message, type }]);
-
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 4000);
+  const removeToast = useCallback((id: string) => {
+    const timer = timers.current.get(id);
+    if (timer) clearTimeout(timer);
+    timers.current.delete(id);
+    // Mark as leaving first so the exit fade can play, then drop it.
+    setToasts((prev) => prev.map((t) => (t.id === id ? { ...t, leaving: true } : t)));
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 150);
   }, []);
 
-  const removeToast = (id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
-  };
+  const scheduleRemoval = useCallback(
+    (id: string, ms = TOAST_MS) => {
+      timers.current.set(
+        id,
+        setTimeout(() => removeToast(id), ms)
+      );
+    },
+    [removeToast]
+  );
+
+  const showToast = useCallback(
+    (message: string, type: DialogType = "info") => {
+      const id = Math.random().toString(36).slice(2, 9);
+      setToasts((prev) => [...prev.slice(-3), { id, message, type }]);
+      scheduleRemoval(id);
+    },
+    [scheduleRemoval]
+  );
+
+  useEffect(() => {
+    const map = timers.current;
+    return () => map.forEach((t) => clearTimeout(t));
+  }, []);
+
+  const value = useMemo(() => ({ showAlert, showConfirm, showToast }), [showAlert, showConfirm, showToast]);
 
   return (
-    <DialogContext.Provider value={{ showAlert, showConfirm, showToast }}>
+    <DialogContext.Provider value={value}>
       {children}
 
-      {/* 1. ALERT POPUP MODAL */}
-      {alertState?.isOpen && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 animate-scale-up">
-            <div className="flex items-start gap-3">
-              <div
-                className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                  alertState.type === "error"
-                    ? "bg-rose-50 text-rose-600 border border-rose-100"
-                    : alertState.type === "warning"
-                    ? "bg-amber-50 text-amber-600 border border-amber-100"
-                    : alertState.type === "success"
-                    ? "bg-emerald-50 text-emerald-600 border border-emerald-100"
-                    : "bg-blue-50 text-blue-600 border border-blue-100"
-                }`}
-              >
-                {alertState.type === "error" ? (
-                  <AlertCircle className="w-5 h-5" />
-                ) : alertState.type === "warning" ? (
-                  <AlertTriangle className="w-5 h-5" />
-                ) : alertState.type === "success" ? (
-                  <CheckCircle2 className="w-5 h-5" />
-                ) : (
-                  <Info className="w-5 h-5" />
-                )}
-              </div>
-              <div className="flex-1 min-w-0">
-                <h4 className="text-sm font-bold text-slate-900 leading-tight">
-                  {alertState.title}
-                </h4>
-                <p className="text-xs text-slate-600 mt-1.5 leading-relaxed break-words whitespace-pre-wrap">
-                  {alertState.message}
-                </p>
-              </div>
-            </div>
+      <Dialog open={!!alertState} onClose={closeAlert} size="sm" zIndex={90}>
+        {alertState && (
+          <>
+            <DialogHeader
+              title={alertState.title}
+              icon={<span className={cn("w-9 h-9 rounded-xl flex items-center justify-center", tone[alertState.type].chip)}>{tone[alertState.type].icon}</span>}
+            />
+            <DialogBody>
+              <p className="text-sm text-ink-600 leading-relaxed break-words whitespace-pre-wrap">{alertState.message}</p>
+            </DialogBody>
+            <DialogFooter>
+              <Button variant="primary" size="md" onClick={closeAlert} data-autofocus>
+                Mengerti
+              </Button>
+            </DialogFooter>
+          </>
+        )}
+      </Dialog>
 
-            <div className="mt-5 pt-3 border-t border-slate-100 flex justify-end">
-              <button
-                onClick={closeAlert}
-                autoFocus
-                className={`px-4 py-2 text-xs font-bold rounded-xl text-white shadow-xs transition-all active:scale-95 ${
-                  alertState.type === "error"
-                    ? "bg-rose-600 hover:bg-rose-500 shadow-rose-500/20"
-                    : alertState.type === "warning"
-                    ? "bg-amber-600 hover:bg-amber-500 shadow-amber-500/20"
-                    : alertState.type === "success"
-                    ? "bg-emerald-600 hover:bg-emerald-500 shadow-emerald-500/20"
-                    : "bg-blue-600 hover:bg-blue-500 shadow-blue-500/20"
-                }`}
-              >
-                Tutup
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 2. CONFIRMATION DIALOG MODAL */}
-      {confirmState?.isOpen && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 animate-scale-up">
-            <div className="flex items-start gap-3">
-              <div
-                className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                  confirmState.isDanger
-                    ? "bg-rose-50 text-rose-600 border border-rose-100"
-                    : "bg-blue-50 text-blue-600 border border-blue-100"
-                }`}
-              >
-                {confirmState.isDanger ? (
-                  <AlertCircle className="w-5 h-5" />
-                ) : (
-                  <HelpCircle className="w-5 h-5" />
-                )}
-              </div>
-              <div className="flex-1 min-w-0">
-                <h4 className="text-sm font-bold text-slate-900 leading-tight">
-                  {confirmState.title}
-                </h4>
-                <p className="text-xs text-slate-600 mt-1.5 leading-relaxed break-words whitespace-pre-wrap">
-                  {confirmState.message}
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-5 pt-3 border-t border-slate-100 flex justify-end items-center gap-2">
-              <button
-                type="button"
-                onClick={() => handleConfirmChoice(false)}
-                className="px-3.5 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-colors"
-              >
+      <Dialog open={!!confirmState} onClose={() => handleConfirmChoice(false)} size="sm" zIndex={90}>
+        {confirmState && (
+          <>
+            <DialogHeader
+              title={confirmState.title}
+              icon={
+                confirmState.isDanger ? (
+                  <span className={cn("w-9 h-9 rounded-xl flex items-center justify-center", tone.error.chip)}>{tone.error.icon}</span>
+                ) : undefined
+              }
+            />
+            <DialogBody>
+              <p className="text-sm text-ink-600 leading-relaxed break-words whitespace-pre-wrap">{confirmState.message}</p>
+            </DialogBody>
+            <DialogFooter>
+              <Button variant="ghost" size="md" onClick={() => handleConfirmChoice(false)}>
                 {confirmState.cancelText}
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
+                variant={confirmState.isDanger ? "danger" : "primary"}
+                size="md"
                 onClick={() => handleConfirmChoice(true)}
-                autoFocus
-                className={`px-4 py-2 text-xs font-bold rounded-xl text-white shadow-xs transition-all active:scale-95 ${
-                  confirmState.isDanger
-                    ? "bg-rose-600 hover:bg-rose-500 shadow-rose-500/20"
-                    : "bg-blue-600 hover:bg-blue-500 shadow-blue-500/20"
-                }`}
+                data-autofocus
               >
                 {confirmState.confirmText}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+              </Button>
+            </DialogFooter>
+          </>
+        )}
+      </Dialog>
 
-      {/* 3. TOAST NOTIFICATIONS */}
-      {toasts.length > 0 && (
-        <div className="fixed bottom-5 right-5 z-[99999] flex flex-col gap-2 max-w-xs w-full pointer-events-none">
-          {toasts.map((toast) => (
-            <div
-              key={toast.id}
-              className={`pointer-events-auto p-3.5 rounded-xl shadow-xl border text-xs flex items-center justify-between gap-3 animate-slide-up ${
-                toast.type === "success"
-                  ? "bg-emerald-900 text-emerald-100 border-emerald-800"
-                  : toast.type === "error"
-                  ? "bg-rose-900 text-rose-100 border-rose-800"
-                  : toast.type === "warning"
-                  ? "bg-amber-900 text-amber-100 border-amber-800"
-                  : "bg-slate-900 text-slate-100 border-slate-800"
-              }`}
+      {/* Toasts sit above the mobile bottom nav and pause while hovered. */}
+      <div
+        aria-live="polite"
+        className="fixed z-[100] left-3 right-3 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] md:left-auto md:right-5 md:bottom-5 md:w-80 flex flex-col gap-2 pointer-events-none"
+      >
+        {toasts.map((toast) => (
+          <div
+            key={toast.id}
+            role={toast.type === "error" ? "alert" : "status"}
+            onMouseEnter={() => {
+              const timer = timers.current.get(toast.id);
+              if (timer) clearTimeout(timer);
+            }}
+            onMouseLeave={() => scheduleRemoval(toast.id, 1500)}
+            className={cn(
+              "pointer-events-auto flex items-start gap-2.5 pl-3 pr-1.5 py-2.5 rounded-xl bg-night-900 text-night-50 ring-1 ring-white/10 shadow-float text-sm",
+              "transition-opacity duration-150",
+              toast.leaving ? "opacity-0" : "animate-slide-up"
+            )}
+          >
+            <span
+              className={cn(
+                "mt-0.5 shrink-0",
+                toast.type === "success" && "text-ok-400",
+                toast.type === "error" && "text-danger-400",
+                toast.type === "warning" && "text-warn-400",
+                toast.type === "info" && "text-night-300"
+              )}
             >
-              <div className="flex items-center gap-2.5">
-                {toast.type === "success" ? (
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                ) : toast.type === "error" ? (
-                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
-                ) : toast.type === "warning" ? (
-                  <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
-                ) : (
-                  <Info className="w-4 h-4 text-blue-400 shrink-0" />
-                )}
-                <span className="font-medium leading-snug">{toast.message}</span>
-              </div>
-              <button
-                onClick={() => removeToast(toast.id)}
-                className="opacity-70 hover:opacity-100 p-0.5"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
+              {React.cloneElement(tone[toast.type].icon as React.ReactElement<{ className?: string }>, { className: "w-4 h-4" })}
+            </span>
+            <span className="flex-1 font-medium leading-snug break-words">{toast.message}</span>
+            <button
+              type="button"
+              aria-label="Tutup notifikasi"
+              onClick={() => removeToast(toast.id)}
+              className="p-1 rounded-md text-night-400 hover:text-night-50 hover:bg-night-800"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        ))}
+      </div>
     </DialogContext.Provider>
   );
 };

@@ -127,8 +127,17 @@ export interface FileItem {
     id: string;
     name: string;
     targetFolderPath: string;
+    syncToGoogleDrive?: boolean;
+    googleDriveFolderId?: string | null;
   };
   syncJobs?: SyncJob[];
+  /** Present when the file lives on a mounted server drive instead of managed storage. */
+  mountSource?: {
+    mountId: string;
+    relativePath: string;
+    viewUrl: string;
+    downloadUrl: string;
+  };
 }
 
 export interface SyncJob {
@@ -250,6 +259,8 @@ export interface MountDrive {
   createdAt: string;
   updatedAt: string;
   isWritable: boolean;
+  /** Emails allowed to open this mount; empty means every signed-in user. */
+  allowedEmails?: string[];
   isIndexing?: boolean;
   indexingState?: IndexingState;
 }

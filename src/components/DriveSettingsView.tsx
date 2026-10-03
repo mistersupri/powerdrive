@@ -378,20 +378,20 @@ export const DriveSettingsView: React.FC<DriveSettingsViewProps> = ({
     <div className="space-y-6 animate-fade-in">
       
       {/* Header Panel */}
-      <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="bg-surface rounded-xl border border-ink-200 p-5 shadow-card flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-lg font-bold text-slate-900 tracking-tight flex items-center gap-2">
-            <Database className="w-5 h-5 text-indigo-600" />
+          <h2 className="text-lg font-bold text-ink-900 tracking-tight flex items-center gap-2">
+            <Database className="w-5 h-5 text-accent-600" />
             Pengaturan &amp; Pemantauan Sistem Power Drive
           </h2>
-          <p className="text-xs text-slate-500 mt-1">
+          <p className="text-xs text-ink-500 mt-1">
             Status koneksi Google Drive, antrean sinkronisasi berkas otomatis, hak akses registrasi, dan konfigurasi server email SMTP.
           </p>
         </div>
 
         <button
           onClick={onRefreshAll}
-          className="px-3.5 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-all flex items-center gap-1.5 self-start sm:self-auto shadow-2xs cursor-pointer"
+          className="px-3.5 py-2 text-xs font-semibold text-ink-700 bg-ink-100 hover:bg-ink-200 rounded-lg transition flex items-center gap-1.5 self-start sm:self-auto shadow-card cursor-pointer"
         >
           <RefreshCw className="w-3.5 h-3.5" />
           <span>Segarkan Data</span>
@@ -401,29 +401,29 @@ export const DriveSettingsView: React.FC<DriveSettingsViewProps> = ({
       {/* ========================================================================= */}
       {/* 0. INTEGRASI AKUN GOOGLE DRIVE DENGAN VALIDASI EMAIL SAMA */}
       {/* ========================================================================= */}
-      <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs space-y-5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
+      <div className="bg-surface rounded-xl border border-ink-200 p-5 shadow-card space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-ink-100">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shadow-xs">
+            <div className="w-10 h-10 rounded-xl bg-accent-50 text-accent-600 flex items-center justify-center shadow-card">
               <Globe className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <h3 className="text-sm font-bold text-ink-900 flex items-center gap-2">
                 Integrasi Akun Google Drive
                 {googleStatus?.isConnected ? (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                    <Check className="w-3 h-3 text-emerald-600" />
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-ok-50 text-ok-700 border border-ok-200">
+                    <Check className="w-3 h-3 text-ok-600" />
                     Terhubung
                   </span>
                 ) : (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-50 text-amber-700 border border-amber-200">
-                    <AlertTriangle className="w-3 h-3 text-amber-600" />
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-warn-50 text-warn-700 border border-warn-200">
+                    <AlertTriangle className="w-3 h-3 text-warn-600" />
                     Belum Terkoneksi
                   </span>
                 )}
               </h3>
-              <p className="text-xs text-slate-500">
-                Koneksikan akun Google Drive Anda dengan validasi email yang sama (<span className="font-mono text-slate-800 font-semibold">{user?.email || "Email Akun"}</span>) untuk mengaktifkan sinkronisasi berkas.
+              <p className="text-xs text-ink-500">
+                Koneksikan akun Google Drive Anda dengan validasi email yang sama (<span className="font-mono text-ink-800 font-semibold">{user?.email || "Email Akun"}</span>) untuk mengaktifkan sinkronisasi berkas.
               </p>
             </div>
           </div>
@@ -434,7 +434,7 @@ export const DriveSettingsView: React.FC<DriveSettingsViewProps> = ({
                 type="button"
                 onClick={handleDisconnectGoogle}
                 disabled={isDisconnectingGoogle}
-                className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                className="px-3 py-1.5 bg-danger-50 hover:bg-danger-100 text-danger-700 border border-danger-200 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
               >
                 {isDisconnectingGoogle ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Unlink className="w-3.5 h-3.5" />}
                 <span>Putuskan Sambungan</span>
@@ -444,7 +444,7 @@ export const DriveSettingsView: React.FC<DriveSettingsViewProps> = ({
                 type="button"
                 onClick={handleConnectGoogleWithOAuth}
                 disabled={isConnectingGoogle}
-                className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all flex items-center gap-2 shadow-xs cursor-pointer disabled:opacity-50"
+                className="px-3.5 py-2 bg-accent-600 hover:bg-accent-700 text-accent-fg rounded-lg text-xs font-bold transition flex items-center gap-2 shadow-card cursor-pointer disabled:opacity-50"
               >
                 {isConnectingGoogle ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
@@ -476,15 +476,15 @@ export const DriveSettingsView: React.FC<DriveSettingsViewProps> = ({
 
         {/* Feedback alerts */}
         {googleSuccess && (
-          <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs font-medium flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+          <div className="p-3.5 bg-ok-50 border border-ok-200 rounded-xl text-ok-800 text-xs font-medium flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-ok-600 shrink-0" />
             <span>{googleSuccess}</span>
           </div>
         )}
 
         {googleError && (
-          <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs font-medium flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+          <div className="p-3.5 bg-danger-50 border border-danger-200 rounded-xl text-danger-800 text-xs font-medium flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-danger-600 shrink-0" />
             <span>{googleError}</span>
           </div>
         )}
@@ -492,45 +492,45 @@ export const DriveSettingsView: React.FC<DriveSettingsViewProps> = ({
         {/* Connection status content */}
         {googleStatus?.isConnected ? (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
-              <div className="text-[11px] font-semibold text-slate-500">Email Google Terhubung</div>
-              <div className="text-sm font-bold text-slate-900 truncate font-mono">
+            <div className="p-4 rounded-xl bg-ink-50 border border-ink-200 space-y-1">
+              <div className="text-[11px] font-semibold text-ink-500">Email Google Terhubung</div>
+              <div className="text-sm font-bold text-ink-900 truncate font-mono">
                 {googleStatus?.connection?.accountEmail || user?.email}
               </div>
-              <div className="text-[10px] text-emerald-600 font-medium flex items-center gap-1">
+              <div className="text-[10px] text-ok-600 font-medium flex items-center gap-1">
                 <Check className="w-3 h-3" /> Validasi email cocok dengan akun lokal
               </div>
             </div>
 
-            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
-              <div className="text-[11px] font-semibold text-slate-500">Nama Akun / Profil</div>
-              <div className="text-sm font-bold text-slate-900 truncate">
+            <div className="p-4 rounded-xl bg-ink-50 border border-ink-200 space-y-1">
+              <div className="text-[11px] font-semibold text-ink-500">Nama Akun / Profil</div>
+              <div className="text-sm font-bold text-ink-900 truncate">
                 {googleStatus?.connection?.accountName || user?.name || "Pengguna Google"}
               </div>
-              <div className="text-[10px] text-slate-500">
+              <div className="text-[10px] text-ink-500">
                 Akses Google Drive API aktif
               </div>
             </div>
 
-            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
-              <div className="text-[11px] font-semibold text-slate-500">Token &amp; Refresh Token</div>
-              <div className="text-xs font-bold text-emerald-700 flex items-center gap-1">
-                <ShieldCheck className="w-4 h-4 text-emerald-600" />
+            <div className="p-4 rounded-xl bg-ink-50 border border-ink-200 space-y-1">
+              <div className="text-[11px] font-semibold text-ink-500">Token &amp; Refresh Token</div>
+              <div className="text-xs font-bold text-ok-700 flex items-center gap-1">
+                <ShieldCheck className="w-4 h-4 text-ok-600" />
                 Tersimpan di Database
               </div>
-              <div className="text-[10px] text-slate-500">
+              <div className="text-[10px] text-ink-500">
                 Siap digunakan untuk sinkronisasi otomatis
               </div>
             </div>
           </div>
         ) : (
           <div className="space-y-3">
-            <div className="p-4 rounded-xl bg-amber-50/80 border border-amber-200 text-xs text-amber-900 space-y-2">
-              <div className="font-bold flex items-center gap-1.5 text-amber-800">
-                <Info className="w-4 h-4 text-amber-600" />
+            <div className="p-4 rounded-xl bg-warn-50/80 border border-warn-200 text-xs text-warn-900 space-y-2">
+              <div className="font-bold flex items-center gap-1.5 text-warn-800">
+                <Info className="w-4 h-4 text-warn-600" />
                 Aturan &amp; Persyaratan Koneksi Google Drive:
               </div>
-              <ul className="list-disc list-inside space-y-1 text-amber-800 text-[11px]">
+              <ul className="list-disc list-inside space-y-1 text-warn-800 text-[11px]">
                 <li>
                   Akun Google yang Anda hubungkan <strong>harus memiliki alamat email yang sama persis</strong> dengan email akun Anda saat ini (<span className="font-mono font-bold">{user?.email}</span>).
                 </li>
@@ -549,21 +549,21 @@ export const DriveSettingsView: React.FC<DriveSettingsViewProps> = ({
       {/* ========================================================================= */}
       {/* 1. DETAIL SINKRONISASI GOOGLE DRIVE (BACKGROUND SYNC ENGINE) */}
       {/* ========================================================================= */}
-      <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs space-y-5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
+      <div className="bg-surface rounded-xl border border-ink-200 p-5 shadow-card space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-ink-100">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shadow-xs">
+            <div className="w-10 h-10 rounded-xl bg-accent-50 text-accent-600 flex items-center justify-center shadow-card">
               <Activity className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <h3 className="text-sm font-bold text-ink-900 flex items-center gap-2">
                 Detail Sinkronisasi Google Drive
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-ok-50 text-ok-700 border border-ok-200">
+                  <span className="w-1.5 h-1.5 rounded-full bg-ok-500 animate-pulse"></span>
                   Layanan Aktif
                 </span>
               </h3>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-ink-400">
                 Otomatisasi pengunggahan berkas lokal ke Google Drive di latar belakang (Background Sync Engine)
               </p>
             </div>
@@ -573,7 +573,7 @@ export const DriveSettingsView: React.FC<DriveSettingsViewProps> = ({
             <button
               onClick={handleRetryFailed}
               disabled={isRetryingAll}
-              className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              className="px-3.5 py-2 bg-danger-50 hover:bg-danger-100 text-danger-700 border border-danger-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
             >
               <RotateCw className={`w-3.5 h-3.5 ${isRetryingAll ? "animate-spin" : ""}`} />
               <span>Coba Sinkronisasi Ulang ({failedFiles} Berkas Gagal)</span>
@@ -582,50 +582,50 @@ export const DriveSettingsView: React.FC<DriveSettingsViewProps> = ({
         </div>
 
         {retryMessage && (
-          <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-800 text-xs font-medium flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0" />
+          <div className="p-3 bg-accent-50 border border-accent-200 rounded-xl text-accent-800 text-xs font-medium flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-accent-600 shrink-0" />
             <span>{retryMessage}</span>
           </div>
         )}
 
         {/* Sync Metric Cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
-          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1">
-            <div className="flex items-center justify-between text-slate-500 text-xs">
+          <div className="p-4 rounded-xl bg-ink-50 border border-ink-200/80 space-y-1">
+            <div className="flex items-center justify-between text-ink-500 text-xs">
               <span className="font-semibold">Total Berkas</span>
-              <Database className="w-4 h-4 text-slate-400" />
+              <Database className="w-4 h-4 text-ink-400" />
             </div>
-            <div className="text-xl font-extrabold text-slate-900">{totalFiles}</div>
-            <div className="text-[10px] text-slate-400 font-mono">
+            <div className="text-xl font-extrabold text-ink-900">{totalFiles}</div>
+            <div className="text-[10px] text-ink-400 font-mono">
               {formatBytes(storageStats?.totalSizeBytes || 0)}
             </div>
           </div>
 
-          <div className="p-4 rounded-xl bg-emerald-50/60 border border-emerald-200 space-y-1">
-            <div className="flex items-center justify-between text-emerald-800 text-xs">
+          <div className="p-4 rounded-xl bg-ok-50/60 border border-ok-200 space-y-1">
+            <div className="flex items-center justify-between text-ok-800 text-xs">
               <span className="font-semibold">Tersinkron di Drive</span>
-              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              <CheckCircle2 className="w-4 h-4 text-ok-600" />
             </div>
-            <div className="text-xl font-extrabold text-emerald-900">{syncedFiles}</div>
-            <div className="text-[10px] text-emerald-700 font-medium">{syncRate}% dari total berkas</div>
+            <div className="text-xl font-extrabold text-ok-900">{syncedFiles}</div>
+            <div className="text-[10px] text-ok-700 font-medium">{syncRate}% dari total berkas</div>
           </div>
 
-          <div className="p-4 rounded-xl bg-amber-50/60 border border-amber-200 space-y-1">
-            <div className="flex items-center justify-between text-amber-800 text-xs">
+          <div className="p-4 rounded-xl bg-warn-50/60 border border-warn-200 space-y-1">
+            <div className="flex items-center justify-between text-warn-800 text-xs">
               <span className="font-semibold">Dalam Antrean</span>
-              <Clock className="w-4 h-4 text-amber-600" />
+              <Clock className="w-4 h-4 text-warn-600" />
             </div>
-            <div className="text-xl font-extrabold text-amber-900">{pendingFiles}</div>
-            <div className="text-[10px] text-amber-700 font-medium">Menunggu giliran upload</div>
+            <div className="text-xl font-extrabold text-warn-900">{pendingFiles}</div>
+            <div className="text-[10px] text-warn-700 font-medium">Menunggu giliran upload</div>
           </div>
 
-          <div className="p-4 rounded-xl bg-rose-50/60 border border-rose-200 space-y-1">
-            <div className="flex items-center justify-between text-rose-800 text-xs">
+          <div className="p-4 rounded-xl bg-danger-50/60 border border-danger-200 space-y-1">
+            <div className="flex items-center justify-between text-danger-800 text-xs">
               <span className="font-semibold">Gagal Sinkron</span>
-              <AlertCircle className="w-4 h-4 text-rose-600" />
+              <AlertCircle className="w-4 h-4 text-danger-600" />
             </div>
-            <div className="text-xl font-extrabold text-rose-900">{failedFiles}</div>
-            <div className="text-[10px] text-rose-700 font-medium">
+            <div className="text-xl font-extrabold text-danger-900">{failedFiles}</div>
+            <div className="text-[10px] text-danger-700 font-medium">
               {failedFiles > 0 ? "Perlu dicoba ulang" : "Semua berkas aman"}
             </div>
           </div>
@@ -634,57 +634,57 @@ export const DriveSettingsView: React.FC<DriveSettingsViewProps> = ({
         {/* Sync Progress Bar */}
         <div className="space-y-2 pt-1">
           <div className="flex items-center justify-between text-xs">
-            <span className="font-semibold text-slate-700">Rasio Kelengkapan Sinkronisasi Google Drive</span>
-            <span className="font-bold text-slate-900">{syncRate}% Selesai</span>
+            <span className="font-semibold text-ink-700">Rasio Kelengkapan Sinkronisasi Google Drive</span>
+            <span className="font-bold text-ink-900">{syncRate}% Selesai</span>
           </div>
-          <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden flex">
+          <div className="w-full h-2.5 bg-ink-100 rounded-full overflow-hidden flex">
             <div
-              className="bg-emerald-500 h-full transition-all duration-500"
+              className="bg-ok-500 h-full transition duration-500"
               style={{ width: `${(syncedFiles / (totalFiles || 1)) * 100}%` }}
               title={`Tersinkron: ${syncedFiles}`}
             />
             <div
-              className="bg-amber-400 h-full transition-all duration-500"
+              className="bg-warn-400 h-full transition duration-500"
               style={{ width: `${(pendingFiles / (totalFiles || 1)) * 100}%` }}
               title={`Dalam antrean: ${pendingFiles}`}
             />
             <div
-              className="bg-rose-500 h-full transition-all duration-500"
+              className="bg-danger-500 h-full transition duration-500"
               style={{ width: `${(failedFiles / (totalFiles || 1)) * 100}%` }}
               title={`Gagal: ${failedFiles}`}
             />
           </div>
-          <div className="flex flex-wrap items-center gap-4 text-[11px] text-slate-500 pt-0.5">
+          <div className="flex flex-wrap items-center gap-4 text-[11px] text-ink-500 pt-0.5">
             <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> Tersinkron ({syncedFiles})
+              <span className="w-2.5 h-2.5 rounded-full bg-ok-500"></span> Tersinkron ({syncedFiles})
             </span>
             <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-amber-400"></span> Dalam Antrean ({pendingFiles})
+              <span className="w-2.5 h-2.5 rounded-full bg-warn-400"></span> Dalam Antrean ({pendingFiles})
             </span>
             <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span> Gagal ({failedFiles})
+              <span className="w-2.5 h-2.5 rounded-full bg-danger-500"></span> Gagal ({failedFiles})
             </span>
           </div>
         </div>
 
         {/* Background Worker Diagnostics Info */}
-        <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+        <div className="p-3.5 rounded-xl bg-ink-50 border border-ink-200/80 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
           <div>
-            <span className="text-slate-400 block text-[10px] uppercase font-bold">Status Background Worker</span>
-            <span className="font-bold text-slate-800 flex items-center gap-1.5 mt-0.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+            <span className="text-ink-400 block text-[10px] uppercase font-bold">Status Background Worker</span>
+            <span className="font-bold text-ink-800 flex items-center gap-1.5 mt-0.5">
+              <span className="w-2 h-2 rounded-full bg-ok-500"></span>
               {syncStats?.workerActive !== false ? "Berjalan Normal (Loop 3s)" : "Tidak Aktif"}
             </span>
           </div>
           <div>
-            <span className="text-slate-400 block text-[10px] uppercase font-bold">Sinkronisasi Terakhir</span>
-            <span className="font-medium text-slate-700 mt-0.5 block">
+            <span className="text-ink-400 block text-[10px] uppercase font-bold">Sinkronisasi Terakhir</span>
+            <span className="font-medium text-ink-700 mt-0.5 block">
               {syncStats?.lastTickAt ? new Date(syncStats.lastTickAt).toLocaleTimeString("id-ID") : "Baru saja"}
             </span>
           </div>
           <div>
-            <span className="text-slate-400 block text-[10px] uppercase font-bold">Penyimpanan Lokal Server</span>
-            <span className="font-mono text-slate-700 text-[11px] mt-0.5 block truncate">
+            <span className="text-ink-400 block text-[10px] uppercase font-bold">Penyimpanan Lokal Server</span>
+            <span className="font-mono text-ink-700 text-[11px] mt-0.5 block truncate">
               {storageStats?.storageBasePath || "./storage"}
             </span>
           </div>
@@ -694,48 +694,48 @@ export const DriveSettingsView: React.FC<DriveSettingsViewProps> = ({
       {/* ========================================================================= */}
       {/* 2. PENGATURAN ADMINISTRATOR: REGISTRASI & HAK AKSES PENGGUNA */}
       {/* ========================================================================= */}
-      <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs space-y-5">
-        <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
-          <div className="w-10 h-10 rounded-xl bg-violet-50 text-violet-600 flex items-center justify-center">
+      <div className="bg-surface rounded-xl border border-ink-200 p-5 shadow-card space-y-5">
+        <div className="flex items-center gap-3 pb-3 border-b border-ink-100">
+          <div className="w-10 h-10 rounded-xl bg-accent-50 text-accent-600 flex items-center justify-center">
             <ShieldCheck className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+            <h3 className="text-sm font-bold text-ink-900 flex items-center gap-2">
               Pengaturan Akses Pengguna &amp; Registrasi Akun
-              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-violet-50 text-violet-700 border border-violet-200">
+              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-accent-50 text-accent-700 border border-accent-200">
                 Administrator Control
               </span>
             </h3>
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-ink-400">
               Kelola ketersediaan form pendaftaran akun baru bagi pengguna umum
             </p>
           </div>
         </div>
 
         {settingMessage && (
-          <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-800 text-xs font-medium flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0" />
+          <div className="p-3 bg-accent-50 border border-accent-200 rounded-xl text-accent-800 text-xs font-medium flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-accent-600 shrink-0" />
             <span>{settingMessage}</span>
           </div>
         )}
 
-        <div className="p-4 rounded-xl bg-slate-50/80 border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="p-4 rounded-xl bg-ink-50/80 border border-ink-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
-              <span className="font-bold text-xs text-slate-900">
+              <span className="font-bold text-xs text-ink-900">
                 Ketersediaan Pendaftaran Publik (Public Registration)
               </span>
               <span
                 className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-extrabold ${
                   allowRegistration
-                    ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
-                    : "bg-rose-100 text-rose-800 border border-rose-300"
+                    ? "bg-ok-100 text-ok-800 border border-ok-300"
+                    : "bg-danger-100 text-danger-800 border border-danger-300"
                 }`}
               >
                 {allowRegistration ? "ENABLE (DIBUKA)" : "DISABLE (DITUTUP)"}
               </span>
             </div>
-            <p className="text-xs text-slate-500 max-w-xl leading-relaxed">
+            <p className="text-xs text-ink-500 max-w-xl leading-relaxed">
               Jika diaktifkan (Enable), pengunjung dapat membuka halaman pendaftaran akun baru. Jika dinonaktifkan (Disable), halaman registrasi akan terkunci dan hanya administrator yang dapat membuat akun.
             </p>
           </div>
@@ -744,17 +744,17 @@ export const DriveSettingsView: React.FC<DriveSettingsViewProps> = ({
             type="button"
             onClick={handleToggleRegistration}
             disabled={isUpdatingSetting}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shadow-xs shrink-0 ${
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer shadow-card shrink-0 ${
               allowRegistration
-                ? "bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300"
-                : "bg-emerald-600 hover:bg-emerald-500 text-white"
+                ? "bg-danger-50 hover:bg-danger-100 text-danger-700 border border-danger-300"
+                : "bg-ok-600 hover:bg-ok-500 text-white"
             }`}
           >
             {isUpdatingSetting ? (
               <Loader2 className="w-4 h-4 animate-spin" />
             ) : allowRegistration ? (
               <>
-                <ToggleRight className="w-4 h-4 text-rose-600" />
+                <ToggleRight className="w-4 h-4 text-danger-600" />
                 <span>Nonaktifkan Registrasi</span>
               </>
             ) : (
@@ -771,19 +771,19 @@ export const DriveSettingsView: React.FC<DriveSettingsViewProps> = ({
       {/* 3. KONFIGURASI SERVER EMAIL SMTP (SMTP EMAIL API) */}
       {/* ========================================================================= */}
       {isAdmin && (
-        <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs space-y-5">
-          <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
-            <div className="w-10 h-10 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center">
+        <div className="bg-surface rounded-xl border border-ink-200 p-5 shadow-card space-y-5">
+          <div className="flex items-center gap-3 pb-3 border-b border-ink-100">
+            <div className="w-10 h-10 rounded-xl bg-accent-50 text-accent-600 flex items-center justify-center">
               <Mail className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <h3 className="text-sm font-bold text-ink-900 flex items-center gap-2">
                 Konfigurasi Server Email SMTP (Email API)
-                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-sky-50 text-sky-700 border border-sky-200">
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-accent-50 text-accent-700 border border-accent-200">
                   SMTP Mailer
                 </span>
               </h3>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-ink-400">
                 Pengaturan SMTP untuk pengiriman token lupa kata sandi (Forgot Password) dan notifikasi sistem
               </p>
             </div>
@@ -793,14 +793,14 @@ export const DriveSettingsView: React.FC<DriveSettingsViewProps> = ({
             <div
               className={`p-3.5 rounded-xl border text-xs font-medium flex items-center gap-2 ${
                 smtpMessage.type === "success"
-                  ? "bg-emerald-50 border-emerald-200 text-emerald-800"
-                  : "bg-rose-50 border-rose-200 text-rose-800"
+                  ? "bg-ok-50 border-ok-200 text-ok-800"
+                  : "bg-danger-50 border-danger-200 text-danger-800"
               }`}
             >
               {smtpMessage.type === "success" ? (
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <CheckCircle2 className="w-4 h-4 text-ok-600 shrink-0" />
               ) : (
-                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                <AlertCircle className="w-4 h-4 text-danger-600 shrink-0" />
               )}
               <span>{smtpMessage.text}</span>
             </div>
@@ -809,7 +809,7 @@ export const DriveSettingsView: React.FC<DriveSettingsViewProps> = ({
           <form onSubmit={handleSaveSmtp} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                <label className="block text-xs font-semibold text-ink-700 mb-1">
                   SMTP Host
                 </label>
                 <input
@@ -818,12 +818,12 @@ export const DriveSettingsView: React.FC<DriveSettingsViewProps> = ({
                   value={smtpHost}
                   onChange={(e) => setSmtpHost(e.target.value)}
                   placeholder="smtp.gmail.com"
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
+                  className="w-full bg-ink-50 border border-ink-300 rounded-lg px-3 py-2 text-xs text-ink-900 focus:bg-surface focus:outline-none focus:ring-1 focus:ring-accent-500 font-mono"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                <label className="block text-xs font-semibold text-ink-700 mb-1">
                   SMTP Port
                 </label>
                 <input
@@ -832,18 +832,18 @@ export const DriveSettingsView: React.FC<DriveSettingsViewProps> = ({
                   value={smtpPort}
                   onChange={(e) => setSmtpPort(Number(e.target.value))}
                   placeholder="587"
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
+                  className="w-full bg-ink-50 border border-ink-300 rounded-lg px-3 py-2 text-xs text-ink-900 focus:bg-surface focus:outline-none focus:ring-1 focus:ring-accent-500 font-mono"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                <label className="block text-xs font-semibold text-ink-700 mb-1">
                   Koneksi Aman (SSL/TLS)
                 </label>
                 <select
                   value={smtpSecure ? "true" : "false"}
                   onChange={(e) => setSmtpSecure(e.target.value === "true")}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className="w-full bg-ink-50 border border-ink-300 rounded-lg px-3 py-2 text-xs text-ink-900 focus:bg-surface focus:outline-none focus:ring-1 focus:ring-accent-500"
                 >
                   <option value="false">STARTTLS (Port 587)</option>
                   <option value="true">SSL / TLS (Port 465)</option>
@@ -853,7 +853,7 @@ export const DriveSettingsView: React.FC<DriveSettingsViewProps> = ({
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                <label className="block text-xs font-semibold text-ink-700 mb-1">
                   SMTP Username / Email Pengirim
                 </label>
                 <input
@@ -861,12 +861,12 @@ export const DriveSettingsView: React.FC<DriveSettingsViewProps> = ({
                   value={smtpUser}
                   onChange={(e) => setSmtpUser(e.target.value)}
                   placeholder="admin@clouddrive.local"
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
+                  className="w-full bg-ink-50 border border-ink-300 rounded-lg px-3 py-2 text-xs text-ink-900 focus:bg-surface focus:outline-none focus:ring-1 focus:ring-accent-500 font-mono"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                <label className="block text-xs font-semibold text-ink-700 mb-1">
                   SMTP Password / App Password
                 </label>
                 <input
@@ -874,14 +874,14 @@ export const DriveSettingsView: React.FC<DriveSettingsViewProps> = ({
                   value={smtpPassword}
                   onChange={(e) => setSmtpPassword(e.target.value)}
                   placeholder="••••••••••••"
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
+                  className="w-full bg-ink-50 border border-ink-300 rounded-lg px-3 py-2 text-xs text-ink-900 focus:bg-surface focus:outline-none focus:ring-1 focus:ring-accent-500 font-mono"
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                <label className="block text-xs font-semibold text-ink-700 mb-1">
                   Alamat Email Pengirim (From Email)
                 </label>
                 <input
@@ -889,12 +889,12 @@ export const DriveSettingsView: React.FC<DriveSettingsViewProps> = ({
                   value={smtpFromEmail}
                   onChange={(e) => setSmtpFromEmail(e.target.value)}
                   placeholder="admin@clouddrive.local"
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className="w-full bg-ink-50 border border-ink-300 rounded-lg px-3 py-2 text-xs text-ink-900 focus:bg-surface focus:outline-none focus:ring-1 focus:ring-accent-500"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                <label className="block text-xs font-semibold text-ink-700 mb-1">
                   Nama Tampilan Pengirim (From Name)
                 </label>
                 <input
@@ -902,7 +902,7 @@ export const DriveSettingsView: React.FC<DriveSettingsViewProps> = ({
                   value={smtpFromName}
                   onChange={(e) => setSmtpFromName(e.target.value)}
                   placeholder="Power Drive Official"
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className="w-full bg-ink-50 border border-ink-300 rounded-lg px-3 py-2 text-xs text-ink-900 focus:bg-surface focus:outline-none focus:ring-1 focus:ring-accent-500"
                 />
               </div>
             </div>
@@ -911,7 +911,7 @@ export const DriveSettingsView: React.FC<DriveSettingsViewProps> = ({
               <button
                 type="submit"
                 disabled={isSavingSmtp}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                className="px-4 py-2 bg-accent-600 hover:bg-accent-500 text-accent-fg rounded-lg text-xs font-bold transition shadow-card flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
               >
                 {isSavingSmtp ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
                 <span>Simpan Konfigurasi SMTP</span>
@@ -920,9 +920,9 @@ export const DriveSettingsView: React.FC<DriveSettingsViewProps> = ({
           </form>
 
           {/* Test SMTP Email Box */}
-          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
-            <div className="flex items-center gap-2 text-xs font-bold text-slate-800">
-              <Send className="w-4 h-4 text-sky-600" />
+          <div className="p-4 rounded-xl bg-ink-50 border border-ink-200 space-y-3">
+            <div className="flex items-center gap-2 text-xs font-bold text-ink-800">
+              <Send className="w-4 h-4 text-accent-600" />
               <span>Uji Coba Pengiriman Email (SMTP Test Mail)</span>
             </div>
             <div className="flex flex-col sm:flex-row gap-2">
@@ -931,13 +931,13 @@ export const DriveSettingsView: React.FC<DriveSettingsViewProps> = ({
                 value={testEmailRecipient}
                 onChange={(e) => setTestEmailRecipient(e.target.value)}
                 placeholder="Email penerima uji coba..."
-                className="flex-1 bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className="flex-1 bg-surface border border-ink-300 rounded-lg px-3 py-2 text-xs text-ink-900 focus:outline-none focus:ring-1 focus:ring-accent-500"
               />
               <button
                 type="button"
                 onClick={handleTestSmtp}
                 disabled={isTestingSmtp}
-                className="px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0"
+                className="px-4 py-2 bg-accent-600 hover:bg-accent-500 text-accent-fg rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0"
               >
                 {isTestingSmtp ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
                 <span>Kirim Email Percobaan</span>
@@ -950,19 +950,19 @@ export const DriveSettingsView: React.FC<DriveSettingsViewProps> = ({
       {/* ========================================================================= */}
       {/* 4. STORAGE MOUNTS (/mnt) */}
       {/* ========================================================================= */}
-      <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs space-y-5">
-        <div className="flex items-center justify-between pb-3 border-b border-slate-100 flex-wrap gap-2">
+      <div className="bg-surface rounded-xl border border-ink-200 p-5 shadow-card space-y-5">
+        <div className="flex items-center justify-between pb-3 border-b border-ink-100 flex-wrap gap-2">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+            <div className="w-9 h-9 rounded-xl bg-ok-50 text-ok-600 flex items-center justify-center">
               <HardDrive className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-slate-900">Sistem Drive Terpasang (/mnt)</h3>
-              <p className="text-[11px] text-slate-400">Storage terpasang lokal & konfigurasi izin akses email</p>
+              <h3 className="text-sm font-bold text-ink-900">Sistem Drive Terpasang (/mnt)</h3>
+              <p className="text-[11px] text-ink-400">Storage terpasang lokal & konfigurasi izin akses email</p>
             </div>
           </div>
           {isAdmin && (
-            <span className="px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 text-[10px] font-bold border border-indigo-100 flex items-center gap-1">
+            <span className="px-2.5 py-1 rounded-full bg-accent-50 text-accent-700 text-[10px] font-bold border border-accent-100 flex items-center gap-1">
               <Shield className="w-3 h-3" /> Akun Admin
             </span>
           )}
@@ -973,8 +973,8 @@ export const DriveSettingsView: React.FC<DriveSettingsViewProps> = ({
           <div
             className={`p-3 rounded-lg text-xs font-medium flex items-center gap-2 ${
               mountNotice.type === "success"
-                ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                : "bg-rose-50 text-rose-700 border border-rose-200"
+                ? "bg-ok-50 text-ok-700 border border-ok-200"
+                : "bg-danger-50 text-danger-700 border border-danger-200"
             }`}
           >
             {mountNotice.type === "success" ? (
@@ -988,30 +988,30 @@ export const DriveSettingsView: React.FC<DriveSettingsViewProps> = ({
 
         {/* ADMIN: Form Tambah Mounted Drive Baru */}
         {isAdmin && (
-          <div className="p-4 rounded-xl border border-indigo-100 bg-indigo-50/30 space-y-3">
+          <div className="p-4 rounded-xl border border-accent-100 bg-accent-50/30 space-y-3">
             <div className="flex items-center gap-2">
-              <FolderPlus className="w-4 h-4 text-indigo-600" />
-              <h4 className="text-xs font-bold text-indigo-950">Tambah Mounted Drive Baru (/mnt)</h4>
+              <FolderPlus className="w-4 h-4 text-accent-600" />
+              <h4 className="text-xs font-bold text-accent-950">Tambah Mounted Drive Baru (/mnt)</h4>
             </div>
-            <p className="text-[11px] text-slate-500">
-              Buat titik pasang (mount point) direktori baru di dalam folder <code className="bg-indigo-100/70 text-indigo-800 px-1 py-0.5 rounded font-mono">/mnt</code> untuk memisahkan ruang penyimpanan terpasang.
+            <p className="text-[11px] text-ink-500">
+              Buat titik pasang (mount point) direktori baru di dalam folder <code className="bg-accent-100/70 text-accent-800 px-1 py-0.5 rounded font-mono">/mnt</code> untuk memisahkan ruang penyimpanan terpasang.
             </p>
             <form onSubmit={handleCreateMountPoint} className="flex items-center gap-2 pt-1">
               <div className="relative flex-1">
-                <span className="absolute left-3 top-2.5 text-xs font-mono text-slate-400">/mnt/</span>
+                <span className="absolute left-3 top-2.5 text-xs font-mono text-ink-400">/mnt/</span>
                 <input
                   type="text"
                   value={newMountName}
                   onChange={(e) => setNewMountName(e.target.value)}
                   placeholder="nama-folder-mount (cth: data-shared, storage-backup)"
-                  className="w-full pl-16 pr-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  className="w-full pl-16 pr-3 py-2 bg-surface border border-ink-200 rounded-lg text-xs text-ink-800 font-mono focus:outline-none focus:ring-2 focus:ring-accent-500/20 focus:border-accent-500"
                   disabled={isCreatingMount}
                 />
               </div>
               <button
                 type="submit"
                 disabled={isCreatingMount || !newMountName.trim()}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0"
+                className="px-4 py-2 bg-accent-600 hover:bg-accent-700 text-accent-fg rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0"
               >
                 {isCreatingMount ? (
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -1027,8 +1027,8 @@ export const DriveSettingsView: React.FC<DriveSettingsViewProps> = ({
         {/* List of Mounts */}
         <div className="space-y-3">
           {mounts.length === 0 ? (
-            <div className="text-center py-6 text-slate-400 text-xs font-medium bg-slate-50 rounded-xl border border-dashed border-slate-200">
-              Belum ada drive terpasang di <code className="font-mono text-slate-600">/mnt</code>.
+            <div className="text-center py-6 text-ink-400 text-xs font-medium bg-ink-50 rounded-xl border border-dashed border-ink-200">
+              Belum ada drive terpasang di <code className="font-mono text-ink-600">/mnt</code>.
             </div>
           ) : (
             <div className="max-h-[500px] overflow-y-auto space-y-3 pr-1">
@@ -1043,20 +1043,20 @@ export const DriveSettingsView: React.FC<DriveSettingsViewProps> = ({
                 return (
                   <div
                     key={mount.id}
-                    className="p-4 rounded-xl border border-slate-200/80 bg-slate-50/30 hover:bg-slate-50/80 transition-all space-y-3.5"
+                    className="p-4 rounded-xl border border-ink-200/80 bg-ink-50/30 hover:bg-ink-50/80 transition space-y-3.5"
                   >
                     <div className="flex items-center justify-between gap-3">
                       <div className="min-w-0">
-                        <span className="font-bold text-xs text-slate-800 block truncate">
+                        <span className="font-bold text-xs text-ink-800 block truncate">
                           {mount.name}
                         </span>
-                        <span className="text-[10px] text-slate-400 font-mono block mt-0.5 truncate">
+                        <span className="text-[10px] text-ink-400 font-mono block mt-0.5 truncate">
                           {mount.mountPoint}
                         </span>
                       </div>
 
                       <div className="text-right shrink-0">
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-ok-50 text-ok-700 border border-ok-200">
                           Terpasang
                         </span>
                       </div>
@@ -1064,19 +1064,19 @@ export const DriveSettingsView: React.FC<DriveSettingsViewProps> = ({
 
                     {/* Disk usage bar */}
                     <div className="space-y-1">
-                      <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                      <div className="w-full h-2 bg-ink-100 rounded-full overflow-hidden">
                         <div
-                          className={`h-full rounded-full transition-all duration-500 ${
+                          className={`h-full rounded-full transition duration-500 ${
                             usedPercent > 90
-                              ? "bg-rose-500"
+                              ? "bg-danger-500"
                               : usedPercent > 75
-                              ? "bg-amber-500"
-                              : "bg-emerald-500"
+                              ? "bg-warn-500"
+                              : "bg-ok-500"
                           }`}
                           style={{ width: `${Math.min(100, Math.max(2, usedPercent))}%` }}
                         />
                       </div>
-                      <div className="flex items-center justify-between text-[10px] text-slate-500 font-medium">
+                      <div className="flex items-center justify-between text-[10px] text-ink-500 font-medium">
                         <span>Terpakai: {usedPercent}%</span>
                         <span className="font-mono">
                           Sisa: {formatBytes(mount.freeBytes)} / Total: {formatBytes(mount.totalBytes)}
@@ -1086,18 +1086,18 @@ export const DriveSettingsView: React.FC<DriveSettingsViewProps> = ({
 
                     {/* ADMIN: Permission Email Access Configuration */}
                     {isAdmin && (
-                      <div className="pt-3 border-t border-slate-200/60 space-y-2">
+                      <div className="pt-3 border-t border-ink-200/60 space-y-2">
                         <div className="flex items-center justify-between gap-2">
-                          <label className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
-                            <Users className="w-3.5 h-3.5 text-indigo-600" />
+                          <label className="text-[11px] font-bold text-ink-700 flex items-center gap-1.5">
+                            <Users className="w-3.5 h-3.5 text-accent-600" />
                             <span>Izin Akses Email (Mounted Storage Permission)</span>
                           </label>
                           {mountPermInputs[mount.id]?.trim() ? (
-                            <span className="text-[10px] text-indigo-600 font-medium bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
+                            <span className="text-[10px] text-accent-600 font-medium bg-accent-50 px-2 py-0.5 rounded border border-accent-100">
                               Dibatasi Email
                             </span>
                           ) : (
-                            <span className="text-[10px] text-emerald-600 font-medium bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">
+                            <span className="text-[10px] text-ok-600 font-medium bg-ok-50 px-2 py-0.5 rounded border border-ok-100">
                               Publik (Semua Pengguna)
                             </span>
                           )}
@@ -1114,13 +1114,13 @@ export const DriveSettingsView: React.FC<DriveSettingsViewProps> = ({
                               })
                             }
                             placeholder="user1@example.com, user2@domain.com (kosongkan / '*' untuk semua)"
-                            className="flex-1 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                            className="flex-1 px-3 py-1.5 bg-surface border border-ink-200 rounded-lg text-xs text-ink-800 placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-accent-500/20 focus:border-accent-500"
                           />
                           <button
                             type="button"
                             onClick={() => handleSaveMountPermissions(mount.id)}
                             disabled={isSavingThis}
-                            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer disabled:opacity-50 shrink-0"
+                            className="px-3 py-1.5 bg-accent-600 hover:bg-accent-700 text-accent-fg rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer disabled:opacity-50 shrink-0"
                           >
                             {isSavingThis ? (
                               <Loader2 className="w-3 h-3 animate-spin" />
@@ -1131,16 +1131,16 @@ export const DriveSettingsView: React.FC<DriveSettingsViewProps> = ({
                           </button>
                         </div>
 
-                        <p className="text-[10px] text-slate-400">
-                          Ketik alamat email yang diperbolehkan mengakses storage ini (pisahkan dengan koma). Kosongkan atau beri <code className="font-mono bg-slate-100 px-1 rounded text-slate-600">*</code> agar dapat diakses oleh semua pengguna.
+                        <p className="text-[10px] text-ink-400">
+                          Ketik alamat email yang diperbolehkan mengakses storage ini (pisahkan dengan koma). Kosongkan atau beri <code className="font-mono bg-ink-100 px-1 rounded text-ink-600">*</code> agar dapat diakses oleh semua pengguna.
                         </p>
 
                         {noticeForThis && (
                           <div
                             className={`p-2 rounded text-[11px] font-medium flex items-center gap-1.5 mt-1 ${
                               noticeForThis.type === "success"
-                                ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                                : "bg-rose-50 text-rose-700 border border-rose-200"
+                                ? "bg-ok-50 text-ok-700 border border-ok-200"
+                                : "bg-danger-50 text-danger-700 border border-danger-200"
                             }`}
                           >
                             {noticeForThis.type === "success" ? (

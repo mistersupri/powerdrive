@@ -17,7 +17,7 @@ interface AuthContextType {
     refreshToken?: string;
     expiresIn?: number;
   }) => Promise<void>;
-  forgotPassword: (email: string) => Promise<{ message: string; resetToken: string; expiresAt: string }>;
+  forgotPassword: (email: string) => Promise<{ message: string }>;
   resetPassword: (payload: { token: string; password: string }) => Promise<{ message: string }>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;

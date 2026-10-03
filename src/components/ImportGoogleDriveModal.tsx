@@ -254,41 +254,41 @@ export const ImportGoogleDriveModal: React.FC<ImportGoogleDriveModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn">
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-3xl overflow-hidden flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-night-950/45 animate-fade-in">
+      <div className="bg-surface rounded-2xl shadow-float border border-ink-200 w-full max-w-3xl overflow-hidden flex flex-col max-h-[90vh]">
         {/* Modal Header */}
-        <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+        <div className="px-6 py-4 border-b border-ink-200 flex items-center justify-between bg-ink-50">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-emerald-100 text-emerald-700 rounded-xl">
+            <div className="p-2 bg-ok-100 text-ok-700 rounded-xl">
               <CloudDownload className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-slate-900">Import Folder dari Google Drive</h3>
-              <p className="text-xs text-slate-500">
+              <h3 className="text-base font-bold text-ink-900">Import Folder dari Google Drive</h3>
+              <p className="text-xs text-ink-500">
                 Pilih folder dari Google Drive untuk diimpor beserta subfolder dan berkas di dalamnya.
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
+            className="p-1.5 text-ink-400 hover:text-ink-700 hover:bg-ink-200 rounded-lg transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex border-b border-slate-200 px-6 pt-3 bg-white gap-2">
+        <div className="flex border-b border-ink-200 px-6 pt-3 bg-surface gap-2">
           <button
             type="button"
             onClick={() => {
               setActiveTab("browser");
               setErrorMessage(null);
             }}
-            className={`pb-2.5 px-3 text-xs font-bold border-b-2 flex items-center gap-2 transition-all cursor-pointer ${
+            className={`pb-2.5 px-3 text-xs font-bold border-b-2 flex items-center gap-2 transition cursor-pointer ${
               activeTab === "browser"
-                ? "border-emerald-600 text-emerald-700"
-                : "border-transparent text-slate-500 hover:text-slate-800"
+                ? "border-ok-600 text-ok-700"
+                : "border-transparent text-ink-500 hover:text-ink-800"
             }`}
           >
             <FolderTree className="w-4 h-4" />
@@ -300,10 +300,10 @@ export const ImportGoogleDriveModal: React.FC<ImportGoogleDriveModalProps> = ({
               setActiveTab("direct");
               setErrorMessage(null);
             }}
-            className={`pb-2.5 px-3 text-xs font-bold border-b-2 flex items-center gap-2 transition-all cursor-pointer ${
+            className={`pb-2.5 px-3 text-xs font-bold border-b-2 flex items-center gap-2 transition cursor-pointer ${
               activeTab === "direct"
-                ? "border-emerald-600 text-emerald-700"
-                : "border-transparent text-slate-500 hover:text-slate-800"
+                ? "border-ok-600 text-ok-700"
+                : "border-transparent text-ink-500 hover:text-ink-800"
             }`}
           >
             <LinkIcon className="w-4 h-4" />
@@ -314,7 +314,7 @@ export const ImportGoogleDriveModal: React.FC<ImportGoogleDriveModalProps> = ({
         {/* Modal Body with Scroll */}
         <div className="p-6 overflow-y-auto flex-1 space-y-5">
           {errorMessage && (
-            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs flex items-start gap-2">
+            <div className="p-3 bg-danger-50 border border-danger-200 rounded-xl text-danger-700 text-xs flex items-start gap-2">
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
               <span>{errorMessage}</span>
             </div>
@@ -323,23 +323,23 @@ export const ImportGoogleDriveModal: React.FC<ImportGoogleDriveModalProps> = ({
           {activeTab === "browser" ? (
             <div className="space-y-3">
               {/* Google Drive Breadcrumbs & Search Toolbar */}
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 bg-ink-50 p-2.5 rounded-xl border border-ink-200">
                 <div className="flex items-center gap-1 overflow-x-auto text-xs py-1 scrollbar-thin">
                   {gdriveBreadcrumbs.map((crumb, idx) => {
                     const isLast = idx === gdriveBreadcrumbs.length - 1;
                     return (
                       <React.Fragment key={crumb.id}>
-                        {idx > 0 && <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />}
+                        {idx > 0 && <ChevronRight className="w-3.5 h-3.5 text-ink-400 shrink-0" />}
                         <button
                           type="button"
                           onClick={() => handleNavigateGdrive(crumb)}
                           className={`flex items-center gap-1 px-2 py-1 rounded-md transition-colors shrink-0 ${
                             isLast
-                              ? "font-bold text-slate-900 bg-white shadow-2xs"
-                              : "text-slate-600 hover:text-emerald-700 hover:bg-slate-200/60"
+                              ? "font-bold text-ink-900 bg-surface shadow-card"
+                              : "text-ink-600 hover:text-ok-700 hover:bg-ink-200/60"
                           }`}
                         >
-                          {idx === 0 ? <Home className="w-3.5 h-3.5 text-emerald-600" /> : <Folder className="w-3.5 h-3.5 text-amber-500" />}
+                          {idx === 0 ? <Home className="w-3.5 h-3.5 text-ok-600" /> : <Folder className="w-3.5 h-3.5 text-warn-500" />}
                           <span>{crumb.name}</span>
                         </button>
                       </React.Fragment>
@@ -349,7 +349,7 @@ export const ImportGoogleDriveModal: React.FC<ImportGoogleDriveModalProps> = ({
 
                 <div className="flex items-center gap-2">
                   <div className="relative flex-1 sm:w-48">
-                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                    <Search className="w-3.5 h-3.5 text-ink-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
                     <input
                       type="text"
                       placeholder="Cari folder Drive..."
@@ -358,13 +358,13 @@ export const ImportGoogleDriveModal: React.FC<ImportGoogleDriveModalProps> = ({
                         setSearchQuery(e.target.value);
                         loadGdriveFolders(currentGdriveParentId, e.target.value);
                       }}
-                      className="w-full pl-8 pr-2.5 py-1 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500 text-slate-800"
+                      className="w-full pl-8 pr-2.5 py-1 text-xs bg-surface border border-ink-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-ok-500 text-ink-800"
                     />
                   </div>
                   <button
                     type="button"
                     onClick={() => loadGdriveFolders(currentGdriveParentId, searchQuery)}
-                    className="p-1.5 bg-white border border-slate-200 hover:bg-slate-100 rounded-lg text-slate-600 cursor-pointer"
+                    className="p-1.5 bg-surface border border-ink-200 hover:bg-ink-100 rounded-lg text-ink-600 cursor-pointer"
                     title="Segarkan Folder Google Drive"
                   >
                     <RefreshCw className={`w-3.5 h-3.5 ${isLoadingGdriveFolders ? "animate-spin" : ""}`} />
@@ -373,22 +373,22 @@ export const ImportGoogleDriveModal: React.FC<ImportGoogleDriveModalProps> = ({
               </div>
 
               {/* Google Drive Folder List Box */}
-              <div className="border border-slate-200 rounded-xl overflow-hidden bg-white max-h-56 overflow-y-auto">
+              <div className="border border-ink-200 rounded-xl overflow-hidden bg-surface max-h-56 overflow-y-auto">
                 {isLoadingGdriveFolders ? (
-                  <div className="py-12 flex flex-col items-center justify-center text-slate-400 gap-2">
-                    <Loader2 className="w-6 h-6 animate-spin text-emerald-600" />
+                  <div className="py-12 flex flex-col items-center justify-center text-ink-400 gap-2">
+                    <Loader2 className="w-6 h-6 animate-spin text-ok-600" />
                     <span className="text-xs">Memuat daftar folder Google Drive...</span>
                   </div>
                 ) : (gdriveFolders.length === 0 && currentGdriveFiles.length === 0) ? (
-                  <div className="py-10 text-center text-slate-400">
-                    <FolderOpen className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+                  <div className="py-10 text-center text-ink-400">
+                    <FolderOpen className="w-8 h-8 mx-auto mb-2 text-ink-300" />
                     <p className="text-xs font-semibold">Tidak ada isi (subfolder/berkas) ditemukan di lokasi ini</p>
-                    <p className="text-[11px] text-slate-400 mt-0.5">
+                    <p className="text-[11px] text-ink-400 mt-0.5">
                       Anda dapat memilih folder saat ini atau beralih ke tab Tautan / ID.
                     </p>
                   </div>
                 ) : (
-                  <div className="divide-y divide-slate-100">
+                  <div className="divide-y divide-ink-100">
                     {/* Folders (Selectable & Openable) */}
                     {gdriveFolders.map((folder) => {
                       const isSelected = selectedGdriveFolder?.id === folder.id;
@@ -396,20 +396,20 @@ export const ImportGoogleDriveModal: React.FC<ImportGoogleDriveModalProps> = ({
                         <div
                           key={folder.id}
                           onClick={() => handleSelectFolder(folder)}
-                          className={`flex items-center justify-between px-4 py-2.5 hover:bg-slate-50 transition-colors cursor-pointer ${
-                            isSelected ? "bg-emerald-50/80 border-l-4 border-emerald-600" : ""
+                          className={`flex items-center justify-between px-4 py-2.5 hover:bg-ink-50 transition-colors cursor-pointer ${
+                            isSelected ? "bg-ok-50/80 border-l-4 border-ok-600" : ""
                           }`}
                         >
                           <div className="flex items-center gap-3 min-w-0">
-                            <Folder className={`w-4 h-4 shrink-0 ${isSelected ? "text-emerald-600" : "text-amber-500"}`} />
-                            <span className={`text-xs font-semibold truncate ${isSelected ? "text-emerald-950" : "text-slate-800"}`}>
+                            <Folder className={`w-4 h-4 shrink-0 ${isSelected ? "text-ok-600" : "text-warn-500"}`} />
+                            <span className={`text-xs font-semibold truncate ${isSelected ? "text-ok-950" : "text-ink-800"}`}>
                               {folder.name}
                             </span>
                           </div>
 
                           <div className="flex items-center gap-2">
                             {isSelected && (
-                              <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded-md flex items-center gap-1">
+                              <span className="px-2 py-0.5 bg-ok-100 text-ok-800 text-[10px] font-bold rounded-md flex items-center gap-1">
                                 <CheckCircle2 className="w-3 h-3" />
                                 Dipilih
                               </span>
@@ -420,7 +420,7 @@ export const ImportGoogleDriveModal: React.FC<ImportGoogleDriveModalProps> = ({
                                 e.stopPropagation();
                                 handleNavigateGdrive(folder);
                               }}
-                              className="px-2 py-1 text-[11px] font-semibold text-slate-600 hover:text-emerald-700 hover:bg-slate-200 rounded-md transition-colors border border-slate-200 bg-white shadow-3xs"
+                              className="px-2 py-1 text-[11px] font-semibold text-ink-600 hover:text-ok-700 hover:bg-ink-200 rounded-md transition-colors border border-ink-200 bg-surface shadow-3xs"
                               title="Masuk ke dalam folder ini"
                             >
                               Buka &rarr;
@@ -434,20 +434,20 @@ export const ImportGoogleDriveModal: React.FC<ImportGoogleDriveModalProps> = ({
                     {currentGdriveFiles.map((file) => (
                       <div
                         key={file.id}
-                        className="flex items-center justify-between px-4 py-2 bg-slate-50/50 text-slate-400 border-t border-slate-100 cursor-not-allowed opacity-80"
+                        className="flex items-center justify-between px-4 py-2 bg-ink-50/50 text-ink-400 border-t border-ink-100 cursor-not-allowed opacity-80"
                         title="Berkas ini dibaca-saja dan akan diimpor otomatis bersama folder induknya"
                       >
                         <div className="flex items-center gap-3 min-w-0">
-                          <FileText className="w-4 h-4 text-slate-400 shrink-0" />
+                          <FileText className="w-4 h-4 text-ink-400 shrink-0" />
                           <span className="text-xs font-medium truncate select-none pointer-events-none">
                             {file.name}
                           </span>
                           {file.size !== undefined && file.size > 0 && (
-                            <span className="text-[10px] text-slate-400 font-mono">({formatFileSize(file.size)})</span>
+                            <span className="text-[10px] text-ink-400 font-mono">({formatFileSize(file.size)})</span>
                           )}
                         </div>
 
-                        <span className="text-[9px] bg-slate-200 text-slate-500 px-1.5 py-0.5 rounded-md font-medium select-none">
+                        <span className="text-[9px] bg-ink-200 text-ink-500 px-1.5 py-0.5 rounded-md font-medium select-none">
                           Hanya Baca (Disabled)
                         </span>
                       </div>
@@ -459,31 +459,31 @@ export const ImportGoogleDriveModal: React.FC<ImportGoogleDriveModalProps> = ({
           ) : (
             /* Direct Link / ID Tab */
             <div className="space-y-3">
-              <label className="block text-xs font-bold text-slate-700">
+              <label className="block text-xs font-bold text-ink-700">
                 Tempel Tautan atau ID Folder Google Drive
               </label>
               <div className="flex gap-2">
                 <div className="relative flex-1">
-                  <LinkIcon className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <LinkIcon className="w-4 h-4 text-ink-400 absolute left-3 top-1/2 -translate-y-1/2" />
                   <input
                     type="text"
                     placeholder="Contoh: https://drive.google.com/drive/folders/1aBcDeFgHiJkLmNoP... atau 1aBcDeFgHiJkLmNoP"
                     value={directInput}
                     onChange={(e) => setDirectInput(e.target.value)}
-                    className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800"
+                    className="w-full pl-9 pr-3 py-2 text-xs bg-ink-50 border border-ink-200 rounded-xl focus:bg-surface focus:outline-none focus:ring-2 focus:ring-ok-500 text-ink-800"
                   />
                 </div>
                 <button
                   type="button"
                   onClick={handleValidateDirectInput}
                   disabled={isValidatingDirect || !directInput.trim()}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
+                  className="px-4 py-2 bg-ok-600 hover:bg-ok-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-card cursor-pointer"
                 >
                   {isValidatingDirect ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
                   <span>Periksa Folder</span>
                 </button>
               </div>
-              <p className="text-[11px] text-slate-500">
+              <p className="text-[11px] text-ink-500">
                 Pastikan folder tersebut dapat diakses oleh akun Google Drive yang terhubung dengan portal.
               </p>
             </div>
@@ -491,31 +491,31 @@ export const ImportGoogleDriveModal: React.FC<ImportGoogleDriveModalProps> = ({
 
           {/* Selected Folder Preview Box */}
           {selectedGdriveFolder && (
-            <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-xl space-y-3 animate-fadeIn">
+            <div className="p-4 bg-ok-50/70 border border-ok-200 rounded-xl space-y-3 animate-fade-in">
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-2">
-                  <div className="p-1.5 bg-emerald-100 text-emerald-800 rounded-lg">
+                  <div className="p-1.5 bg-ok-100 text-ok-800 rounded-lg">
                     <Folder className="w-4 h-4" />
                   </div>
                   <div>
-                    <h4 className="text-xs font-bold text-emerald-950 flex items-center gap-1.5">
+                    <h4 className="text-xs font-bold text-ok-950 flex items-center gap-1.5">
                       <span>Folder Terpilih:</span>
-                      <span className="text-emerald-800">{selectedGdriveFolder.name}</span>
+                      <span className="text-ok-800">{selectedGdriveFolder.name}</span>
                     </h4>
-                    <p className="text-[11px] text-emerald-700 font-mono">
+                    <p className="text-[11px] text-ok-700 font-mono">
                       ID: {selectedGdriveFolder.id}
                     </p>
                   </div>
                 </div>
 
                 {isLoadingPreview ? (
-                  <div className="flex items-center gap-1 text-[11px] text-emerald-700">
+                  <div className="flex items-center gap-1 text-[11px] text-ok-700">
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
                     <span>Memeriksa isi folder...</span>
                   </div>
                 ) : folderPreview ? (
                   <div className="text-right">
-                    <span className="inline-block px-2.5 py-0.5 bg-emerald-200/80 text-emerald-900 rounded-md text-[10px] font-bold">
+                    <span className="inline-block px-2.5 py-0.5 bg-ok-200/80 text-ok-900 rounded-md text-[10px] font-bold">
                       {folderPreview.subfolders.length} subfolder &bull; {folderPreview.files.length} berkas
                     </span>
                   </div>
@@ -525,9 +525,9 @@ export const ImportGoogleDriveModal: React.FC<ImportGoogleDriveModalProps> = ({
               {/* Files are now fully visible inside the opened folder in the explorer above */}
 
               {/* Import Configuration Fields */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-emerald-200/60">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-ok-200/60">
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  <label className="block text-[11px] font-bold text-ink-700 mb-1">
                     Nama Folder di Aplikasi
                   </label>
                   <input
@@ -535,18 +535,18 @@ export const ImportGoogleDriveModal: React.FC<ImportGoogleDriveModalProps> = ({
                     value={customFolderName}
                     onChange={(e) => setCustomFolderName(e.target.value)}
                     placeholder="Nama folder..."
-                    className="w-full px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500 text-slate-800"
+                    className="w-full px-3 py-1.5 text-xs bg-surface border border-ink-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-ok-500 text-ink-800"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  <label className="block text-[11px] font-bold text-ink-700 mb-1">
                     Simpan di dalam Folder
                   </label>
                   <select
                     value={targetParentFolderId}
                     onChange={(e) => setTargetParentFolderId(e.target.value)}
-                    className="w-full px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500 text-slate-800 cursor-pointer"
+                    className="w-full px-3 py-1.5 text-xs bg-surface border border-ink-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-ok-500 text-ink-800 cursor-pointer"
                   >
                     <option value="">Drive Saya (Root Utama)</option>
                     {existingFolders.map((f) => (
@@ -562,12 +562,12 @@ export const ImportGoogleDriveModal: React.FC<ImportGoogleDriveModalProps> = ({
         </div>
 
         {/* Modal Footer */}
-        <div className="px-6 py-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
+        <div className="px-6 py-4 border-t border-ink-200 bg-ink-50 flex items-center justify-between">
           <button
             type="button"
             onClick={onClose}
             disabled={isImporting}
-            className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
+            className="px-4 py-2 text-xs font-semibold text-ink-600 hover:text-ink-800 hover:bg-ink-200 rounded-xl transition-colors cursor-pointer"
           >
             Batal
           </button>
@@ -576,7 +576,7 @@ export const ImportGoogleDriveModal: React.FC<ImportGoogleDriveModalProps> = ({
             type="button"
             onClick={handleImportSubmit}
             disabled={isImporting || !selectedGdriveFolder}
-            className="px-5 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 disabled:opacity-50 rounded-xl shadow-sm shadow-emerald-600/20 flex items-center gap-2 transition-all cursor-pointer"
+            className="px-5 py-2 text-xs font-bold text-white bg-ok-600 hover:bg-ok-700 active:bg-ok-800 disabled:opacity-50 rounded-xl shadow-card flex items-center gap-2 transition cursor-pointer"
           >
             {isImporting ? (
               <>
