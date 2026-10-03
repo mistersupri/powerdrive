@@ -21,73 +21,78 @@ export const prisma = new PrismaClient();
 
 class DatabaseService {
   private passwordResetTokens: Map<string, { email: string; token: string; expiresAt: Date }> = new Map();
-  private initialized = false;
+  private initPromise: Promise<void> | null = null;
 
   constructor() {
     this.initializeDefaultData();
   }
 
-  public async initializeDefaultData(): Promise<void> {
-    if (this.initialized) return;
-    try {
-      // 1. Initialize Seed Administrator if not exists
-      const envAdminEmail = (process.env.ADMIN_EMAIL || "admin@clouddrive.local").trim().toLowerCase();
-      const existingAdmin = await prisma.user.findUnique({ where: { email: envAdminEmail } });
-      if (!existingAdmin) {
-        const envAdminPassword = process.env.ADMIN_PASSWORD || "AdminPassword2026!";
-        const adminPasswordHash = bcrypt.hashSync(envAdminPassword, 10);
-        await prisma.user.create({
-          data: {
-            id: "usr_admin_001",
-            email: envAdminEmail,
-            name: "Administrator",
-            passwordHash: adminPasswordHash,
-            role: "ADMIN",
-            isActive: true,
-          },
-        });
-      }
+  // The constructor and server startup both call this. Sharing one promise
+  // stops two concurrent seeds from racing on the admin row's unique id.
+  public initializeDefaultData(): Promise<void> {
+    if (!this.initPromise) {
+      this.initPromise = this.seedDefaultData().catch((err) => {
+        this.initPromise = null;
+        console.error("[DatabaseService] Failed to initialize default database data:", err);
+      });
+    }
+    return this.initPromise;
+  }
 
-      // 2. Initialize System Settings
-      const defaultSettings = [
-        {
-          key: "ALLOW_PUBLIC_REGISTRATION",
-          value: "true",
-          description: "Mengizinkan pengguna baru melakukan pendaftaran akun mandiri dari halaman login",
+  private async seedDefaultData(): Promise<void> {
+    // 1. Initialize Seed Administrator if not exists
+    const envAdminEmail = (process.env.ADMIN_EMAIL || "admin@clouddrive.local").trim().toLowerCase();
+    const existingAdmin = await prisma.user.findUnique({ where: { email: envAdminEmail } });
+    if (!existingAdmin) {
+      const envAdminPassword = process.env.ADMIN_PASSWORD || "AdminPassword2026!";
+      const adminPasswordHash = bcrypt.hashSync(envAdminPassword, 10);
+      await prisma.user.create({
+        data: {
+          id: "usr_admin_001",
+          email: envAdminEmail,
+          name: "Administrator",
+          passwordHash: adminPasswordHash,
+          role: "ADMIN",
+          isActive: true,
         },
-        {
-          key: "MAX_FILE_SIZE_MB",
-          value: "200",
-          description: "Maximum allowable upload size per file in megabytes",
-        },
-        {
-          key: "DEFAULT_DRIVE_TYPE",
-          value: "MY_DRIVE",
-          description: "Default Google Drive target space (MY_DRIVE or SHARED_DRIVE)",
-        },
-        {
-          key: "ALLOWED_EXTENSIONS",
-          value: "pdf,doc,docx,xls,xlsx,ppt,pptx,csv,zip,rar,7z,jpg,jpeg,png,gif,webp,txt,json",
-          description: "Whitelisted file upload extensions",
-        },
-        {
-          key: "MAX_SYNC_ATTEMPTS",
-          value: "5",
-          description: "Maximum automatic retry attempts for failed sync jobs",
-        },
-      ];
+      });
+    }
 
-      for (const setting of defaultSettings) {
-        await prisma.systemSetting.upsert({
-          where: { key: setting.key },
-          update: {},
-          create: setting,
-        });
-      }
+    // 2. Initialize System Settings
+    const defaultSettings = [
+      {
+        key: "ALLOW_PUBLIC_REGISTRATION",
+        value: "true",
+        description: "Mengizinkan pengguna baru melakukan pendaftaran akun mandiri dari halaman login",
+      },
+      {
+        key: "MAX_FILE_SIZE_MB",
+        value: "200",
+        description: "Maximum allowable upload size per file in megabytes",
+      },
+      {
+        key: "DEFAULT_DRIVE_TYPE",
+        value: "MY_DRIVE",
+        description: "Default Google Drive target space (MY_DRIVE or SHARED_DRIVE)",
+      },
+      {
+        key: "ALLOWED_EXTENSIONS",
+        value: "pdf,doc,docx,xls,xlsx,ppt,pptx,csv,zip,rar,7z,jpg,jpeg,png,gif,webp,txt,json",
+        description: "Whitelisted file upload extensions",
+      },
+      {
+        key: "MAX_SYNC_ATTEMPTS",
+        value: "5",
+        description: "Maximum automatic retry attempts for failed sync jobs",
+      },
+    ];
 
-      this.initialized = true;
-    } catch (err) {
-      console.error("[DatabaseService] Failed to initialize default database data:", err);
+    for (const setting of defaultSettings) {
+      await prisma.systemSetting.upsert({
+        where: { key: setting.key },
+        update: {},
+        create: setting,
+      });
     }
   }
 

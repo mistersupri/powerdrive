@@ -47,7 +47,7 @@ async function startServer() {
           <script>
             try {
               if (window.opener) {
-                window.opener.postMessage({ type: 'OAUTH_AUTH_SUCCESS', url: window.location.href }, '*');
+                window.opener.postMessage({ type: 'OAUTH_AUTH_SUCCESS', url: window.location.href }, window.location.origin);
                 setTimeout(() => window.close(), 500);
               } else {
                 window.location.href = '/';

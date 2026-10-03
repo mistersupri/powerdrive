@@ -260,32 +260,31 @@ export class AuthService {
     return { token, user: safeUser };
   }
 
+  /**
+   * Starts a password reset. The token is only ever delivered by email: returning
+   * it in the HTTP response would let anyone reset any account. The reply is the
+   * same whether or not the email exists, so it cannot be used to probe accounts.
+   */
   public static async forgotPassword(
     email: string,
     ipAddress?: string,
     userAgent?: string,
     appUrl?: string
-  ): Promise<{ message: string; resetToken: string; expiresAt: Date; emailSent?: boolean }> {
+  ): Promise<{ message: string }> {
     if (!email) {
       throw new Error("Email wajib diisi");
     }
+    const genericMessage =
+      "Jika email tersebut terdaftar, tautan untuk mengatur ulang kata sandi sudah dikirim. Periksa kotak masuk atau folder spam.";
 
     const normalizedEmail = email.trim().toLowerCase();
     const user = await db.user.findUnique({ where: { email: normalizedEmail } });
     if (!user) {
-      // Return safe message to prevent email enumeration, but generate token for system flow
-      const tokenObj = await db.passwordReset.createToken(normalizedEmail);
-      return {
-        message: "Jika email Anda terdaftar, tautan pengaturan ulang kata sandi telah dikirimkan ke alamat email tersebut.",
-        resetToken: tokenObj.token,
-        expiresAt: tokenObj.expiresAt,
-        emailSent: false,
-      };
+      return { message: genericMessage };
     }
 
     const { token, expiresAt } = await db.passwordReset.createToken(user.email);
 
-    // Dispatch email asynchronously via configured SMTP
     let emailSent = false;
     try {
       const mailResult = await MailService.sendPasswordResetEmail({
@@ -300,6 +299,11 @@ export class AuthService {
       console.warn("[AuthService] SMTP dispatch notice:", mailErr);
     }
 
+    if (!emailSent && process.env.NODE_ENV !== "production") {
+      // Local development without SMTP: the operator can read the token here.
+      console.info(`[AuthService] Password reset token for ${user.email}: ${token}`);
+    }
+
     await AuditService.log({
       userId: user.id,
       action: ActivityAction.PASSWORD_RESET_REQUESTED,
@@ -311,16 +315,8 @@ export class AuthService {
       result: "SUCCESS",
     });
 
-    return {
-      message: emailSent
-        ? "Tautan pengaturan ulang kata sandi telah berhasil dikirim ke email Anda. Silakan periksa kotak masuk atau folder spam."
-        : "Tautan reset kata sandi telah dibuat. Silakan gunakan token untuk mengatur ulang kata sandi.",
-      resetToken: token,
-      expiresAt,
-      emailSent,
-    };
+    return { message: genericMessage };
   }
-
 
   public static async resetPassword(
     token: string,

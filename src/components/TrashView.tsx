@@ -206,23 +206,23 @@ export const TrashView: React.FC<TrashViewProps> = ({ onRefreshAll }) => {
     const category = getFileCategory(mimeType, name);
     switch (category) {
       case "image":
-        return <ImageIcon className="w-4 h-4 text-purple-600" />;
+        return <ImageIcon className="w-4 h-4 text-accent-600" />;
       case "pdf":
-        return <FileText className="w-4 h-4 text-red-500" />;
+        return <FileText className="w-4 h-4 text-danger-500" />;
       case "spreadsheet":
-        return <FileSpreadsheet className="w-4 h-4 text-emerald-600" />;
+        return <FileSpreadsheet className="w-4 h-4 text-ok-600" />;
       case "document":
-        return <FileText className="w-4 h-4 text-blue-600" />;
+        return <FileText className="w-4 h-4 text-accent-600" />;
       case "video":
-        return <Video className="w-4 h-4 text-purple-600" />;
+        return <Video className="w-4 h-4 text-accent-600" />;
       case "audio":
-        return <Music className="w-4 h-4 text-teal-600" />;
+        return <Music className="w-4 h-4 text-accent-600" />;
       case "archive":
-        return <FileArchive className="w-4 h-4 text-amber-600" />;
+        return <FileArchive className="w-4 h-4 text-warn-600" />;
       case "code":
-        return <FileCode className="w-4 h-4 text-indigo-600" />;
+        return <FileCode className="w-4 h-4 text-accent-600" />;
       default:
-        return <FileGenericIcon className="w-4 h-4 text-slate-500" />;
+        return <FileGenericIcon className="w-4 h-4 text-ink-500" />;
     }
   };
 
@@ -734,8 +734,8 @@ export const TrashView: React.FC<TrashViewProps> = ({ onRefreshAll }) => {
     return (
       <tr
         key={`file_${file.id}`}
-        className={`hover:bg-slate-50/90 transition-colors group text-xs border-b border-slate-100/80 ${
-          isSelected ? "bg-indigo-50/60" : ""
+        className={`hover:bg-ink-50/90 transition-colors group text-xs border-b border-ink-100/80 ${
+          isSelected ? "bg-accent-50/60" : ""
         }`}
       >
         {/* Checkbox Column */}
@@ -743,10 +743,10 @@ export const TrashView: React.FC<TrashViewProps> = ({ onRefreshAll }) => {
           <button
             type="button"
             onClick={() => handleToggleItem(`file_${file.id}`)}
-            className="cursor-pointer text-slate-400 hover:text-slate-700 transition-colors"
+            className="cursor-pointer text-ink-400 hover:text-ink-700 transition-colors"
           >
             {isSelected ? (
-              <CheckSquare className="w-4 h-4 text-indigo-600" />
+              <CheckSquare className="w-4 h-4 text-accent-600" />
             ) : (
               <Square className="w-4 h-4" />
             )}
@@ -760,24 +760,24 @@ export const TrashView: React.FC<TrashViewProps> = ({ onRefreshAll }) => {
             style={{ paddingLeft: `${indentPadding}px` }}
           >
             {/* Tree Branch Visual Connector */}
-            <div className="text-slate-300 select-none font-mono text-xs flex items-center shrink-0">
-              <span className="w-3 border-b-2 border-slate-200 inline-block mr-1"></span>
+            <div className="text-ink-300 select-none font-mono text-xs flex items-center shrink-0">
+              <span className="w-3 border-b-2 border-ink-200 inline-block mr-1"></span>
             </div>
 
             {/* File Icon */}
-            <div className="w-7 h-7 rounded-lg bg-slate-100 border border-slate-200/90 flex items-center justify-center shrink-0 shadow-2xs">
+            <div className="w-7 h-7 rounded-lg bg-ink-100 border border-ink-200/90 flex items-center justify-center shrink-0 shadow-card">
               {getFileIcon(file.mimeType, file.originalName)}
             </div>
 
             {/* File Name & Details */}
             <div className="min-w-0 flex-1">
-              <div className="font-semibold text-slate-900 truncate max-w-[280px] sm:max-w-md text-xs sm:text-[13px] flex items-center gap-1.5">
+              <div className="font-semibold text-ink-900 truncate max-w-[280px] sm:max-w-md text-xs sm:text-[13px] flex items-center gap-1.5">
                 <span className="truncate" title={file.originalName}>
                   {file.originalName}
                 </span>
               </div>
               {file.checksumSha256 && (
-                <div className="text-[10px] text-slate-400 font-mono truncate">
+                <div className="text-[10px] text-ink-400 font-mono truncate">
                   SHA-256: {file.checksumSha256.substring(0, 10)}...
                 </div>
               )}
@@ -786,22 +786,22 @@ export const TrashView: React.FC<TrashViewProps> = ({ onRefreshAll }) => {
         </td>
 
         {/* Trashed Time */}
-        <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap">
+        <td className="py-2.5 px-3 text-ink-600 whitespace-nowrap">
           <div className="flex items-center gap-1.5 text-[11px] sm:text-xs">
-            <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+            <Clock className="w-3.5 h-3.5 text-ink-400 shrink-0" />
             <span>{getRelativeTime(file.trashedAt || file.updatedAt)}</span>
           </div>
         </td>
 
         {/* Size */}
-        <td className="py-2.5 px-3 text-slate-700 font-medium whitespace-nowrap text-[11px] sm:text-xs">
+        <td className="py-2.5 px-3 text-ink-700 font-medium whitespace-nowrap text-[11px] sm:text-xs">
           {formatBytes(file.size)}
         </td>
 
         {/* Trashed By */}
-        <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap hidden md:table-cell text-[11px] sm:text-xs">
+        <td className="py-2.5 px-3 text-ink-600 whitespace-nowrap hidden md:table-cell text-[11px] sm:text-xs">
           <div className="flex items-center gap-1.5">
-            <UserIcon className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+            <UserIcon className="w-3.5 h-3.5 text-ink-400 shrink-0" />
             <span className="truncate max-w-[120px]">{file.user?.name || "Pengguna"}</span>
           </div>
         </td>
@@ -812,7 +812,7 @@ export const TrashView: React.FC<TrashViewProps> = ({ onRefreshAll }) => {
             <button
               type="button"
               onClick={() => setPreviewFile(file)}
-              className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer"
+              className="p-1.5 rounded-lg bg-ink-100 hover:bg-ink-200 text-ink-700 transition-colors cursor-pointer"
               title="Pratinjau Berkas"
             >
               <Eye className="w-3.5 h-3.5" />
@@ -821,7 +821,7 @@ export const TrashView: React.FC<TrashViewProps> = ({ onRefreshAll }) => {
               type="button"
               onClick={() => handleRestoreFile(file)}
               disabled={isProcessing}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs border border-emerald-200 transition-colors cursor-pointer disabled:opacity-50"
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-ok-50 hover:bg-ok-100 text-ok-700 font-bold text-xs border border-ok-200 transition-colors cursor-pointer disabled:opacity-50"
               title="Pulihkan Berkas"
             >
               <RotateCcw className="w-3.5 h-3.5" />
@@ -831,7 +831,7 @@ export const TrashView: React.FC<TrashViewProps> = ({ onRefreshAll }) => {
               type="button"
               onClick={() => handlePermanentDeleteFile(file)}
               disabled={isProcessing}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs border border-rose-200 transition-colors cursor-pointer disabled:opacity-50"
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-danger-50 hover:bg-danger-100 text-danger-700 font-bold text-xs border border-danger-200 transition-colors cursor-pointer disabled:opacity-50"
               title="Hapus Permanen"
             >
               <Trash2 className="w-3.5 h-3.5" />
@@ -853,8 +853,8 @@ export const TrashView: React.FC<TrashViewProps> = ({ onRefreshAll }) => {
     return (
       <React.Fragment key={`folder_fragment_${node.folder.id}`}>
         <tr
-          className={`hover:bg-amber-50/40 transition-colors group text-xs border-b border-slate-100/90 font-medium ${
-            isSelected ? "bg-indigo-50/70" : "bg-white"
+          className={`hover:bg-warn-50/40 transition-colors group text-xs border-b border-ink-100/90 font-medium ${
+            isSelected ? "bg-accent-50/70" : "bg-surface"
           }`}
         >
           {/* Checkbox Column */}
@@ -862,11 +862,11 @@ export const TrashView: React.FC<TrashViewProps> = ({ onRefreshAll }) => {
             <button
               type="button"
               onClick={() => handleToggleFolderSubtree(node)}
-              className="cursor-pointer text-slate-400 hover:text-slate-700 transition-colors"
+              className="cursor-pointer text-ink-400 hover:text-ink-700 transition-colors"
               title="Pilih folder dan isinya"
             >
               {isSelected ? (
-                <CheckSquare className="w-4 h-4 text-indigo-600" />
+                <CheckSquare className="w-4 h-4 text-accent-600" />
               ) : (
                 <Square className="w-4 h-4" />
               )}
@@ -884,7 +884,7 @@ export const TrashView: React.FC<TrashViewProps> = ({ onRefreshAll }) => {
                 <button
                   type="button"
                   onClick={() => toggleFolderExpand(node.folder.id)}
-                  className="w-5 h-5 rounded hover:bg-slate-200/80 flex items-center justify-center text-slate-500 hover:text-slate-800 transition-colors shrink-0 cursor-pointer"
+                  className="w-5 h-5 rounded hover:bg-ink-200/80 flex items-center justify-center text-ink-500 hover:text-ink-800 transition-colors shrink-0 cursor-pointer"
                   title={isExpanded ? "Tutup Folder" : "Buka Folder"}
                 >
                   {isExpanded ? (
@@ -895,14 +895,14 @@ export const TrashView: React.FC<TrashViewProps> = ({ onRefreshAll }) => {
                 </button>
               ) : (
                 <div className="w-5 h-5 flex items-center justify-center shrink-0">
-                  <div className="w-1.5 h-1.5 rounded-full bg-slate-300"></div>
+                  <div className="w-1.5 h-1.5 rounded-full bg-ink-300"></div>
                 </div>
               )}
 
               {/* Folder Icon */}
               <div
                 onClick={() => hasChildren && toggleFolderExpand(node.folder.id)}
-                className="w-7 h-7 rounded-lg bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600 shrink-0 shadow-2xs cursor-pointer"
+                className="w-7 h-7 rounded-lg bg-warn-50 border border-warn-200 flex items-center justify-center text-warn-600 shrink-0 shadow-card cursor-pointer"
               >
                 {isExpanded ? (
                   <FolderOpen className="w-4 h-4" />
@@ -916,15 +916,15 @@ export const TrashView: React.FC<TrashViewProps> = ({ onRefreshAll }) => {
                 onClick={() => hasChildren && toggleFolderExpand(node.folder.id)}
                 className="min-w-0 flex-1 cursor-pointer select-none"
               >
-                <div className="font-bold text-slate-900 text-xs sm:text-[13px] flex items-center gap-1.5 flex-wrap">
+                <div className="font-bold text-ink-900 text-xs sm:text-[13px] flex items-center gap-1.5 flex-wrap">
                   <span className="truncate" title={node.folder.name}>
                     {node.folder.name}
                   </span>
-                  <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-amber-100 text-amber-800 shrink-0">
+                  <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-warn-100 text-warn-800 shrink-0">
                     Folder
                   </span>
                 </div>
-                <div className="text-[11px] text-slate-500 flex items-center gap-2">
+                <div className="text-[11px] text-ink-500 flex items-center gap-2">
                   <span>
                     {node.subfolders.length > 0 ? `${node.subfolders.length} subfolder, ` : ""}
                     {node.files.length} berkas langsung
@@ -936,22 +936,22 @@ export const TrashView: React.FC<TrashViewProps> = ({ onRefreshAll }) => {
           </td>
 
           {/* Trashed Time */}
-          <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap">
+          <td className="py-2.5 px-3 text-ink-600 whitespace-nowrap">
             <div className="flex items-center gap-1.5 text-[11px] sm:text-xs">
-              <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+              <Clock className="w-3.5 h-3.5 text-ink-400 shrink-0" />
               <span>{getRelativeTime(node.folder.trashedAt || node.folder.updatedAt)}</span>
             </div>
           </td>
 
           {/* Size */}
-          <td className="py-2.5 px-3 text-slate-700 font-semibold whitespace-nowrap text-[11px] sm:text-xs">
+          <td className="py-2.5 px-3 text-ink-700 font-semibold whitespace-nowrap text-[11px] sm:text-xs">
             {node.totalSize > 0 ? formatBytes(node.totalSize) : "-"}
           </td>
 
           {/* Trashed By */}
-          <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap hidden md:table-cell text-[11px] sm:text-xs">
+          <td className="py-2.5 px-3 text-ink-600 whitespace-nowrap hidden md:table-cell text-[11px] sm:text-xs">
             <div className="flex items-center gap-1.5">
-              <UserIcon className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+              <UserIcon className="w-3.5 h-3.5 text-ink-400 shrink-0" />
               <span className="truncate max-w-[120px]">{node.folder.ownerName || "Pengguna"}</span>
             </div>
           </td>
@@ -963,7 +963,7 @@ export const TrashView: React.FC<TrashViewProps> = ({ onRefreshAll }) => {
                 type="button"
                 onClick={() => handleRestoreFolder(node.folder)}
                 disabled={isProcessing}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs border border-emerald-200 transition-colors cursor-pointer disabled:opacity-50"
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-ok-50 hover:bg-ok-100 text-ok-700 font-bold text-xs border border-ok-200 transition-colors cursor-pointer disabled:opacity-50"
                 title="Pulihkan Folder dan Seluruh Isinya"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
@@ -973,7 +973,7 @@ export const TrashView: React.FC<TrashViewProps> = ({ onRefreshAll }) => {
                 type="button"
                 onClick={() => handlePermanentDeleteFolder(node.folder)}
                 disabled={isProcessing}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs border border-rose-200 transition-colors cursor-pointer disabled:opacity-50"
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-danger-50 hover:bg-danger-100 text-danger-700 font-bold text-xs border border-danger-200 transition-colors cursor-pointer disabled:opacity-50"
                 title="Hapus Folder Permanen"
               >
                 <Trash2 className="w-3.5 h-3.5" />
@@ -997,24 +997,14 @@ export const TrashView: React.FC<TrashViewProps> = ({ onRefreshAll }) => {
   return (
     <div className="p-4 sm:p-6 max-w-7xl w-full mx-auto space-y-5 animate-fade-in">
       {/* 1. TOP NOTICE & BANNER */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-start sm:items-center gap-3.5">
-          <div className="w-11 h-11 rounded-2xl bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-600 shrink-0 shadow-2xs">
-            <Trash2 className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-base sm:text-lg font-bold text-slate-900">
-                Sampah &amp; Pemulihan Berkas
-              </h2>
-              <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-rose-100 text-rose-700">
-                {trashedFolders.length + trashedFiles.length} Item
-              </span>
-            </div>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Tampilan hierarki pohon direktori (files tree) dimulai dari folder induk. Berkas dan folder dapat dipulihkan kembali atau dihapus secara permanen ({formatBytes(totalTrashSize)}).
-            </p>
-          </div>
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-bold text-ink-900">
+            Sampah <span className="ml-1 text-base font-semibold text-ink-500 tabular">{trashedFolders.length + trashedFiles.length}</span>
+          </h1>
+          <p className="text-sm text-ink-500 mt-1">
+            Pulihkan item ke tempat asalnya, atau hapus permanen untuk mengosongkan {formatBytes(totalTrashSize)}.
+          </p>
         </div>
 
         {/* Top Actions: Refresh & Empty Trash */}
@@ -1022,10 +1012,10 @@ export const TrashView: React.FC<TrashViewProps> = ({ onRefreshAll }) => {
           <button
             onClick={loadTrash}
             disabled={isLoading || isProcessing}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition-colors disabled:opacity-50 cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-ink-100 hover:bg-ink-200 text-ink-700 text-xs font-semibold transition-colors disabled:opacity-50 cursor-pointer"
             title="Segarkan Data Sampah"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? "animate-spin text-blue-600" : ""}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? "animate-spin text-accent-600" : ""}`} />
             <span>Segarkan</span>
           </button>
 
@@ -1033,7 +1023,7 @@ export const TrashView: React.FC<TrashViewProps> = ({ onRefreshAll }) => {
             <button
               onClick={handleEmptyTrash}
               disabled={isProcessing}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 active:scale-95 text-white text-xs font-bold shadow-xs hover:shadow-md transition-all cursor-pointer disabled:opacity-50"
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-danger-600 hover:bg-danger-700 active:scale-95 text-white text-xs font-bold shadow-card hover:shadow-card transition cursor-pointer disabled:opacity-50"
             >
               <Trash2 className="w-3.5 h-3.5" />
               <span>Kosongkan Sampah</span>
@@ -1043,23 +1033,23 @@ export const TrashView: React.FC<TrashViewProps> = ({ onRefreshAll }) => {
       </div>
 
       {/* 2. FILTER & TREE NAVIGATION TOOLBAR */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-3 sm:p-4 shadow-xs space-y-3">
+      <div className="bg-surface border border-ink-200 rounded-2xl p-3 sm:p-4 shadow-card space-y-3">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           
           {/* Search Input */}
           <div className="relative flex-1 max-w-md">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <Search className="w-4 h-4 text-ink-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               placeholder="Cari folder atau berkas di sampah..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 bg-slate-50 hover:bg-slate-100/70 focus:bg-white border border-slate-200 focus:border-blue-500 rounded-xl text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:outline-hidden transition-all"
+              className="w-full pl-9 pr-4 py-2 bg-ink-50 hover:bg-ink-100/70 focus:bg-surface border border-ink-200 focus:border-accent-500 rounded-xl text-xs sm:text-sm text-ink-800 placeholder-ink-400 focus:outline-hidden transition"
             />
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery("")}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold cursor-pointer"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-400 hover:text-ink-600 text-xs font-bold cursor-pointer"
               >
                 ✕
               </button>
@@ -1068,7 +1058,7 @@ export const TrashView: React.FC<TrashViewProps> = ({ onRefreshAll }) => {
 
           {/* Category Filter Pills & Tree Expand/Collapse Controls */}
           <div className="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0 no-scrollbar">
-            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl text-xs">
+            <div className="flex items-center gap-1 bg-ink-100 p-1 rounded-xl text-xs">
               {[
                 { id: "ALL", label: "Semua" },
                 { id: "FOLDERS", label: "Folder" },
@@ -1080,10 +1070,10 @@ export const TrashView: React.FC<TrashViewProps> = ({ onRefreshAll }) => {
                 <button
                   key={cat.id}
                   onClick={() => setCategoryFilter(cat.id)}
-                  className={`px-2.5 py-1 rounded-lg font-semibold transition-all cursor-pointer ${
+                  className={`px-2.5 py-1 rounded-lg font-semibold transition cursor-pointer ${
                     categoryFilter === cat.id
-                      ? "bg-white text-slate-900 shadow-2xs"
-                      : "text-slate-500 hover:text-slate-800"
+                      ? "bg-surface text-ink-900 shadow-card"
+                      : "text-ink-500 hover:text-ink-800"
                   }`}
                 >
                   {cat.label}
@@ -1092,21 +1082,21 @@ export const TrashView: React.FC<TrashViewProps> = ({ onRefreshAll }) => {
             </div>
 
             {/* Expand / Collapse All Tree Buttons */}
-            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl shrink-0 text-xs">
+            <div className="flex items-center gap-1 bg-ink-100 p-1 rounded-xl shrink-0 text-xs">
               <button
                 onClick={handleExpandAll}
-                className="flex items-center gap-1 px-2 py-1 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-white font-medium transition-all cursor-pointer"
+                className="flex items-center gap-1 px-2 py-1 rounded-lg text-ink-600 hover:text-ink-900 hover:bg-surface font-medium transition cursor-pointer"
                 title="Buka seluruh cabang pohon folder"
               >
-                <FolderTree className="w-3.5 h-3.5 text-indigo-600" />
+                <FolderTree className="w-3.5 h-3.5 text-accent-600" />
                 <span className="hidden sm:inline">Buka Semua</span>
               </button>
               <button
                 onClick={handleCollapseAll}
-                className="flex items-center gap-1 px-2 py-1 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-white font-medium transition-all cursor-pointer"
+                className="flex items-center gap-1 px-2 py-1 rounded-lg text-ink-600 hover:text-ink-900 hover:bg-surface font-medium transition cursor-pointer"
                 title="Tutup seluruh cabang pohon folder"
               >
-                <FolderIcon className="w-3.5 h-3.5 text-slate-500" />
+                <FolderIcon className="w-3.5 h-3.5 text-ink-500" />
                 <span className="hidden sm:inline">Tutup Semua</span>
               </button>
             </div>
@@ -1115,16 +1105,16 @@ export const TrashView: React.FC<TrashViewProps> = ({ onRefreshAll }) => {
 
         {/* Bulk Selection Bar when items are selected */}
         {selectedKeys.size > 0 && (
-          <div className="bg-indigo-50/90 border border-indigo-200/80 rounded-xl px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-3 animate-fade-in">
-            <div className="flex items-center gap-2.5 text-xs font-bold text-indigo-900">
+          <div className="bg-accent-50/90 border border-accent-200/80 rounded-xl px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-3 animate-fade-in">
+            <div className="flex items-center gap-2.5 text-xs font-bold text-accent-900">
               <button
                 onClick={handleToggleSelectAll}
-                className="flex items-center gap-1.5 text-indigo-700 hover:text-indigo-900 cursor-pointer"
+                className="flex items-center gap-1.5 text-accent-700 hover:text-accent-900 cursor-pointer"
               >
                 {isAllSelected ? (
-                  <CheckSquare className="w-4 h-4 text-indigo-600" />
+                  <CheckSquare className="w-4 h-4 text-accent-600" />
                 ) : (
-                  <Square className="w-4 h-4 text-indigo-400" />
+                  <Square className="w-4 h-4 text-accent-400" />
                 )}
                 <span>
                   {selectedKeys.size} item terpilih ({selectedFolders.length} folder, {selectedFiles.length} berkas)
@@ -1136,7 +1126,7 @@ export const TrashView: React.FC<TrashViewProps> = ({ onRefreshAll }) => {
               <button
                 onClick={handleBulkRestore}
                 disabled={isProcessing}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-2xs transition-colors cursor-pointer disabled:opacity-50"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent-600 hover:bg-accent-700 text-accent-fg text-xs font-bold shadow-card transition-colors cursor-pointer disabled:opacity-50"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 <span>Pulihkan Terpilih</span>
@@ -1145,7 +1135,7 @@ export const TrashView: React.FC<TrashViewProps> = ({ onRefreshAll }) => {
               <button
                 onClick={handleBulkPermanentDelete}
                 disabled={isProcessing}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-2xs transition-colors cursor-pointer disabled:opacity-50"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-danger-600 hover:bg-danger-700 text-white text-xs font-bold shadow-card transition-colors cursor-pointer disabled:opacity-50"
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 <span>Hapus Permanen</span>
@@ -1153,7 +1143,7 @@ export const TrashView: React.FC<TrashViewProps> = ({ onRefreshAll }) => {
 
               <button
                 onClick={() => setSelectedKeys(new Set())}
-                className="px-2.5 py-1.5 text-slate-500 hover:text-slate-800 text-xs font-semibold cursor-pointer"
+                className="px-2.5 py-1.5 text-ink-500 hover:text-ink-800 text-xs font-semibold cursor-pointer"
               >
                 Batal
               </button>
@@ -1164,29 +1154,29 @@ export const TrashView: React.FC<TrashViewProps> = ({ onRefreshAll }) => {
 
       {/* 3. TRASH CONTENT: FILES TREE VIEW */}
       {isLoading ? (
-        <div className="bg-white border border-slate-200 rounded-2xl p-8 sm:p-12 space-y-6 shadow-xs animate-in fade-in duration-200">
-          <div className="flex flex-col items-center justify-center gap-2.5 text-slate-700 text-center">
-            <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-600 shadow-2xs">
-              <RefreshCw className="w-6 h-6 animate-spin text-rose-600" />
+        <div className="bg-surface border border-ink-200 rounded-2xl p-8 sm:p-12 space-y-6 shadow-card animate-fade-in">
+          <div className="flex flex-col items-center justify-center gap-2.5 text-ink-700 text-center">
+            <div className="w-12 h-12 rounded-2xl bg-danger-50 border border-danger-100 flex items-center justify-center text-danger-600 shadow-card">
+              <RefreshCw className="w-6 h-6 animate-spin text-danger-600" />
             </div>
-            <p className="text-sm font-bold text-slate-800">Menyusun Pohon Direktori Sampah...</p>
-            <p className="text-xs text-slate-400 max-w-xs">Mengambil struktur hierarki folder dan berkas...</p>
+            <p className="text-sm font-bold text-ink-800">Menyusun Pohon Direktori Sampah...</p>
+            <p className="text-xs text-ink-400 max-w-xs">Mengambil struktur hierarki folder dan berkas...</p>
           </div>
           <div className="space-y-3 pt-2">
             {[...Array(5)].map((_, i) => (
-              <div key={i} className="h-10 bg-slate-50 border border-slate-100 rounded-xl animate-pulse" />
+              <div key={i} className="h-10 bg-ink-50 border border-ink-100 rounded-xl animate-pulse" />
             ))}
           </div>
         </div>
       ) : totalVisibleItems === 0 ? (
-        <div className="bg-white border border-slate-200 rounded-2xl p-16 text-center shadow-xs">
-          <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 mx-auto mb-3">
+        <div className="bg-surface border border-ink-200 rounded-2xl p-16 text-center shadow-card">
+          <div className="w-16 h-16 rounded-full bg-ink-100 flex items-center justify-center text-ink-400 mx-auto mb-3">
             <Trash2 className="w-8 h-8 stroke-[1.5]" />
           </div>
-          <h3 className="text-base font-bold text-slate-800">
+          <h3 className="text-base font-bold text-ink-800">
             {searchQuery ? "Tidak ditemukan item yang cocok" : "Sampah Kosong"}
           </h3>
-          <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
+          <p className="text-xs text-ink-500 mt-1 max-w-md mx-auto">
             {searchQuery
               ? `Tidak ada berkas atau folder di sampah yang cocok dengan kata kunci "${searchQuery}".`
               : "Semua berkas dan folder Anda tersimpan aman di Drive Saya."}
@@ -1194,19 +1184,19 @@ export const TrashView: React.FC<TrashViewProps> = ({ onRefreshAll }) => {
         </div>
       ) : (
         /* HIERARCHICAL FILES TREE TABLE */
-        <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
+        <div className="bg-surface border border-ink-200 rounded-2xl overflow-hidden shadow-card">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-wider text-[11px] font-bold">
+              <thead className="bg-ink-50 border-b border-ink-200 text-ink-500 text-[11px] font-bold">
                 <tr>
                   <th className="py-3 px-3 w-10 text-center">
                     <button
                       onClick={handleToggleSelectAll}
-                      className="cursor-pointer text-slate-400 hover:text-slate-700 transition-colors"
+                      className="cursor-pointer text-ink-400 hover:text-ink-700 transition-colors"
                       title={isAllSelected ? "Batalkan Semua Pilihan" : "Pilih Semua"}
                     >
                       {isAllSelected ? (
-                        <CheckSquare className="w-4 h-4 text-indigo-600" />
+                        <CheckSquare className="w-4 h-4 text-accent-600" />
                       ) : (
                         <Square className="w-4 h-4" />
                       )}
@@ -1214,7 +1204,7 @@ export const TrashView: React.FC<TrashViewProps> = ({ onRefreshAll }) => {
                   </th>
                   <th className="py-3 px-3">
                     <div className="flex items-center gap-1.5">
-                      <FolderTree className="w-3.5 h-3.5 text-slate-400" />
+                      <FolderTree className="w-3.5 h-3.5 text-ink-400" />
                       <span>Pohon Direktori &amp; Berkas</span>
                     </div>
                   </th>
@@ -1224,7 +1214,7 @@ export const TrashView: React.FC<TrashViewProps> = ({ onRefreshAll }) => {
                   <th className="py-3 px-3 text-right">Aksi</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-ink-100">
                 {/* 1. Root Folders and their recursive children */}
                 {rootNodes.map((node) => renderFolderNode(node))}
 
@@ -1232,8 +1222,8 @@ export const TrashView: React.FC<TrashViewProps> = ({ onRefreshAll }) => {
                 {standaloneFiles.length > 0 && (
                   <>
                     {rootNodes.length > 0 && (
-                      <tr className="bg-slate-50/60 border-t-2 border-slate-100">
-                        <td colSpan={6} className="py-2 px-4 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                      <tr className="bg-ink-50/60 border-t-2 border-ink-100">
+                        <td colSpan={6} className="py-2 px-4 text-[11px] font-bold text-ink-400">
                           Berkas di Luar Folder
                         </td>
                       </tr>

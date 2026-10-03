@@ -272,9 +272,21 @@ export class StorageController {
       const limitNum = Math.max(1, Math.min(100, parseInt(String(limit || "20"), 10) || 20));
       const searchQuery = q || search ? String(q || search).trim() : undefined;
 
+      const hasFolder = folderId !== undefined && folderId !== "" && folderId !== "root" && folderId !== "null";
+      // Signed-out visitors (share links) must name a folder; without one this
+      // would list every file of every account.
+      if (!req.user && !hasFolder) {
+        res.status(401).json({ success: false, error: "Authentication required. Please log in." });
+        return;
+      }
+
       const where: any = {};
       if (folderId !== undefined && folderId !== "") {
         where.folderId = (folderId === "root" || folderId === "null") ? null : String(folderId);
+      }
+      // Across folders, regular users only see their own uploads.
+      if (!hasFolder && req.user && req.user.role !== "ADMIN") {
+        where.userId = req.user.id;
       }
       if (syncStatus && syncStatus !== "ALL") {
         where.syncStatus = syncStatus as SyncStatus;
@@ -1716,6 +1728,13 @@ export class StorageController {
           error: "Berkas tidak ditemukan",
         });
         return;
+      }
+      if (req.user?.role !== "ADMIN" && file.userId !== req.user?.id) {
+        const folder = file.folderId ? await db.folder.findUnique({ where: { id: file.folderId } }) : null;
+        if (!folder || folder.ownerId !== req.user?.id) {
+          res.status(403).json({ success: false, error: "Hanya pemilik berkas yang dapat membuat tautan bagikan." });
+          return;
+        }
       }
 
       const host = req.get("host") || "";

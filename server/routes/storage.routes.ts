@@ -19,7 +19,6 @@ storageRouter.get("/bulk-download/session/:sessionId", StorageController.getArch
 // File listing & inspection (accessible for shared folders)
 storageRouter.get("/files", StorageController.listFiles);
 storageRouter.get("/files/:id", StorageController.getFile);
-storageRouter.get("/files/:id/share-links", StorageController.getFileShareLinks);
 
 // Bulk Multi-Part Archive & Direct ZIP endpoints (accessible for shared folders)
 storageRouter.post("/bulk-download/prepare", StorageController.prepareBulkArchive);
@@ -68,6 +67,9 @@ storageRouter.post("/upload/chunk/cancel", StorageController.cancelChunkUpload);
 
 // Authentication required for destructive management and admin storage routes
 storageRouter.use(requireAuth);
+
+// Minting a signed share link is an owner action.
+storageRouter.get("/files/:id/share-links", StorageController.getFileShareLinks);
 
 // Bulk operations
 storageRouter.post("/files/bulk-delete", StorageController.bulkDeleteFiles);

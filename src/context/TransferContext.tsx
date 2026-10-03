@@ -892,7 +892,7 @@ export const TransferProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         onUploadCompleteCallback: params.onUploadComplete,
       });
 
-      showToast(`Mulai mengunggah ${params.files.length} berkas secara resumable...`, "info");
+      showToast(`Mengunggah ${params.files.length} berkas`, "info");
     },
     [showToast]
   );

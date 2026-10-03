@@ -1,112 +1,87 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { Suspense, lazy, useCallback, useEffect, useState } from "react";
+import { Loader2 } from "lucide-react";
 import { AuthProvider, useAuth } from "./context/AuthContext.tsx";
 import { DialogProvider } from "./context/DialogContext.tsx";
 import { TransferProvider } from "./context/TransferContext.tsx";
+import { ThemeProvider } from "./context/ThemeContext.tsx";
 import { TransferHUD } from "./components/TransferHUD.tsx";
 import { ChunkUploadModal } from "./components/ChunkUploadModal.tsx";
 import { GoogleDriveLayout } from "./components/GoogleDriveLayout.tsx";
-import { AuthView } from "./components/AuthView.tsx";
-import { PublicSharedFolderView } from "./components/PublicSharedFolderView.tsx";
-import {
-  Folder,
-  FileItem,
-  GoogleDriveStatus,
-  StorageStats,
-  SyncStats,
-} from "./types/frontend.ts";
+import { Folder, GoogleDriveStatus, StorageStats, SyncStats } from "./types/frontend.ts";
 import { api } from "./services/api.ts";
-import { Loader2 } from "lucide-react";
+
+// Signed-out screens are separate chunks: a signed-in user never downloads them.
+const AuthView = lazy(() => import("./components/AuthView.tsx").then((m) => ({ default: m.AuthView })));
+const PublicSharedFolderView = lazy(() =>
+  import("./features/share/PublicSharedFolderView.tsx").then((m) => ({ default: m.PublicSharedFolderView }))
+);
+
+function FullScreenLoader({ label }: { label: string }) {
+  return (
+    <div className="min-h-dvh flex items-center justify-center bg-canvas" role="status">
+      <div className="flex items-center gap-3 text-sm text-ink-500">
+        <Loader2 className="w-5 h-5 animate-spin" />
+        {label}
+      </div>
+    </div>
+  );
+}
+
+function readShareParams() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    return {
+      folderId: params.get("folderId") || params.get("folder"),
+      fileId: params.get("fileId") || params.get("file"),
+      perm: params.get("perm") || params.get("permission"),
+      sig: params.get("sig") || params.get("signature") || params.get("token"),
+    };
+  } catch {
+    return { folderId: null, fileId: null, perm: null, sig: null };
+  }
+}
 
 function MainApp() {
-  const { user, isAdmin, isLoading: isAuthLoading } = useAuth();
+  const { user, isLoading: isAuthLoading } = useAuth();
+  const [shareParams] = useState(readShareParams);
+  const [forceShowLogin, setForceShowLogin] = useState(false);
 
-  // Check if opening via share link (?folderId=...&perm=...&sig=... or ?fileId=...)
-  const [shareParams] = useState<{
-    folderId: string | null;
-    fileId: string | null;
-    perm: string | null;
-    sig: string | null;
-  }>(() => {
-    try {
-      const params = new URLSearchParams(window.location.search);
-      return {
-        folderId: params.get("folderId") || params.get("folder"),
-        fileId: params.get("fileId") || params.get("file"),
-        perm: params.get("perm") || params.get("permission"),
-        sig: params.get("sig") || params.get("signature") || params.get("token"),
-      };
-    } catch {
-      return { folderId: null, fileId: null, perm: null, sig: null };
-    }
-  });
-
-  const [forceShowLogin, setForceShowLogin] = useState<boolean>(false);
-
-  // Global State
-  const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
   const [folders, setFolders] = useState<Folder[]>([]);
-  const [files, setFiles] = useState<FileItem[]>([]);
   const [googleStatus, setGoogleStatus] = useState<GoogleDriveStatus | null>(null);
   const [storageStats, setStorageStats] = useState<StorageStats | null>(null);
   const [syncStats, setSyncStats] = useState<SyncStats | null>(null);
 
+  // Account-wide data for the shell and settings. Folder listings are paged by
+  // the explorer itself, so no file list is loaded here.
   const fetchGlobalData = useCallback(async () => {
-    try {
-      const [foldersRes, filesRes, googleRes, storageRes, syncRes] = await Promise.all([
-        api.listFolders(),
-        api.listFiles(),
-        api.getGoogleStatus(),
-        api.getStorageStats(),
-        api.getSyncStats(),
-      ]);
-
-      setFolders(foldersRes.folders);
-      setFiles(filesRes.files);
-      setGoogleStatus(googleRes);
-      setStorageStats(storageRes);
-      setSyncStats(syncRes);
-    } catch (err) {
-      console.warn("Error refreshing global data:", err);
-    } finally {
-      setIsInitialLoading(false);
-    }
+    const [foldersRes, googleRes, storageRes, syncRes] = await Promise.allSettled([
+      api.listFolders({ limit: 100 }),
+      api.getGoogleStatus(),
+      api.getStorageStats(),
+      api.getSyncStats(),
+    ]);
+    if (foldersRes.status === "fulfilled") setFolders(foldersRes.value.folders);
+    if (googleRes.status === "fulfilled") setGoogleStatus(googleRes.value);
+    if (storageRes.status === "fulfilled") setStorageStats(storageRes.value);
+    if (syncRes.status === "fulfilled") setSyncStats(syncRes.value);
   }, []);
 
-  // Initial load when user exists
   useEffect(() => {
-    if (user) {
-      fetchGlobalData();
-    }
+    if (user) fetchGlobalData();
   }, [user, fetchGlobalData]);
 
-  // Global listener for automatic background refresh upon upload/sync completion
   useEffect(() => {
-    const handleGlobalRefresh = () => {
-      if (user) {
-        fetchGlobalData();
-      }
-    };
-    window.addEventListener("powerdrive:refresh-data", handleGlobalRefresh);
-    return () => {
-      window.removeEventListener("powerdrive:refresh-data", handleGlobalRefresh);
-    };
+    if (!user) return;
+    const onRefresh = () => fetchGlobalData();
+    window.addEventListener("powerdrive:refresh-data", onRefresh);
+    return () => window.removeEventListener("powerdrive:refresh-data", onRefresh);
   }, [user, fetchGlobalData]);
 
-  if (isAuthLoading) {
-    return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3 text-slate-300">
-          <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
-          <p className="text-sm font-medium">Memuat Power Drive...</p>
-        </div>
-      </div>
-    );
-  }
+  if (isAuthLoading) return <FullScreenLoader label="Memuat Power Drive" />;
 
-  // 1. If a valid share folderId or fileId is present in URL, open Public Shared Folder/File directly!
   if ((shareParams.folderId || shareParams.fileId) && !forceShowLogin) {
     return (
-      <>
+      <Suspense fallback={<FullScreenLoader label="Membuka tautan" />}>
         <PublicSharedFolderView
           initialFolderId={shareParams.folderId || undefined}
           fileId={shareParams.fileId || undefined}
@@ -116,19 +91,18 @@ function MainApp() {
         />
         <TransferHUD />
         <ChunkUploadModal />
-      </>
+      </Suspense>
     );
   }
 
-  // 2. If unauthenticated, show Auth Portal (Login, Register, Forgot Password, Reset Password)
   if (!user) {
     return (
-      <AuthView
-        onSuccess={fetchGlobalData}
-        onBackToSharedFolder={
-          (shareParams.folderId || shareParams.fileId) ? () => setForceShowLogin(false) : undefined
-        }
-      />
+      <Suspense fallback={<FullScreenLoader label="Memuat" />}>
+        <AuthView
+          onSuccess={fetchGlobalData}
+          onBackToSharedFolder={shareParams.folderId || shareParams.fileId ? () => setForceShowLogin(false) : undefined}
+        />
+      </Suspense>
     );
   }
 
@@ -136,12 +110,10 @@ function MainApp() {
     <>
       <GoogleDriveLayout
         folders={folders}
-        files={files}
         googleStatus={googleStatus}
         storageStats={storageStats}
         syncStats={syncStats}
         onRefreshAll={fetchGlobalData}
-        isInitialLoading={isInitialLoading}
       />
       <TransferHUD />
       <ChunkUploadModal />
@@ -151,12 +123,14 @@ function MainApp() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <DialogProvider>
-        <TransferProvider>
-          <MainApp />
-        </TransferProvider>
-      </DialogProvider>
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <DialogProvider>
+          <TransferProvider>
+            <MainApp />
+          </TransferProvider>
+        </DialogProvider>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }

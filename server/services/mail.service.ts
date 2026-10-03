@@ -195,7 +195,7 @@ export class MailService {
     // If SMTP is not fully configured, log warning and return without throwing so the system flow is graceful
     if (!config.isConfigured) {
       console.warn(
-        `[MailService] SMTP not fully configured. Password reset token for ${toEmail}: ${resetToken}`
+        `[MailService] SMTP not configured; password reset email for ${toEmail} was not sent.`
       );
       return { success: false };
     }
