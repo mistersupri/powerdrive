@@ -77,7 +77,11 @@ export async function receiveChunk(ctx: AuthCtx, id: string, offset: number, bod
   }
   const received = r.received + got;
   db.run("UPDATE uploads SET received = ?, updated_at = ? WHERE id = ?", received, now(), id);
-  if (received === r.size) startFinalize(ctx, { ...r, received });
+  if (received === r.size) {
+    const done = startFinalize(ctx, { ...r, received });
+    // Most finalizations (rename into place) take milliseconds: answer with the final state instead of making the client poll.
+    if (done) await Promise.race([done, new Promise((res) => setTimeout(res, 600))]);
+  }
   return dto(db.get<any>("SELECT * FROM uploads WHERE id = ?", id));
 }
 
@@ -95,11 +99,11 @@ export function retryUpload(ctx: AuthCtx, id: string) {
   return dto(db.get<any>("SELECT * FROM uploads WHERE id = ?", id));
 }
 
-function startFinalize(ctx: AuthCtx, r: any) {
+function startFinalize(ctx: AuthCtx, r: any): Promise<void> | undefined {
   if (finalizing.has(r.id)) return;
   finalizing.add(r.id);
   db.run("UPDATE uploads SET status = 'FINALIZING', error_message = NULL, updated_at = ? WHERE id = ?", now(), r.id);
-  void finalize(ctx, r).finally(() => { finalizing.delete(r.id); pushed.delete(r.id); });
+  return finalize(ctx, r).finally(() => { finalizing.delete(r.id); pushed.delete(r.id); });
 }
 
 /** Moves the staged file to the destination provider. Local destinations just rename the file into place. */

@@ -3,29 +3,19 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Copy, Download, Eye, FolderInput, FolderOpen, FolderPlus, Pencil, RefreshCw, Star, Trash2, Upload } from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { api, downloadUrl } from "@/lib/api";
+import { api } from "@/lib/api";
+import { startTransfer, triggerDownload, type Destination } from "./transferApi";
 import { kindOf, previewable } from "@/lib/fileType";
 import type { MenuItem } from "@/ui/Menu";
 import { enqueueUploads, type UploadInput } from "@/features/uploads/manager";
-import { DeleteDialog, NameDialog, TransferDialog, type Destination } from "./dialogs";
+import { DeleteDialog, NameDialog, TransferDialog } from "./dialogs";
 import { Preview } from "./Preview";
 import { type Selection } from "./selection";
 
+export { startTransfer, triggerDownload };
 interface Args {
   storage: StorageConnectionDto | undefined; folderId: string; folderName: string; entries: FileEntry[]; selection: Selection;
   onOpenFolder(id: string): void;
-}
-
-export async function startTransfer(type: "COPY" | "MOVE", storageId: string, ids: string[], dest: Destination, policy: ConflictPolicy = "RENAME") {
-  const job = await api<TransferJobDto>("/transfers", { body: { type, source: { storageId, fileIds: ids }, destination: { storageId: dest.storageId, folderId: dest.folderId }, conflictPolicy: policy, idempotencyKey: crypto.randomUUID() } });
-  toast(`${type === "COPY" ? "Menyalin" : "Memindahkan"} ${ids.length} item ke ${dest.folderName}`, { description: "Kemajuan tampil di panel kanan bawah." });
-  return job;
-}
-
-export function triggerDownload(storageId: string, ids: string[]) {
-  ids.forEach((id, i) => setTimeout(() => {
-    const a = document.createElement("a"); a.href = downloadUrl(storageId, id); a.rel = "noopener"; document.body.appendChild(a); a.click(); a.remove();
-  }, i * 450));
 }
 
 /** Everything a file view can do, with its dialogs. Pages render `dialogs` and use `menuFor` / handlers. */

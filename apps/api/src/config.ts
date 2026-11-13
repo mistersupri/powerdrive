@@ -38,7 +38,7 @@ export const config = {
   thumbnails: {
     concurrency: num(env.THUMBNAIL_CONCURRENCY, Math.max(2, os.cpus().length)),
     maxSourceBytes: num(env.THUMBNAIL_MAX_SOURCE_BYTES, 64 * 1024 * 1024),
-    sizes: [128, 256, 512, 1024] as number[],
+    sizes: [128, 256, 512, 1024, 2048] as number[],
   },
   oauth: {
     google: { clientId: env.GOOGLE_CLIENT_ID ?? "", clientSecret: env.GOOGLE_CLIENT_SECRET ?? "", redirectUri: env.GOOGLE_REDIRECT_URI ?? `${(env.APP_URL ?? "http://localhost:5173").replace(/\/$/, "")}/api/v1/storages/google-drive/callback` },

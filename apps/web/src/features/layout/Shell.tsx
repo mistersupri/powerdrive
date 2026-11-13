@@ -15,6 +15,9 @@ import { Avatar, Skeleton } from "@/ui/misc";
 import { IconButton } from "@/ui/Button";
 import { useMenu } from "@/ui/Menu";
 import { Logo } from "./Logo";
+import { startTransfer } from "@/features/files/transferApi";
+import { DRAG_MIME } from "@/features/files/dnd";
+import { toast } from "sonner";
 import { useTheme } from "./theme";
 
 export function useStorages() {
@@ -56,7 +59,10 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         <NavItem to="/starred" icon={Star}>Berbintang</NavItem>
         <Section>Penyimpanan</Section>
         {storages.map((s) => (
-          <NavLink key={s.id} to={`/s/${s.id}`} className={({ isActive }) => cn(item, "h-8", isActive && active)}>
+          <NavLink key={s.id} to={`/s/${s.id}`} className={({ isActive }) => cn(item, "h-8", isActive && active)}
+            onDragOver={(e) => { if (e.dataTransfer.types.includes(DRAG_MIME)) { e.preventDefault(); e.currentTarget.classList.add("ring-2", "ring-primary"); } }}
+            onDragLeave={(e) => e.currentTarget.classList.remove("ring-2", "ring-primary")}
+            onDrop={(e) => { e.currentTarget.classList.remove("ring-2", "ring-primary"); const raw = e.dataTransfer.getData(DRAG_MIME); if (!raw) return; e.preventDefault(); const p = JSON.parse(raw); void startTransfer(e.altKey ? "COPY" : "MOVE", p.storageId, p.ids, { storageId: s.id, folderId: "root", folderName: s.name }).catch((er) => toast.error((er as Error).message)); }}>
             <span className={cn("ml-1.5 size-2 shrink-0 rounded-full", PROVIDER_DOT[s.provider] ?? "bg-faint", s.status !== "CONNECTED" && "opacity-40")} aria-hidden />
             <span className="flex-1 truncate">{s.name}</span>
             {s.status !== "CONNECTED" && <span className="size-1.5 rounded-full bg-warn-ink" title="Perlu perhatian" role="img" aria-label="Perlu perhatian" />}

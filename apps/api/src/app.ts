@@ -60,6 +60,10 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
 
   // Raw chunk uploads are streamed straight to disk, never buffered.
   app.addContentTypeParser("application/octet-stream", (_req, _payload, done) => done(null));
+  // Plain HTML form posts (used so the browser itself performs ZIP downloads, with its native progress and cancel).
+  app.addContentTypeParser("application/x-www-form-urlencoded", { parseAs: "string" }, (_req, body, done) => {
+    try { const p = new URLSearchParams(body as string); const o: Record<string, string | string[]> = {}; for (const k of new Set(p.keys())) { const v = p.getAll(k); o[k] = v.length > 1 ? v : v[0]!; } done(null, o); } catch (e) { done(e as Error); }
+  });
 
   app.addHook("onRequest", async (req, reply) => {
     reply.header("x-content-type-options", "nosniff");

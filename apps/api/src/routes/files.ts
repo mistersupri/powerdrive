@@ -5,7 +5,7 @@ import { db } from "../db.ts";
 import { ok, requireAuth } from "../app.ts";
 import { audit } from "../lib/audit.ts";
 import { badRequest } from "../lib/errors.ts";
-import { sendFile, sendFolderZip } from "../modules/delivery.ts";
+import { sendFile, sendFolderZip, sendZip } from "../modules/delivery.ts";
 import { createFolder, deleteFile, listFolder, renameFile, searchIndex, setStar, toEntry } from "../modules/files.ts";
 import { requireStorage } from "../modules/permissions.ts";
 import { getThumbnail, pickSize } from "../modules/thumbnails.ts";
@@ -95,6 +95,16 @@ export async function fileRoutes(app: FastifyInstance) {
     if (f.isFolder) return sendFolderZip(req, reply, p, storageId, f);
     return sendFile(req, reply, p, storageId, f, inline);
   };
+  // Several files/folders in one ZIP. Submitted as a form so the browser downloads it natively.
+  app.post("/files/zip", async (req, reply) => {
+    const b = z.object({ storageId: z.string(), id: z.union([z.string(), z.array(z.string())]) }).parse(req.body);
+    const ids = (Array.isArray(b.id) ? b.id : [b.id]).slice(0, 2000);
+    const { ctx, p } = open(req, "DOWNLOAD", b.storageId);
+    const roots: RemoteFile[] = [];
+    for (const id of ids) { try { roots.push(await p.stat(decodeId(id))); } catch (e) { mapProviderError(e, b.storageId); } }
+    audit({ workspaceId: ctx.workspaceId, userId: ctx.userId, action: "file.download", resourceType: "file", metadata: { storageId: b.storageId, items: roots.length, zip: true }, ip: ctx.ip });
+    return sendZip(req, reply, p, roots, `SuperDrive-${roots.length}-item.zip`);
+  });
   app.get("/files/:storageId/:fileId/download", deliver(false));
   app.get("/files/:storageId/:fileId/preview", deliver(true));
 

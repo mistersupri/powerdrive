@@ -6,7 +6,7 @@ import { cn } from "@/lib/cn";
 import { PageHeader, useStorages } from "@/features/layout/Shell";
 import { FileBrowser } from "@/features/files/FileBrowser";
 import { useSelection } from "@/features/files/selection";
-import { startTransfer } from "@/features/files/useFileActions";
+import { startTransfer } from "@/features/files/transferApi";
 import { sortEntries, useFolder } from "@/features/files/useFolder";
 import { Button } from "@/ui/Button";
 import { Select } from "@/ui/Field";

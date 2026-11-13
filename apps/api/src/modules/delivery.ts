@@ -54,6 +54,11 @@ export async function sendFile(req: FastifyRequest, reply: FastifyReply, p: Stor
 
 /** Streams a folder as a ZIP built on the fly. Entries are appended one at a time so memory stays flat. */
 export async function sendFolderZip(req: FastifyRequest, reply: FastifyReply, p: StorageProvider, storageId: string, folder: RemoteFile) {
+  return sendZip(req, reply, p, [folder], `${folder.name}.zip`);
+}
+
+/** Streams any selection (files and folders) as one ZIP built on the fly. */
+export async function sendZip(req: FastifyRequest, reply: FastifyReply, p: StorageProvider, roots: RemoteFile[], zipName: string) {
   const zip = new ZipArchive({ zlib: { level: 1 }, forceZip64: true });
   const out = new PassThrough({ highWaterMark: 1024 * 1024 });
   zip.pipe(out);
@@ -82,12 +87,25 @@ export async function sendFolderZip(req: FastifyRequest, reply: FastifyReply, p:
       }
     } while (token);
   };
+  const used = new Set<string>();
+  const unique = (n: string) => { let c = n, i = 2; while (used.has(c)) { const d = n.lastIndexOf("."); c = d > 0 ? `${n.slice(0, d)} (${i})${n.slice(d)}` : `${n} (${i})`; i++; } used.add(c); return c; };
+  const addFile = async (f: RemoteFile, name: string) => {
+    const r = await p.read(f.id);
+    await new Promise<void>((res, rej) => { zip.once("entry", () => res()); r.stream.on("error", rej); zip.append(r.stream, { name }); });
+  };
   void (async () => {
-    try { await walk(folder.id === ROOT ? ROOT : folder.id, ""); if (!aborted) await zip.finalize(); }
+    try {
+      for (const r of roots) {
+        if (aborted) break;
+        const name = unique(r.name);
+        if (r.isFolder) await walk(r.id === ROOT ? ROOT : r.id, name); else await addFile(r, name);
+      }
+      if (!aborted) await zip.finalize();
+    }
     catch (e) { req.log.warn({ err: e }, "zip aborted"); zip.abort(); out.destroy(e as Error); }
   })();
   reply.header("content-type", "application/zip");
-  reply.header("content-disposition", contentDisposition("attachment", `${folder.name}.zip`));
+  reply.header("content-disposition", contentDisposition("attachment", zipName));
   reply.header("cache-control", "no-store");
   return reply.send(out);
 }

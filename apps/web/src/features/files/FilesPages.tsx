@@ -16,7 +16,7 @@ import { useFileActions } from "./useFileActions";
 import { sortEntries, useFolder, type SortKey, type SortState } from "./useFolder";
 import { collectDropped, hasFiles } from "./dnd";
 import { usePersistentState } from "@/lib/usePersistentState";
-import { startTransfer } from "./useFileActions";
+import { startTransfer } from "./transferApi";
 import { toast } from "sonner";
 
 const SORT_LABEL: Record<SortKey, string> = { name: "Nama", size: "Ukuran", modified: "Terakhir diubah", type: "Jenis" };

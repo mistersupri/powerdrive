@@ -12,7 +12,7 @@ export interface UploadTask {
 }
 export const uploadStore = createStore<{ tasks: UploadTask[] }>({ tasks: [] });
 
-const CONCURRENCY = 3;
+const CONCURRENCY = 4;
 const live = new Map<string, { xhr?: XMLHttpRequest; cancelled: boolean }>();
 const patch = (id: string, p: Partial<UploadTask>) => uploadStore.set((s) => ({ tasks: s.tasks.map((t) => (t.id === id ? { ...t, ...p } : t)) }));
 const get = (id: string) => uploadStore.get().tasks.find((t) => t.id === id);
@@ -110,7 +110,7 @@ async function run(id: string) {
       patch(id, { pushed: s.pushed ?? 0 });
       if (s.status === "DONE") break;
       if (s.status === "FAILED") throw new Error(s.errorMessage ?? "Gagal menyimpan file.");
-      await sleep(700);
+      await sleep(300);
     }
     try { localStorage.removeItem(fingerprint(t)); } catch { /* ignore */ }
     patch(id, { status: up.skipped ? "skipped" : "done", result: up.file, sent: t.size });

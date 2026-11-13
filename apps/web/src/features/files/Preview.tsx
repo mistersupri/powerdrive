@@ -2,7 +2,7 @@ import type { FileEntry } from "@superdrive/shared";
 import { formatBytes } from "@superdrive/shared";
 import { ChevronLeft, ChevronRight, Download, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import { downloadUrl, previewUrl } from "@/lib/api";
+import { downloadUrl, previewUrl, thumbUrl } from "@/lib/api";
 import { kindOf } from "@/lib/fileType";
 import { IconButton } from "@/ui/Button";
 import { Spinner } from "@/ui/misc";
@@ -19,6 +19,12 @@ function TextView({ url }: { url: string }) {
   return <div className="max-h-full w-full max-w-4xl overflow-auto rounded-xl bg-surface p-5 text-ink shadow-float scroll-thin"><pre className="font-mono text-[13px] leading-relaxed break-words whitespace-pre-wrap">{text}</pre>{cut && <p className="mt-3 text-[12px] text-muted">Hanya 200 KB pertama yang ditampilkan.</p>}</div>;
 }
 
+/** Shows a 2048 px rendition (cached, a few hundred KB) instead of the multi-megabyte original; falls back to the original. */
+function PreviewImage({ f }: { f: FileEntry }) {
+  const [orig, setOrig] = useState(!f.hasThumbnail);
+  return <img src={orig ? previewUrl(f.storageId, f.id) : thumbUrl(f.storageId, f.id, f.version, 2048)} onError={() => setOrig(true)} alt={f.name} decoding="async" className="max-h-full max-w-full rounded-lg object-contain" />;
+}
+
 /** Full-screen viewer. Media streams from the authorized backend endpoint, never from the provider directly. */
 export function Preview({ items, index, onIndex, onClose }: { items: FileEntry[]; index: number; onIndex(i: number): void; onClose(): void }) {
   const f = items[index];
@@ -30,6 +36,10 @@ export function Preview({ items, index, onIndex, onClose }: { items: FileEntry[]
     };
     addEventListener("keydown", k); return () => removeEventListener("keydown", k);
   }, [index, items.length, onClose, onIndex]);
+  useEffect(() => {
+    // Warm the neighbours so next/previous feels instant.
+    for (const n of [items[index + 1], items[index - 1]]) if (n && kindOf(n) === "image" && n.hasThumbnail) new Image().src = thumbUrl(n.storageId, n.id, n.version, 2048);
+  }, [index, items]);
   if (!f) return null;
   const kind = kindOf(f); const src = previewUrl(f.storageId, f.id);
   return (
@@ -40,7 +50,7 @@ export function Preview({ items, index, onIndex, onClose }: { items: FileEntry[]
         <a href={downloadUrl(f.storageId, f.id)} className="inline-flex h-9 items-center gap-2 rounded-lg bg-white/10 px-3 text-[13px] font-medium hover:bg-white/20"><Download className="size-4" aria-hidden />Unduh</a>
       </header>
       <div className="relative grid min-h-0 flex-1 place-items-center p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-        {kind === "image" && <img key={f.id} src={src} alt={f.name} className="max-h-full max-w-full rounded-lg object-contain" />}
+        {kind === "image" && <PreviewImage key={f.id} f={f} />}
         {kind === "video" && <video key={f.id} src={src} controls autoPlay preload="metadata" className="max-h-full max-w-full rounded-lg bg-black" />}
         {kind === "audio" && <audio key={f.id} src={src} controls autoPlay className="w-full max-w-lg" />}
         {kind === "pdf" && <iframe key={f.id} src={src} title={f.name} className="size-full max-w-5xl rounded-lg bg-white" />}

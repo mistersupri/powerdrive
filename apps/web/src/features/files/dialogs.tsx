@@ -42,7 +42,8 @@ export function DeleteDialog({ open, entries, provider, onClose, onConfirm }: { 
   );
 }
 
-export interface Destination { storageId: string; folderId: string; folderName: string }
+import type { Destination } from "./transferApi";
+export type { Destination };
 const POLICIES: { v: ConflictPolicy; label: string; hint: string }[] = [
   { v: "RENAME", label: "Simpan keduanya", hint: "Nama file ditambah (2), (3), dst." }, { v: "SKIP", label: "Lewati", hint: "File yang sudah ada dibiarkan." },
   { v: "OVERWRITE", label: "Timpa", hint: "File di tujuan diganti. Versi lama masuk sampah bila penyedia mendukung." }, { v: "FAIL", label: "Hentikan", hint: "Gagalkan jika ada nama yang sama." },
