@@ -27,6 +27,9 @@ cp .env.example .env     # isi APP_URL, ENCRYPTION_MASTER_KEY, dan kredensial OA
 docker compose up -d     # tambahkan  --profile tls  untuk HTTPS otomatis lewat Caddy
 ```
 
+Image siap pakai dipublikasikan otomatis setiap push ke `main` (lihat `.github/workflows/release.yml`):
+`docker pull ghcr.io/mistersupri/powerdrive:latest` (lalu jalankan dengan volume `/data` dan variabel dari `.env.example`).
+
 Tanpa Docker: `pnpm build && pnpm start` (set variabel lingkungan seperti di `.env.example`).
 
 Daftarkan redirect URI OAuth: `${APP_URL}/api/v1/storages/{google-drive|onedrive|dropbox}/callback`.
