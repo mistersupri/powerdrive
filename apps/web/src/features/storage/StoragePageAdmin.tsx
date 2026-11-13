@@ -15,13 +15,14 @@ import { Field, Input, Select } from "@/ui/Field";
 import { useMenu } from "@/ui/Menu";
 import { Card, ConnectionBadge, EmptyState, Progress, Skeleton } from "@/ui/misc";
 
-interface ProviderInfo { slug: string; provider: string; label: string; kind: "oauth" | "local" | "s3" | "planned"; configured: boolean; available: boolean; roots?: string[] }
+type FormKind = "local" | "s3" | "sftp" | "webdav" | "smb";
+interface ProviderInfo { slug: string; provider: string; label: string; kind: "oauth" | FormKind | "planned"; configured: boolean; available: boolean; roots?: string[]; note?: string }
 const PERM_LABEL: Record<Permission, string> = { READ: "Melihat", UPLOAD: "Mengunggah", DOWNLOAD: "Mengunduh", COPY: "Menyalin", MOVE: "Memindahkan", DELETE: "Menghapus", RENAME: "Ganti nama", SHARE: "Membagikan", MOUNT: "Membuat mount", MANAGE_STORAGE: "Kelola penyimpanan" };
 
 function AddStorageDialog({ open, onClose }: { open: boolean; onClose(): void }) {
   const qc = useQueryClient();
   const providers = useQuery({ queryKey: ["providers"], queryFn: () => api<ProviderInfo[]>("/storages/providers"), enabled: open, staleTime: 60_000 });
-  const [form, setForm] = useState<null | "local" | "s3">(null); const [busy, setBusy] = useState<string | null>(null);
+  const [form, setForm] = useState<null | FormKind>(null); const [busy, setBusy] = useState<string | null>(null);
   const [v, setV] = useState<Record<string, string>>({});
   useEffect(() => { if (open) { setForm(null); setV({}); } }, [open]);
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) => setV((s) => ({ ...s, [k]: e.target.value }));
@@ -34,7 +35,14 @@ function AddStorageDialog({ open, onClose }: { open: boolean; onClose(): void })
   const create = async () => {
     setBusy(form);
     try {
-      await api("/storages", { body: form === "local" ? { provider: "LOCAL", name: v.name, root: v.root } : { provider: "S3", name: v.name, endpoint: v.endpoint || "", region: v.region || "auto", bucket: v.bucket, prefix: v.prefix || undefined, accessKeyId: v.accessKeyId, secretAccessKey: v.secretAccessKey } });
+      const bodies: Record<FormKind, object> = {
+        local: { provider: "LOCAL", name: v.name, root: v.root },
+        s3: { provider: "S3", name: v.name, endpoint: v.endpoint || "", region: v.region || "auto", bucket: v.bucket, prefix: v.prefix || undefined, accessKeyId: v.accessKeyId, secretAccessKey: v.secretAccessKey },
+        sftp: { provider: "SFTP", name: v.name, host: v.host, port: Number(v.port) || 22, username: v.username, password: v.password || undefined, privateKey: v.privateKey || undefined, passphrase: v.passphrase || undefined, baseDir: v.baseDir || "/", hostKey: v.hostKey || undefined },
+        webdav: { provider: "WEBDAV", name: v.name, url: v.url, username: v.username || undefined, password: v.password || undefined },
+        smb: { provider: "SMB", name: v.name, host: v.host, port: Number(v.port) || 445, share: v.share, baseDir: v.baseDir || "", domain: v.domain || undefined, username: v.username, password: v.password, encrypt: v.encrypt === "1" || undefined },
+      };
+      await api("/storages", { body: bodies[form!] });
       toast.success("Penyimpanan terhubung"); await qc.invalidateQueries({ queryKey: ["storages"] }); onClose();
     } catch (e) { toast.error((e as Error).message); } finally { setBusy(null); }
   };
@@ -59,21 +67,39 @@ function AddStorageDialog({ open, onClose }: { open: boolean; onClose(): void })
             <div className="space-y-1.5">{ext.map((p) => (
               <div key={p.slug} className="flex items-center gap-3 rounded-lg bg-surface-2 px-3.5 py-2.5">
                 <Server className="size-4 text-muted" aria-hidden /><span className="flex-1 text-[13px] font-medium">{p.label}</span>
-                {p.available ? <Button size="sm" onClick={() => { setForm(p.kind as "local" | "s3"); setV({}); }}>Atur</Button> : <span className="rounded-md bg-surface px-2 py-1 text-[11px] text-muted">Segera hadir</span>}
+                {p.available ? <Button size="sm" onClick={() => { setForm(p.kind as FormKind); setV({}); }}>Atur</Button> : <span className="max-w-48 rounded-md bg-surface px-2 py-1 text-right text-[11px] text-muted">{p.note ?? "Segera hadir"}</span>}
               </div>))}</div>
           </section>
         </div>
       ) : (
         <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); void create(); }}>
-          <Field label="Nama koneksi">{(id) => <Input id={id} required value={v.name ?? ""} onChange={set("name")} placeholder={form === "local" ? "Arsip server" : "Bucket arsip"} />}</Field>
-          {form === "local" ? (
-            <Field label="Folder di server" hint={`Harus berada di dalam: ${providers.data?.find((p) => p.kind === "local")?.roots?.join(", ")}. Nama relatif dibuat di dalam folder pertama.`}>{(id) => <Input id={id} required value={v.root ?? ""} onChange={set("root")} placeholder="arsip-2026" />}</Field>
-          ) : (<>
+          <Field label="Nama koneksi">{(id) => <Input id={id} required value={v.name ?? ""} onChange={set("name")} placeholder={{ local: "Arsip server", s3: "Bucket arsip", sftp: "Server SFTP", webdav: "Nextcloud kantor", smb: "NAS kantor" }[form]} />}</Field>
+          {form === "local" && <Field label="Folder di server" hint={`Harus berada di dalam: ${providers.data?.find((p) => p.kind === "local")?.roots?.join(", ")}. Nama relatif dibuat di dalam folder pertama.`}>{(id) => <Input id={id} required value={v.root ?? ""} onChange={set("root")} placeholder="arsip-2026" />}</Field>}
+          {form === "s3" && (<>
             <Field label="Endpoint" hint="Kosongkan untuk AWS S3. Untuk MinIO/R2/B2 isi alamat HTTPS-nya.">{(id) => <Input id={id} type="url" value={v.endpoint ?? ""} onChange={set("endpoint")} placeholder="https://<akun>.r2.cloudflarestorage.com" />}</Field>
             <div className="grid grid-cols-2 gap-3"><Field label="Bucket">{(id) => <Input id={id} required value={v.bucket ?? ""} onChange={set("bucket")} />}</Field><Field label="Region">{(id) => <Input id={id} value={v.region ?? ""} onChange={set("region")} placeholder="auto" />}</Field></div>
             <Field label="Prefix (opsional)" hint="Batasi ke satu folder di dalam bucket.">{(id) => <Input id={id} value={v.prefix ?? ""} onChange={set("prefix")} placeholder="kantor/" />}</Field>
             <div className="grid grid-cols-2 gap-3"><Field label="Access key">{(id) => <Input id={id} required autoComplete="off" value={v.accessKeyId ?? ""} onChange={set("accessKeyId")} />}</Field><Field label="Secret key">{(id) => <Input id={id} required type="password" autoComplete="new-password" value={v.secretAccessKey ?? ""} onChange={set("secretAccessKey")} />}</Field></div>
-            <p className="text-[12px] text-muted">Kunci disimpan terenkripsi (AES-256-GCM) dan tidak pernah dikirim ke browser.</p>
+          </>)}
+          {form === "sftp" && (<>
+            <div className="grid grid-cols-[1fr_96px] gap-3"><Field label="Host">{(id) => <Input id={id} required value={v.host ?? ""} onChange={set("host")} placeholder="sftp.contoh.id" />}</Field><Field label="Port">{(id) => <Input id={id} inputMode="numeric" value={v.port ?? ""} onChange={set("port")} placeholder="22" />}</Field></div>
+            <Field label="Username">{(id) => <Input id={id} required autoComplete="off" value={v.username ?? ""} onChange={set("username")} />}</Field>
+            <Field label="Password" hint="Atau pakai kunci privat di bawah.">{(id) => <Input id={id} type="password" autoComplete="new-password" value={v.password ?? ""} onChange={set("password")} />}</Field>
+            <Field label="Kunci privat (opsional)" hint="Tempel isi file kunci (OpenSSH/PEM). Disimpan terenkripsi.">{(id) => <textarea id={id} rows={3} value={v.privateKey ?? ""} onChange={(e) => setV((s) => ({ ...s, privateKey: e.target.value }))} className="w-full rounded-lg border border-line-strong bg-surface p-3 font-mono text-[12px] focus:border-primary focus:ring-2 focus:ring-primary/25 focus:outline-none" />}</Field>
+            <Field label="Folder dasar" hint="Folder di server yang menjadi akar penyimpanan.">{(id) => <Input id={id} value={v.baseDir ?? ""} onChange={set("baseDir")} placeholder="/data/arsip" />}</Field>
+            <Field label="Sidik jari host (opsional)" hint="Format SHA256:…  Jika kosong, kunci host pertama yang terlihat dipercaya lalu dikunci; koneksi berikutnya ditolak bila berubah.">{(id) => <Input id={id} value={v.hostKey ?? ""} onChange={set("hostKey")} placeholder="SHA256:abc…" />}</Field>
+          </>)}
+          {form === "webdav" && (<>
+            <Field label="Alamat WebDAV" hint="Harus HTTPS. Contoh Nextcloud: https://cloud.contoh.id/remote.php/dav/files/nama/">{(id) => <Input id={id} type="url" required value={v.url ?? ""} onChange={set("url")} placeholder="https://cloud.contoh.id/remote.php/dav/files/nama/" />}</Field>
+            <div className="grid grid-cols-2 gap-3"><Field label="Username">{(id) => <Input id={id} autoComplete="off" value={v.username ?? ""} onChange={set("username")} />}</Field><Field label="Password">{(id) => <Input id={id} type="password" autoComplete="new-password" value={v.password ?? ""} onChange={set("password")} />}</Field></div>
+            <p className="text-[12px] text-muted">Untuk Nextcloud/ownCloud, pakai “app password”, bukan password akun utama.</p>
+          </>)}
+          {form === "smb" && (<>
+            <div className="grid grid-cols-[1fr_96px] gap-3"><Field label="Host / alamat NAS">{(id) => <Input id={id} required value={v.host ?? ""} onChange={set("host")} placeholder="nas.kantor.local" />}</Field><Field label="Port">{(id) => <Input id={id} inputMode="numeric" value={v.port ?? ""} onChange={set("port")} placeholder="445" />}</Field></div>
+            <div className="grid grid-cols-2 gap-3"><Field label="Nama share">{(id) => <Input id={id} required value={v.share ?? ""} onChange={set("share")} placeholder="dokumen" />}</Field><Field label="Domain (opsional)">{(id) => <Input id={id} value={v.domain ?? ""} onChange={set("domain")} placeholder="WORKGROUP" />}</Field></div>
+            <div className="grid grid-cols-2 gap-3"><Field label="Username">{(id) => <Input id={id} required autoComplete="off" value={v.username ?? ""} onChange={set("username")} />}</Field><Field label="Password">{(id) => <Input id={id} required type="password" autoComplete="new-password" value={v.password ?? ""} onChange={set("password")} />}</Field></div>
+            <Field label="Subfolder di share (opsional)" hint="Jadikan satu folder di dalam share sebagai akar.">{(id) => <Input id={id} value={v.baseDir ?? ""} onChange={set("baseDir")} placeholder="Tim/Arsip" />}</Field>
+            <label className="flex items-center gap-2 text-[13px]"><input type="checkbox" className="size-4 accent-[var(--primary)]" checked={v.encrypt === "1"} onChange={(e) => setV((s) => ({ ...s, encrypt: e.target.checked ? "1" : "" }))} />Wajibkan enkripsi SMB3</label>
           </>)}
           <button type="submit" hidden />
         </form>)}
@@ -130,6 +156,7 @@ function StorageRow({ s, onPerms }: { s: StorageConnectionDto; onPerms(): void }
           { label: "Putuskan koneksi", danger: true, divider: true, onSelect: () => setConfirm(true) },
         ]); }}><MoreVertical className="size-4" /></IconButton>}
       </div>
+      {s.info && <p className="mt-3 truncate font-mono text-[11px] text-muted" title={s.info}>{s.info}</p>}
       {s.lastError && s.status !== "CONNECTED" && <p className="mt-3 rounded-lg bg-warn-soft px-3 py-2 text-[12px] text-warn-ink">{s.lastError}</p>}
       <div className="mt-4 grid gap-x-8 gap-y-2 text-[12px] sm:grid-cols-3">
         <div className="sm:col-span-2">{pct !== null ? <><Progress value={pct} tone={pct > 90 ? "danger" : pct > 75 ? "warn" : "primary"} /><p className="tnum mt-1.5 text-muted">{formatBytes(s.quota!.used)} dari {formatBytes(s.quota!.total)} · {pct}%</p></> : <p className="text-muted">{s.quota?.used != null ? `${formatBytes(s.quota.used)} terpakai` : "Kapasitas tidak dilaporkan penyedia"}</p>}</div>

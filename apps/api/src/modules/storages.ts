@@ -6,19 +6,24 @@ import { db, now } from "../db.ts";
 import { audit, notify } from "../lib/audit.ts";
 import { newId } from "../lib/crypto.ts";
 import { AppError, badRequest, conflict, notFound } from "../lib/errors.ts";
-import { assertSafeEndpoint } from "../lib/ssrf.ts";
+import { assertSafeEndpoint, assertSafeHost } from "../lib/ssrf.ts";
 import { DropboxProvider } from "../providers/dropbox.ts";
 import { GoogleDriveProvider } from "../providers/google.ts";
 import { LocalProvider } from "../providers/local.ts";
 import { loadCredential, saveCredential, TokenSource, type OAuthSlug } from "../providers/oauth.ts";
 import { OneDriveProvider } from "../providers/onedrive.ts";
 import { S3Provider, type S3Config, type S3Credentials } from "../providers/s3.ts";
+import { SftpProvider, type SftpConfig, type SftpCredentials } from "../providers/sftp.ts";
+import { SmbProvider, type SmbConfig, type SmbCredentials } from "../providers/smb.ts";
+import { WebdavProvider, type WebdavConfig, type WebdavCredentials } from "../providers/webdav.ts";
 import { ProviderError, ROOT, type StorageProvider } from "../providers/types.ts";
 import { permissionsFor, type AuthCtx } from "./permissions.ts";
 import { slugify } from "./auth.ts";
 
 const providers = new Map<string, StorageProvider>();
-export const dropProvider = (id: string) => providers.delete(id);
+const OAUTH_PROVIDERS = new Set(["GOOGLE_DRIVE", "ONEDRIVE", "DROPBOX"]);
+export const closeAllProviders = () => { for (const p of providers.values()) p.close?.(); providers.clear(); };
+export const dropProvider = (id: string) => { providers.get(id)?.close?.(); providers.delete(id); };
 
 export function setStatus(storageId: string, status: ConnectionStatus, error: string | null = null) {
   const row = db.get<any>("SELECT workspace_id, name, status FROM storages WHERE id = ?", storageId);
@@ -43,6 +48,12 @@ export function providerFor(row: any): StorageProvider {
   switch (row.provider as ProviderType) {
     case "LOCAL": p = new LocalProvider(assertLocalRoot(cfg.root), row.name); break;
     case "S3": p = new S3Provider(cfg as S3Config, loadCredential<S3Credentials>(row.credential_id)); break;
+    case "SFTP": p = new SftpProvider(cfg as SftpConfig, loadCredential<SftpCredentials>(row.credential_id), (fp) => {
+      // Trust on first use: remember the host key so a later change is refused.
+      db.run("UPDATE storages SET config = ? WHERE id = ?", JSON.stringify({ ...cfg, hostKey: fp }), row.id);
+    }, row.name); break;
+    case "WEBDAV": p = new WebdavProvider(cfg as WebdavConfig, loadCredential<WebdavCredentials>(row.credential_id), row.name); break;
+    case "SMB": p = new SmbProvider(cfg as SmbConfig, loadCredential<SmbCredentials>(row.credential_id), row.name); break;
     case "GOOGLE_DRIVE": p = new GoogleDriveProvider(new TokenSource("google-drive", row.credential_id, onAuthFailure)); break;
     case "ONEDRIVE": p = new OneDriveProvider(new TokenSource("onedrive", row.credential_id, onAuthFailure)); break;
     case "DROPBOX": p = new DropboxProvider(new TokenSource("dropbox", row.credential_id, onAuthFailure)); break;
@@ -59,7 +70,7 @@ export function mapProviderError(e: unknown, storageId?: string): never {
     switch (e.kind) {
       case "not_found": throw new AppError(404, "NOT_FOUND", "File atau folder tidak ditemukan di penyimpanan.");
       case "auth":
-        if (storageId) { providers.delete(storageId); const r = db.get<any>("SELECT provider FROM storages WHERE id = ?", storageId); if (r && r.provider !== "LOCAL") setStatus(storageId, "REAUTH_REQUIRED", e.message); }
+        if (storageId) { providers.delete(storageId); const r = db.get<any>("SELECT provider FROM storages WHERE id = ?", storageId); if (r && OAUTH_PROVIDERS.has(r.provider)) setStatus(storageId, "REAUTH_REQUIRED", e.message); else if (r && r.provider !== "LOCAL") setStatus(storageId, "ERROR", e.message); }
         throw new AppError(409, "STORAGE_CONNECTION_EXPIRED", e.message);
       case "conflict": throw new AppError(409, "NAME_CONFLICT", e.message);
       case "quota": throw new AppError(507, "DESTINATION_QUOTA_EXCEEDED", e.message);
@@ -94,6 +105,7 @@ export function toDto(row: any, ctx: AuthCtx): StorageConnectionDto {
     quota: row.quota_used === null && row.quota_total === null ? null : { used: row.quota_used, total: row.quota_total },
     mount: mount ? { id: mount.id, virtualPath: mount.virtual_path, enabled: !!mount.enabled } : null,
     rootFolderId: ROOT, permissions: permissionsFor(ctx, row.id) as Permission[],
+    info: row.provider === "SFTP" && row.config ? (JSON.parse(row.config).hostKey ? `Sidik jari host: ${JSON.parse(row.config).hostKey}` : null) : null,
   };
 }
 
@@ -130,7 +142,10 @@ export async function testConnection(storageId: string) {
   providers.delete(storageId);
   const probe = { ...row, status: row.status === "DISABLED" ? "DISABLED" : "DISCONNECTED" };
   try {
-    if (row.provider === "S3") await assertSafeEndpoint(JSON.parse(row.config).endpoint ?? "https://s3.amazonaws.com");
+    const c = row.config ? JSON.parse(row.config) : {};
+    if (row.provider === "S3") await assertSafeEndpoint(c.endpoint ?? "https://s3.amazonaws.com");
+    if (row.provider === "WEBDAV") await assertSafeEndpoint(c.url);
+    if (row.provider === "SFTP" || row.provider === "SMB") await assertSafeHost(c.host, c.port ?? (row.provider === "SMB" ? 445 : 22));
     const p = providerFor(probe);
     const acct = await p.account();
     db.run(
@@ -141,7 +156,7 @@ export async function testConnection(storageId: string) {
   } catch (e) {
     providers.delete(storageId);
     const msg = e instanceof Error ? e.message : String(e);
-    const reauth = e instanceof ProviderError && e.kind === "auth" && row.provider !== "LOCAL" && row.provider !== "S3";
+    const reauth = e instanceof ProviderError && e.kind === "auth" && OAUTH_PROVIDERS.has(row.provider);
     db.run("UPDATE storages SET status = ?, last_error = ?, updated_at = ? WHERE id = ?", reauth ? "REAUTH_REQUIRED" : "ERROR", msg, now(), storageId);
     mapProviderError(e);
   }

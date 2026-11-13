@@ -53,6 +53,7 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
     // Long downloads/uploads must not be cut by the default 5s keep-alive / request timeout.
     requestTimeout: 0, connectionTimeout: 0, keepAliveTimeout: 65_000,
   });
+  app.addHook("onClose", async () => { (await import("./modules/storages.ts")).closeAllProviders(); });
   app.decorateRequest("auth", null);
   app.decorateRequest("sessionToken", null);
   await app.register(cookie);

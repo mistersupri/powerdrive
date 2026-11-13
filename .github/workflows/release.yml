@@ -25,7 +25,12 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
+      # Real Samba (SMB3, signing + encryption required) and OpenSSH, so the SMB and SFTP adapters are tested against actual servers.
+      - run: sudo bash scripts/ci-external-servers.sh
       - run: pnpm test
+        env:
+          SD_TEST_SFTP: 127.0.0.1:2222:sduser:pass123:/srv/sftproot
+          SD_TEST_SMB: 127.0.0.1:445:sduser:pass123:share
       - run: pnpm build
 
   publish:

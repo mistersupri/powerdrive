@@ -12,6 +12,8 @@ import { assertLocalRoot, createConnection, deleteConnection, dropProvider, mapP
 import { buildAuthUrl, consumeState, exchangeCode, oauthConfigured, oauthDef, saveCredential, SLUG_TO_PROVIDER, type OAuthSlug } from "../providers/oauth.ts";
 import { providerFor } from "../modules/storages.ts";
 import { ALL_PERMISSIONS } from "@superdrive/shared";
+import { smbAvailable } from "../providers/smb.ts";
+import { assertSafeHost } from "../lib/ssrf.ts";
 
 const slugSchema = z.enum(["google-drive", "onedrive", "dropbox"]);
 
@@ -24,13 +26,14 @@ export async function storageRoutes(app: FastifyInstance) {
 
   app.get("/storages/providers", async (req) => {
     requireAuth(req);
+    const smb = await smbAvailable();
     return ok(req, [
       ...(["google-drive", "onedrive", "dropbox"] as const).map((slug) => ({ slug, provider: SLUG_TO_PROVIDER[slug], label: oauthDef(slug).label, kind: "oauth", configured: oauthConfigured(slug), available: true })),
       { slug: "local", provider: "LOCAL", label: "Folder server", kind: "local", configured: true, available: true, roots: config.localRoots },
       { slug: "s3", provider: "S3", label: "S3 / MinIO / R2 / B2", kind: "s3", configured: true, available: true },
-      { slug: "sftp", provider: "SFTP", label: "SFTP", kind: "planned", configured: false, available: false },
-      { slug: "webdav", provider: "WEBDAV", label: "WebDAV", kind: "planned", configured: false, available: false },
-      { slug: "smb", provider: "SMB", label: "SMB / NAS", kind: "planned", configured: false, available: false },
+      { slug: "sftp", provider: "SFTP", label: "SFTP", kind: "sftp", configured: true, available: true },
+      { slug: "webdav", provider: "WEBDAV", label: "WebDAV", kind: "webdav", configured: true, available: true },
+      { slug: "smb", provider: "SMB", label: "SMB / NAS", kind: "smb", configured: smb, available: smb, note: smb ? undefined : "Butuh paket smbclient di server SuperDrive" },
     ]);
   });
 
@@ -82,6 +85,11 @@ export async function storageRoutes(app: FastifyInstance) {
     const ctx = requireAuth(req); requireRole(ctx, "ADMIN");
     const b = z.discriminatedUnion("provider", [
       z.object({ provider: z.literal("LOCAL"), name: z.string().trim().min(1).max(80), root: z.string().min(1) }),
+      z.object({ provider: z.literal("SFTP"), name: z.string().trim().min(1).max(80), host: z.string().min(1), port: z.number().int().min(1).max(65535).default(22), username: z.string().min(1),
+        password: z.string().optional(), privateKey: z.string().optional(), passphrase: z.string().optional(), baseDir: z.string().default("/"), hostKey: z.string().regex(/^SHA256:[A-Za-z0-9+/]+$/, "Sidik jari harus berformat SHA256:…").optional().or(z.literal("")) }),
+      z.object({ provider: z.literal("WEBDAV"), name: z.string().trim().min(1).max(80), url: z.string().url(), username: z.string().optional(), password: z.string().optional() }),
+      z.object({ provider: z.literal("SMB"), name: z.string().trim().min(1).max(80), host: z.string().min(1), port: z.number().int().min(1).max(65535).default(445), share: z.string().min(1).regex(/^[^\\/:*?"<>|]+$/, "Nama share tidak valid"),
+        baseDir: z.string().default(""), domain: z.string().optional(), username: z.string().min(1), password: z.string().min(1), encrypt: z.boolean().optional() }),
       z.object({
         provider: z.literal("S3"), name: z.string().trim().min(1).max(80), endpoint: z.string().url().optional().or(z.literal("")), region: z.string().min(1).default("auto"),
         bucket: z.string().min(1), prefix: z.string().optional(), accessKeyId: z.string().min(1), secretAccessKey: z.string().min(1), forcePathStyle: z.boolean().optional(),
@@ -91,6 +99,25 @@ export async function storageRoutes(app: FastifyInstance) {
       const root = assertLocalRoot(b.root);
       const row = await createConnection(ctx, { provider: "LOCAL", name: b.name, config: { root } });
       return ok(req, toDto(row, ctx));
+    }
+    if (b.provider === "SFTP") {
+      if (!b.password && !b.privateKey) throw badRequest("Isi password atau kunci privat.");
+      await assertSafeHost(b.host, b.port);
+      const row = await createConnection(ctx, { provider: "SFTP", name: b.name, config: { host: b.host, port: b.port, username: b.username, baseDir: b.baseDir, hostKey: b.hostKey || undefined },
+        credential: { type: "sftp", payload: { password: b.password || undefined, privateKey: b.privateKey || undefined, passphrase: b.passphrase || undefined } } });
+      return ok(req, toDto(db.get<any>("SELECT * FROM storages WHERE id = ?", row.id), ctx));
+    }
+    if (b.provider === "WEBDAV") {
+      await assertSafeEndpoint(b.url);
+      const row = await createConnection(ctx, { provider: "WEBDAV", name: b.name, config: { url: b.url }, credential: { type: "webdav", payload: { username: b.username || undefined, password: b.password || undefined } } });
+      return ok(req, toDto(row, ctx));
+    }
+    if (b.provider === "SMB") {
+      if (!(await smbAvailable())) throw badRequest("Paket smbclient belum terpasang di server SuperDrive.", "SMB_UNAVAILABLE");
+      await assertSafeHost(b.host, b.port);
+      const row = await createConnection(ctx, { provider: "SMB", name: b.name, config: { host: b.host, port: b.port, share: b.share, baseDir: b.baseDir, domain: b.domain || undefined, encrypt: b.encrypt },
+        credential: { type: "smb", payload: { username: b.username, password: b.password } } });
+      return ok(req, toDto(db.get<any>("SELECT * FROM storages WHERE id = ?", row.id), ctx));
     }
     if (b.endpoint) await assertSafeEndpoint(b.endpoint);
     const row = await createConnection(ctx, {

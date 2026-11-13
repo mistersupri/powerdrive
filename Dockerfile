@@ -11,8 +11,8 @@ COPY . .
 RUN pnpm build
 
 FROM node:22-bookworm-slim AS runtime
-# ffmpeg is only used to cut a poster frame for video thumbnails; the app works without it.
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg tini ca-certificates \
+# ffmpeg: poster frames for video thumbnails (optional). smbclient: the SMB/NAS adapter (SMB3, signing, encryption).
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg smbclient tini ca-certificates \
  && rm -rf /var/lib/apt/lists/* && corepack enable
 WORKDIR /app
 ENV NODE_ENV=production PORT=3000 DATA_DIR=/data LOCAL_ROOTS=/data/files

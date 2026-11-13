@@ -65,6 +65,8 @@ export interface StorageProvider {
   thumbnail?(file: RemoteFile, size: number): Promise<ThumbResult | null>;
   /** Absolute path on the server filesystem; only for the local provider. */
   localPath?(id: string): string;
+  /** Release long-lived connections (SSH). */
+  close?(): void;
 }
 
 export const baseCaps = (over: Partial<StorageCapabilities> = {}): StorageCapabilities => ({

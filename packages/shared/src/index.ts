@@ -80,6 +80,8 @@ export interface StorageConnectionDto {
   mount: { id: string; virtualPath: string; enabled: boolean } | null;
   rootFolderId: string;
   permissions: Permission[];
+  /** Extra detail worth showing, e.g. the pinned SSH host key fingerprint. */
+  info?: string | null;
 }
 
 export interface TransferJobDto {

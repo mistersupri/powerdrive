@@ -15,6 +15,8 @@ Permintaan: "stack terbaik dan gratis, dengan performa cepat, terutama thumbnail
 | **REST langsung (fetch)** untuk Google/OneDrive/Dropbox, bukan SDK besar | Mengontrol streaming, rentang byte, dan sesi unggah resumable per penyedia; bundel lebih kecil. |
 | **Bahasa antarmuka Indonesia** | PRD dan pengguna berbahasa Indonesia; desain `.pen` berbahasa Inggris, tata letak dan gaya diikuti. |
 
+| **`ssh2`** (SFTP), **`fetch` + PROPFIND** (WebDAV), **`smbclient`** (SMB) | SFTP dan WebDAV pustaka murni-JS yang matang/ringan. Untuk SMB, `@marsaud/smb2` rusak di Node 22 (DES diblokir OpenSSL 3) dan `@awo00/smb2` hanya berjalan jika server mengizinkan NTLMv1; keduanya gagal pada Samba yang mewajibkan signing/enkripsi (diuji). `smbclient` (libsmbclient) lolos di konfigurasi yang sama. Harganya: paket sistem tambahan dan satu proses per operasi. |
+
 ## Perilaku yang perlu diketahui
 
 - **Resume.** Unggahan dari browser benar-benar resumable (offset dikonfirmasi server, potongan atomik, disimpan di `localStorage` agar lanjut setelah muat ulang). Transfer antar penyimpanan **mengulang file yang sedang berjalan** setelah jeda/restart, karena stream sembarang tidak bisa dilanjutkan dari offset (PRD §8.2 juga menyatakan ini). File yang sudah selesai tidak diulang. Adapter cloud mengulang tiap potongan secara terpisah di dalam sesi unggah resumable milik penyedia.

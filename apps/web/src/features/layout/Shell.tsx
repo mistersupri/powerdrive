@@ -41,7 +41,7 @@ function NavItem({ to, icon: Icon, children, badge, end }: { to: string; icon: t
 }
 const Section = ({ children }: { children: ReactNode }) => <div className="mt-5 mb-1.5 px-3 text-[11px] font-semibold tracking-wider text-muted uppercase">{children}</div>;
 
-const PROVIDER_DOT: Record<string, string> = { GOOGLE_DRIVE: "bg-[#4285F4]", ONEDRIVE: "bg-[#0078D4]", DROPBOX: "bg-[#0061FF]", LOCAL: "bg-ok-ink", S3: "bg-warn-ink" };
+const PROVIDER_DOT: Record<string, string> = { GOOGLE_DRIVE: "bg-[#4285F4]", ONEDRIVE: "bg-[#0078D4]", DROPBOX: "bg-[#0061FF]", LOCAL: "bg-ok-ink", S3: "bg-warn-ink", SMB: "bg-violet-ink", SFTP: "bg-primary-ink", WEBDAV: "bg-danger-ink" };
 
 function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const storages = useStorages().data ?? [];
