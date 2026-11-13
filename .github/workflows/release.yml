@@ -11,7 +11,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  IMAGE: ghcr.io/${{ github.repository }}
+  # A fresh package name: created and linked to this repo by the first push, so GITHUB_TOKEN may write to it.
+  IMAGE: ghcr.io/${{ github.repository_owner }}/superdrive
 
 jobs:
   test:
@@ -33,11 +34,11 @@ jobs:
           SD_TEST_SMB: 127.0.0.1:445:sduser:pass123:share
       - run: pnpm build
 
-  publish:
+  image:
     needs: test
     runs-on: ubuntu-latest
     permissions:
-      contents: write   # create the tag and release
+      contents: read
       packages: write   # push to GHCR
     steps:
       - uses: actions/checkout@v4
@@ -78,13 +79,26 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  # Independent of the image push, so a registry problem never blocks the release itself.
+  release:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compute version
+        id: v
+        run: |
+          base=$(node -p "require('./package.json').version" | cut -d. -f1,2)
+          echo "version=${base}.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           v="${{ steps.v.outputs.version }}"
           gh release create "v${v}" --target "${{ github.sha }}" --title "SuperDrive v${v}" --generate-notes \
-            --notes "Container image: \`${{ env.IMAGE }}:${v}\`
+            --notes "Container image (published by the \`image\` job of this run): \`${{ env.IMAGE }}:${v}\`
 
           \`\`\`bash
           docker pull ${{ env.IMAGE }}:${v}
