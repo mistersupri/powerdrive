@@ -14,10 +14,10 @@ export const TRASH = ".superdrive-trash";
 export const hiddenName = (n: string) => n === TRASH || n.endsWith(".sdpart");
 
 /** Characters that cannot appear in a name on any of the protocols (the strictest set is SMB/Windows). */
-export function checkName(name: string, strict = false) {
+export function checkName(name: string, strict = false, system = false) {
   const bad = strict ? /[\\/\0-\x1f"*:<>?|]/ : /[\\/\0]/;
   if (!name || name === "." || name === ".." || bad.test(name) || name.length > 255) throw new ProviderError("Nama tidak valid.", "other");
-  if (hiddenName(name)) throw new ProviderError("Nama ini dicadangkan oleh sistem.", "other");
+  if (!system && hiddenName(name)) throw new ProviderError("Nama ini dicadangkan oleh sistem.", "other");
 }
 
 export const byFoldersThenName = <T extends { isFolder: boolean; name: string }>(a: T, b: T) =>

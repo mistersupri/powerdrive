@@ -52,9 +52,9 @@ export class LocalProvider implements StorageProvider {
     }
   }
   private relOf(id: string) { return decRel(id); }
-  private checkName(name: string) {
+  private checkName(name: string, system = false) {
     if (!name || name === "." || name === ".." || /[\\/\0]/.test(name) || name.length > 255) throw new ProviderError("Nama tidak valid.", "other");
-    if (HIDDEN(name)) throw new ProviderError("Nama ini dicadangkan oleh sistem.", "other");
+    if (!system && HIDDEN(name)) throw new ProviderError("Nama ini dicadangkan oleh sistem.", "other");
   }
 
   localPath(id: string) { return this.abs(this.relOf(id)); }
@@ -123,8 +123,8 @@ export class LocalProvider implements StorageProvider {
     try { return await this.toRemote(rel, await fsp.stat(await this.safe(rel))); } catch (e: any) { if (e.code === "ENOENT") return null; throw e; }
   }
 
-  async createFolder(parentId: string, name: string) {
-    this.checkName(name);
+  async createFolder(parentId: string, name: string, system = false) {
+    this.checkName(name, system);
     const rel = path.posix.join(this.relOf(parentId), name);
     const full = await this.safe(rel);
     try { await fsp.mkdir(full); } catch (e: any) { if (e.code === "EEXIST") throw new ProviderError("Nama sudah dipakai.", "conflict"); throw e; }
@@ -202,13 +202,10 @@ export class LocalProvider implements StorageProvider {
 
   async rename(id: string, name: string) { return this.move(id, encRel(path.posix.dirname(this.relOf(id)) === "." ? "" : path.posix.dirname(this.relOf(id))), name); }
 
-  /** Deleting moves to a hidden trash folder inside the root; nothing is destroyed immediately. */
+  /** Permanent. The app-level trash (modules/trash.ts) moves items aside first when they should be recoverable. */
   async delete(id: string) {
     const rel = this.relOf(id);
     if (!rel) throw new ProviderError("Folder utama tidak dapat dihapus.", "other");
-    const src = await this.safe(rel);
-    const trash = path.join(this.root, TRASH_DIR);
-    await fsp.mkdir(trash, { recursive: true });
-    await fsp.rename(src, path.join(trash, `${Date.now()}-${crypto.randomBytes(3).toString("hex")}-${path.basename(rel)}`));
+    await fsp.rm(await this.safe(rel), { recursive: true, force: true });
   }
 }

@@ -112,8 +112,8 @@ export class SmbProvider implements StorageProvider {
   }
   async path(id: string) { const rel = relOf(id); if (!rel) return []; const p = rel.split("/"); return p.map((name, i) => ({ id: p.slice(0, i + 1).join("/"), name })); }
 
-  async createFolder(parentId: string, name: string) {
-    checkName(name, true); const rel = joinRel(relOf(parentId), name);
+  async createFolder(parentId: string, name: string, system = false) {
+    checkName(name, true, system); const rel = joinRel(relOf(parentId), name);
     await this.run(`mkdir ${this.q(this.abs(rel))}`);
     return this.stat(rel);
   }
@@ -183,10 +183,10 @@ export class SmbProvider implements StorageProvider {
   }
   rename(id: string, name: string) { return this.move(id, idOf(parentOf(relOf(id))), name); }
 
-  /** Delete moves into a hidden trash folder on the share. */
+  /** Permanent: `deltree` removes a folder with everything in it, `del` removes a file. */
   async delete(id: string) {
     const rel = relOf(id); if (!rel) throw new ProviderError("Folder utama tidak dapat dihapus.", "other");
-    await this.run(`mkdir ${this.q(this.abs(TRASH))}`).catch((e) => { if (!(e instanceof ProviderError && e.kind === "conflict")) throw e; });
-    await this.run(`rename ${this.q(this.abs(rel))} ${this.q(this.abs(`${TRASH}/${Date.now()}-${baseOf(rel)}`))}`);
+    const f = await this.stat(rel);
+    await this.run(`${f.isFolder ? "deltree" : "del"} ${this.q(this.abs(rel))}`);
   }
 }

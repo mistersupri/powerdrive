@@ -4,6 +4,9 @@ import path from "node:path";
 import { PassThrough } from "node:stream";
 import { ROOT, type RemoteFile, type StorageProvider } from "../providers/types.ts";
 import { mapProviderError } from "./storages.ts";
+import fs from "node:fs";
+import { db } from "../db.ts";
+import { getThumbnail, pickSize } from "./thumbnails.ts";
 
 /** Types that are safe to render inline from our own origin. Everything else is downloaded, never rendered. */
 const INLINE_OK = /^(image\/(png|jpe?g|webp|gif|avif|bmp|tiff)|video\/(mp4|webm|ogg|quicktime)|audio\/(mpeg|mp3|wav|x-wav|ogg|webm|aac|mp4|flac)|application\/pdf)$/;
@@ -108,4 +111,29 @@ export async function sendZip(req: FastifyRequest, reply: FastifyReply, p: Stora
   reply.header("content-disposition", contentDisposition("attachment", zipName));
   reply.header("cache-control", "no-store");
   return reply.send(out);
+}
+
+
+/** Metadata for a file: index first (no provider round-trip), provider as fallback. */
+export async function metaOf(storageId: string, p: StorageProvider, rawId: string): Promise<RemoteFile> {
+  const r = db.get<any>("SELECT * FROM files WHERE storage_id = ? AND file_id = ?", storageId, rawId);
+  if (r) return { id: r.file_id, parentId: r.parent_id, name: r.name, isFolder: !!r.is_folder, mimeType: r.mime_type, size: r.size, modifiedAt: r.modified_at, createdAt: r.created_at_remote, checksum: r.checksum, version: r.version, hasThumbnail: !!r.has_thumbnail };
+  try { return await p.stat(rawId); } catch (e) { return mapProviderError(e, storageId); }
+}
+
+/** Cached thumbnail with ETag/304 and version-pinned immutable caching. Shared by the app and public share links. */
+export async function sendThumbnail(req: FastifyRequest, reply: FastifyReply, storageId: string, p: StorageProvider, raw: string, requested: number, version?: string) {
+  const meta = await metaOf(storageId, p, raw);
+  if (meta.isFolder || !meta.hasThumbnail) return reply.status(404).header("cache-control", "private, max-age=300").send();
+  const size = pickSize(requested);
+  const etag = `"t-${storageId.slice(0, 8)}-${Buffer.from(`${raw}|${meta.version}|${size}`).toString("base64url").slice(-24)}"`;
+  if (req.headers["if-none-match"] === etag) return reply.status(304).send();
+  // If the browser gives up on this image (scrolled away), its queued decode is dropped.
+  const ac = new AbortController(); req.raw.on("close", () => ac.abort());
+  const t = await getThumbnail(storageId, p, meta, size, { signal: ac.signal });
+  if (ac.signal.aborted) return reply.status(499).send();
+  if (!t) return reply.status(404).header("cache-control", "private, max-age=300").send();
+  reply.header("cache-control", version ? "private, max-age=31536000, immutable" : "private, max-age=0, must-revalidate");
+  reply.header("etag", etag).header("content-type", "image/webp");
+  return reply.send(fs.createReadStream(t.path, { highWaterMark: 64 * 1024 }));
 }

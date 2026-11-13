@@ -8,7 +8,7 @@ import { AppError, badRequest, conflict, unauthorized } from "../lib/errors.ts";
 import type { User, WorkspaceRole } from "@superdrive/shared";
 
 // Argon2id with OWASP-recommended minimum parameters (19 MiB, t=2, p=1).
-const ARGON = { memoryCost: 19456, timeCost: 2, parallelism: 1, algorithm: 2 as const };
+export const ARGON = { memoryCost: 19456, timeCost: 2, parallelism: 1, algorithm: 2 as const };
 
 export const registerSchema = z.object({
   email: z.string().email().max(200), name: z.string().trim().min(1).max(100),
@@ -31,6 +31,7 @@ export function createWorkspace(name: string, ownerId: string) {
     db.run("INSERT INTO workspaces(id,name,slug) VALUES (?,?,?)", id, name, uniqueSlug(name));
     db.run("INSERT INTO memberships(id,workspace_id,user_id,role) VALUES (?,?,?,'OWNER')", newId(), id, ownerId);
   });
+  void import("./storages.ts").then((m) => m.ensureDefaultStorage(id)).catch(() => {});
   return id;
 }
 

@@ -6,7 +6,6 @@ import path from "node:path";
 import { promisify } from "node:util";
 import sharp, { type Sharp } from "sharp";
 import { config } from "../config.ts";
-import { Semaphore } from "../providers/http.ts";
 import type { RemoteFile, StorageProvider } from "../providers/types.ts";
 
 const run = promisify(execFile);
@@ -22,9 +21,31 @@ sharp.concurrency(Math.max(1, Math.min(4, config.thumbnails.concurrency)));
  *  3. Bounded concurrency — N decodes at a time, the rest queue.
  *  4. Negative cache — files that cannot be thumbnailed are remembered for a while.
  */
-const limiter = new Semaphore(config.thumbnails.concurrency);
+/**
+ * Jobs wait in a LIFO queue (the thumbnails the user is looking at *now* are the most recently requested) and are
+ * dropped when every request waiting for them has gone away — scrolling past 100 photos must not leave 100 decodes
+ * queued ahead of the ones on screen.
+ */
+interface Job { key: string; waiters: number; run: () => Promise<boolean>; resolve: (v: string | null) => void; out: string; started: boolean; priority: "high" | "low" }
+const queue: Job[] = []; let active = 0;
+function pump() {
+  while (active < config.thumbnails.concurrency) {
+    // High priority (requested by a person) first, newest first; background pre-generation only when nothing else waits.
+    let i = -1;
+    for (let k = queue.length - 1; k >= 0; k--) if (queue[k]!.priority === "high") { i = k; break; }
+    if (i < 0) i = queue.findIndex((j) => j.priority === "low");
+    if (i < 0) return;
+    const [job] = queue.splice(i, 1) as [Job];
+    if (job.waiters <= 0 && job.priority === "high") { inflight.delete(job.key); job.resolve(null); continue; }
+    job.started = true; active++;
+    job.run().then((ok) => { if (!ok) failures.set(job.key, Date.now()); job.resolve(ok ? job.out : null); }, () => job.resolve(null))
+      .finally(() => { active--; inflight.delete(job.key); pump(); });
+  }
+}
 const inflight = new Map<string, Promise<string | null>>();
+const jobs = new Map<string, Job>();
 const failures = new Map<string, number>();
+export const thumbLog: { warn: (o: unknown, m?: string) => void } = { warn: () => {} };
 const FAIL_TTL = 10 * 60_000;
 const dir = path.join(config.cacheDir, "thumbs");
 
@@ -80,7 +101,8 @@ async function generate(storageId: string, p: StorageProvider, file: RemoteFile,
     if (!done) return false;
     await fsp.rename(tmp, out);
     return true;
-  } catch {
+  } catch (e) {
+    thumbLog.warn({ err: (e as Error).message, file: file.name, size: file.size, mime }, "thumbnail generation failed");
     return false;
   } finally {
     await fsp.rm(tmp, { force: true }).catch(() => {});
@@ -88,23 +110,32 @@ async function generate(storageId: string, p: StorageProvider, file: RemoteFile,
 }
 
 /** Returns the cached file path, generating it if needed. `null` means "no thumbnail for this file". */
-export async function getThumbnail(storageId: string, p: StorageProvider, file: RemoteFile, requested: number): Promise<{ path: string; key: string } | null> {
+export async function getThumbnail(storageId: string, p: StorageProvider, file: RemoteFile, requested: number, opts: { signal?: AbortSignal; priority?: "high" | "low" } = {}): Promise<{ path: string; key: string } | null> {
   const size = pickSize(requested);
   const key = thumbKey(storageId, file.id, file.version, size);
   const out = thumbPath(key);
   if (await fsp.access(out).then(() => true, () => false)) return { path: out, key };
   const failedAt = failures.get(key);
   if (failedAt && Date.now() - failedAt < FAIL_TTL) return null;
-  let job = inflight.get(key);
+  let job = jobs.get(key);
   if (!job) {
-    job = limiter.run(async () => (await generate(storageId, p, file, size, out)) ? out : null)
-      .then((r) => { if (!r) failures.set(key, Date.now()); return r; })
-      .finally(() => inflight.delete(key));
-    inflight.set(key, job);
-  }
-  const r = await job;
+    let resolve!: (v: string | null) => void;
+    const promise = new Promise<string | null>((r) => { resolve = r; });
+    job = { key, waiters: 1, out, started: false, priority: opts.priority ?? "high", resolve: (v) => { jobs.delete(key); resolve(v); }, run: () => generate(storageId, p, file, size, out) };
+    inflight.set(key, promise); jobs.set(key, job); queue.push(job); pump();
+  } else { job.waiters++; if ((opts.priority ?? "high") === "high") job.priority = "high"; }
+  const promise = inflight.get(key)!;
+  const release = () => { job!.waiters--; };
+  opts.signal?.addEventListener("abort", release, { once: true });
+  const r = await promise.finally(() => opts.signal?.removeEventListener("abort", release));
   if (failures.size > 5000) for (const [k, t] of failures) if (Date.now() - t > FAIL_TTL) failures.delete(k);
   return r ? { path: r, key } : null;
+}
+
+/** Warm the cache in the background (e.g. right after an upload or transfer) without competing with people. */
+export function prewarmThumbnail(storageId: string, p: StorageProvider, file: RemoteFile) {
+  if (!file.hasThumbnail || file.isFolder) return;
+  void getThumbnail(storageId, p, file, 256, { priority: "low" }).catch(() => {});
 }
 
 export const thumbStream = (p: string) => fs.createReadStream(p, { highWaterMark: 64 * 1024 });

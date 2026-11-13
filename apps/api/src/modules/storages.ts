@@ -46,7 +46,8 @@ export function providerFor(row: any): StorageProvider {
   let p: StorageProvider;
   const onAuthFailure = (m: string) => { providers.delete(row.id); setStatus(row.id, "REAUTH_REQUIRED", m); };
   switch (row.provider as ProviderType) {
-    case "LOCAL": p = new LocalProvider(assertLocalRoot(cfg.root), row.name); break;
+    // The built-in storage uses a path chosen by the server itself, not user input, so it skips the allow-list.
+    case "LOCAL": p = new LocalProvider(row.is_default ? cfg.root : assertLocalRoot(cfg.root), row.name); break;
     case "S3": p = new S3Provider(cfg as S3Config, loadCredential<S3Credentials>(row.credential_id)); break;
     case "SFTP": p = new SftpProvider(cfg as SftpConfig, loadCredential<SftpCredentials>(row.credential_id), (fp) => {
       // Trust on first use: remember the host key so a later change is refused.
@@ -96,6 +97,22 @@ export function assertLocalRoot(root: unknown): string {
   return real;
 }
 
+/** Every workspace gets a built-in storage on the uploads volume; it backs the "Semua file" page. */
+export async function ensureDefaultStorage(workspaceId: string) {
+  if (db.get("SELECT 1 FROM storages WHERE workspace_id = ? AND is_default = 1", workspaceId)) return;
+  // Workspaces must not share files: only the oldest one sits directly on UPLOADS_DIR, the rest get their own folder.
+  const first = db.get<{ id: string }>("SELECT id FROM workspaces ORDER BY created_at, id LIMIT 1")?.id === workspaceId;
+  const root = first ? config.uploadsDir : path.join(config.dataDir, "workspaces", workspaceId, "files");
+  fs.mkdirSync(root, { recursive: true });
+  const id = newId();
+  db.run("INSERT INTO storages(id,workspace_id,provider,name,status,config,is_default) VALUES (?,?,?,?,?,?,1)", id, workspaceId, "LOCAL", "Semua file", "DISCONNECTED", JSON.stringify({ root }));
+  db.run("INSERT INTO mounts(id,workspace_id,storage_id,name,virtual_path,root_folder_id) VALUES (?,?,?,?,?,?)", newId(), workspaceId, id, "Semua file", uniqueMountPath(workspaceId, "semua-file"), ROOT);
+  await testConnection(id);
+}
+export async function ensureAllDefaultStorages() {
+  for (const w of db.all<{ id: string }>("SELECT id FROM workspaces")) await ensureDefaultStorage(w.id).catch(() => {});
+}
+
 export function toDto(row: any, ctx: AuthCtx): StorageConnectionDto {
   const mount = db.get<any>("SELECT id, virtual_path, enabled FROM mounts WHERE storage_id = ? ORDER BY created_at LIMIT 1", row.id);
   return {
@@ -104,7 +121,7 @@ export function toDto(row: any, ctx: AuthCtx): StorageConnectionDto {
     // Unknown quota stays null — it must never be shown as zero.
     quota: row.quota_used === null && row.quota_total === null ? null : { used: row.quota_used, total: row.quota_total },
     mount: mount ? { id: mount.id, virtualPath: mount.virtual_path, enabled: !!mount.enabled } : null,
-    rootFolderId: ROOT, permissions: permissionsFor(ctx, row.id) as Permission[],
+    isDefault: !!row.is_default, rootFolderId: ROOT, permissions: permissionsFor(ctx, row.id) as Permission[],
     info: row.provider === "SFTP" && row.config ? (JSON.parse(row.config).hostKey ? `Sidik jari host: ${JSON.parse(row.config).hostKey}` : null) : null,
   };
 }
@@ -165,6 +182,7 @@ export async function testConnection(storageId: string) {
 export function deleteConnection(ctx: AuthCtx, storageId: string) {
   const row = db.get<any>("SELECT * FROM storages WHERE id = ? AND workspace_id = ?", storageId, ctx.workspaceId);
   if (!row) throw notFound("Penyimpanan tidak ditemukan.");
+  if (row.is_default) throw conflict("Penyimpanan bawaan \"Semua file\" tidak dapat diputus.", "STORAGE_PROTECTED");
   const busy = db.get("SELECT 1 FROM transfer_jobs WHERE (source_storage_id = ? OR destination_storage_id = ?) AND status IN ('QUEUED','VALIDATING','RUNNING','RETRYING','VERIFYING')", storageId, storageId);
   if (busy) throw conflict("Masih ada transfer aktif pada penyimpanan ini.", "STORAGE_BUSY");
   // Only local records are removed. Files on the provider are never touched.

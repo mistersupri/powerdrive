@@ -52,7 +52,8 @@ export interface StorageProvider {
   stat(id: string): Promise<RemoteFile>;
   /** Ancestors from the root (exclusive) down to `id` (inclusive). */
   path(id: string): Promise<{ id: string; name: string }[]>;
-  createFolder(parentId: string, name: string): Promise<RemoteFile>;
+  /** `system` lets the app create its own reserved folders (the trash). */
+  createFolder(parentId: string, name: string, system?: boolean): Promise<RemoteFile>;
   read(id: string, opts?: ReadOptions): Promise<ReadResult>;
   write(input: WriteInput): Promise<RemoteFile>;
   copy?(id: string, destParentId: string, newName?: string): Promise<RemoteFile>;

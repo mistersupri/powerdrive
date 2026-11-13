@@ -98,7 +98,7 @@ describe("external storages through the API", () => {
   it("rejects wrong WebDAV credentials with a clear message and stores nothing", async () => {
     const r = await t.call("ext", "POST", "/storages", { provider: "WEBDAV", name: "Bad", url: `http://127.0.0.1:${davPort}/`, username: "alice", password: "wrong" });
     assert.equal(r.status, 409); assert.match(r.body.error.message, /Login WebDAV ditolak/);
-    assert.equal((await t.call("ext", "GET", "/storages")).data.length, 0);
+    assert.equal((await t.call("ext", "GET", "/storages")).data.filter((s: any) => !s.isDefault).length, 0);
   });
   it("copies local → WebDAV → local through the transfer engine with verification", async () => {
     const local = (await t.call("ext", "POST", "/storages", { provider: "LOCAL", name: "L", root: "l" })).data;

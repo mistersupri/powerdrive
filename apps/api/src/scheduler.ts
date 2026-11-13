@@ -2,6 +2,7 @@ import { db, now } from "./db.ts";
 import { testConnection } from "./modules/storages.ts";
 import { pruneThumbnailCache } from "./modules/thumbnails.ts";
 import { sweepStaleUploads } from "./modules/uploads.ts";
+import { sweepTrash } from "./modules/trash.ts";
 
 /** Background upkeep. Everything here is safe to skip or repeat. */
 export function startScheduler(log: { info: (o: any, m?: string) => void; warn: (o: any, m?: string) => void }) {
@@ -13,6 +14,7 @@ export function startScheduler(log: { info: (o: any, m?: string) => void; warn: 
   };
   every(60 * 60_000, "sweep-uploads", sweepStaleUploads);
   every(60 * 60_000, "sweep-sessions", () => { db.run("DELETE FROM sessions WHERE expires_at < ?", now()); db.run("DELETE FROM oauth_states WHERE expires_at < ?", now()); db.run("DELETE FROM password_resets WHERE expires_at < ?", now()); });
+  every(60 * 60_000, "sweep-trash", () => sweepTrash());
   every(24 * 3600_000, "prune-thumbnails", () => pruneThumbnailCache(60));
   // Refresh status + quota so the dashboard stays honest without anyone clicking "test".
   every(30 * 60_000, "refresh-storages", async () => {

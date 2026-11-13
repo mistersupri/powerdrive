@@ -120,8 +120,8 @@ export class WebdavProvider implements StorageProvider {
   }
   async path(id: string) { const rel = relOf(id); if (!rel) return []; const p = rel.split("/"); return p.map((name, i) => ({ id: p.slice(0, i + 1).join("/"), name })); }
 
-  async createFolder(parentId: string, name: string) {
-    checkName(name); const rel = joinRel(relOf(parentId), name);
+  async createFolder(parentId: string, name: string, system = false) {
+    checkName(name, false, system); const rel = joinRel(relOf(parentId), name);
     await this.dav("MKCOL", this.url(rel, true), { okStatuses: [201] });
     return this.stat(rel);
   }
@@ -170,11 +170,9 @@ export class WebdavProvider implements StorageProvider {
   move(id: string, destParentId: string, newName?: string) { return this.moveOrCopy("MOVE", id, destParentId, newName); }
   rename(id: string, name: string) { return this.moveOrCopy("MOVE", id, idOf(parentOf(relOf(id))), name); }
 
-  /** Moves into a hidden trash collection rather than issuing DELETE, so nothing is destroyed immediately. */
+  /** Permanent (DELETE). */
   async delete(id: string) {
     const rel = relOf(id); if (!rel) throw new ProviderError("Folder utama tidak dapat dihapus.", "other");
-    await this.dav("MKCOL", this.url(TRASH, true), { okStatuses: [201, 405] }).catch(() => {});
-    const dest = `${TRASH}/${Date.now()}-${baseOf(rel)}`;
-    await this.dav("MOVE", this.url(rel, true), { headers: { destination: this.url(dest, true), overwrite: "T" }, okStatuses: [201, 204] });
+    await this.dav("DELETE", this.url(rel, true), { okStatuses: [204] });
   }
 }

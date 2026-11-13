@@ -122,8 +122,8 @@ export class SftpProvider implements StorageProvider {
     catch (e) { if (e instanceof ProviderError && e.kind === "not_found") return null; throw e; }
   }
 
-  async createFolder(parentId: string, name: string) {
-    checkName(name); const rel = joinRel(relOf(parentId), name);
+  async createFolder(parentId: string, name: string, system = false) {
+    checkName(name, false, system); const rel = joinRel(relOf(parentId), name);
     try { await this.call<void>((s, cb) => s.mkdir(this.abs(rel), cb as any)); }
     catch (e) {
       // SFTP v3 reports "already exists" as a bare generic failure; tell the two apart by looking.
@@ -178,12 +178,16 @@ export class SftpProvider implements StorageProvider {
   }
   rename(id: string, name: string) { return this.move(id, idOf(parentOf(relOf(id))), name); }
 
-  /** Delete moves into a hidden trash folder on the server; nothing is destroyed immediately. */
+  /** Permanent, recursive. */
   async delete(id: string) {
     const rel = relOf(id); if (!rel) throw new ProviderError("Folder utama tidak dapat dihapus.", "other");
-    const trash = this.abs(TRASH);
-    await this.call<void>((s, cb) => s.mkdir(trash, cb as any)).catch(() => {});
-    await this.call<void>((s, cb) => s.rename(this.abs(rel), `${trash}/${Date.now()}-${crypto.randomBytes(3).toString("hex")}-${baseOf(rel)}`, cb as any));
+    const rm = async (abs: string) => {
+      const st = await this.call<Stats>((s, cb) => s.lstat(abs, cb));
+      if (!st.isDirectory()) return void (await this.call<void>((s, cb) => s.unlink(abs, cb as any)));
+      for (const e of await this.call<{ filename: string }[]>((s, cb) => s.readdir(abs, cb as any))) if (e.filename !== "." && e.filename !== "..") await rm(`${abs}/${e.filename}`);
+      await this.call<void>((s, cb) => s.rmdir(abs, cb as any));
+    };
+    await rm(this.abs(rel));
   }
 
   close() { void this.conn?.then((c) => c.client.end()).catch(() => {}); this.conn = null; }

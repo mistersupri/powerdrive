@@ -5,7 +5,7 @@ import { db } from "../db.ts";
 import { ok, requireAuth } from "../app.ts";
 import { audit } from "../lib/audit.ts";
 import { badRequest } from "../lib/errors.ts";
-import { sendFile, sendFolderZip, sendZip } from "../modules/delivery.ts";
+import { sendFile, sendFolderZip, sendThumbnail, sendZip } from "../modules/delivery.ts";
 import { createFolder, deleteFile, listFolder, renameFile, searchIndex, setStar, toEntry } from "../modules/files.ts";
 import { requireStorage } from "../modules/permissions.ts";
 import { getThumbnail, pickSize } from "../modules/thumbnails.ts";
@@ -112,19 +112,7 @@ export async function fileRoutes(app: FastifyInstance) {
     const { storageId, fileId } = req.params as any;
     const q = z.object({ s: z.coerce.number().int().min(32).max(2048).default(256), v: z.string().optional() }).parse(req.query);
     const { p } = open(req, "READ", storageId);
-    const raw = decodeId(fileId);
-    const meta = await metaOf(storageId, p, raw);
-    if (meta.isFolder || !meta.hasThumbnail) return reply.status(404).header("cache-control", "private, max-age=300").send();
-    // Cheap revalidation: the ETag is derived from the same inputs as the cache key, so a 304 never touches disk or the provider.
-    const size = pickSize(q.s);
-    const etag = `"t-${storageId.slice(0, 8)}-${Buffer.from(`${raw}|${meta.version}|${size}`).toString("base64url").slice(-24)}"`;
-    if (req.headers["if-none-match"] === etag) return reply.status(304).send();
-    const t = await getThumbnail(storageId, p, meta, size);
-    if (!t) return reply.status(404).header("cache-control", "private, max-age=300").send();
-    // When the client put the version in the URL, the bytes behind it can never change.
-    reply.header("cache-control", q.v ? "private, max-age=31536000, immutable" : "private, max-age=0, must-revalidate");
-    reply.header("etag", etag).header("content-type", "image/webp");
-    return reply.send(fs.createReadStream(t.path, { highWaterMark: 64 * 1024 }));
+    return sendThumbnail(req, reply, storageId, p, decodeId(fileId), q.s, q.v);
   });
 
   /* ---- resumable uploads ---- */

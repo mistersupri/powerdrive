@@ -12,6 +12,7 @@ import { AppError, badRequest, conflict, notFound } from "../lib/errors.ts";
 import { LocalProvider } from "../providers/local.ts";
 import { type StorageProvider } from "../providers/types.ts";
 import { indexItems, toEntry, uniqueName, validName } from "./files.ts";
+import { prewarmThumbnail } from "./thumbnails.ts";
 import type { AuthCtx } from "./permissions.ts";
 import { mapProviderError, providerFor } from "./storages.ts";
 import { decodeId } from "../providers/types.ts";
@@ -27,32 +28,54 @@ function dto(r: any): UploadDto {
   };
 }
 
-function owned(ctx: AuthCtx, id: string) {
-  const r = db.get<any>("SELECT * FROM uploads WHERE id = ? AND workspace_id = ? AND user_id = ?", id, ctx.workspaceId, ctx.userId);
+/** An upload belongs to its creator, or — when made through a share link — to that link only. */
+function owned(ctx: AuthCtx, id: string, shareId?: string) {
+  const r = shareId
+    ? db.get<any>("SELECT * FROM uploads WHERE id = ? AND share_id = ?", id, shareId)
+    : db.get<any>("SELECT * FROM uploads WHERE id = ? AND workspace_id = ? AND user_id = ? AND share_id IS NULL", id, ctx.workspaceId, ctx.userId);
   if (!r) throw notFound("Unggahan tidak ditemukan.");
   return r;
 }
 
-export async function createUpload(ctx: AuthCtx, input: { storageId: string; parentId: string; name: string; size: number; mimeType?: string | null; conflictPolicy?: ConflictPolicy }) {
+/** Guards for heavy public use: disk in staging, simultaneous uploads per client, and per-link quota. */
+function checkQuotas(ctx: AuthCtx, size: number, shareId?: string) {
+  const cap = config.upload.stagingMaxBytes;
+  if (cap) {
+    const used = db.get<{ n: number }>("SELECT COALESCE(SUM(size),0) n FROM uploads WHERE status IN ('RECEIVING','FINALIZING')")!.n;
+    if (used + size > cap) throw new AppError(507, "SERVER_BUSY", "Server sedang menerima terlalu banyak unggahan. Coba lagi beberapa menit lagi.");
+  }
+  if (ctx.ip) {
+    const n = db.get<{ n: number }>("SELECT COUNT(*) n FROM uploads WHERE ip = ? AND status IN ('RECEIVING','FINALIZING')", ctx.ip)!.n;
+    if (n >= config.upload.maxActivePerIp) throw new AppError(429, "TOO_MANY_UPLOADS", "Terlalu banyak unggahan berjalan dari alamat ini. Tunggu sebagian selesai.");
+  }
+  if (shareId) {
+    const s = db.get<any>("SELECT max_upload_bytes, uploaded_bytes FROM share_links WHERE id = ?", shareId);
+    if (s?.max_upload_bytes && s.uploaded_bytes + size > s.max_upload_bytes) throw new AppError(413, "SHARE_QUOTA", "Kuota unggahan untuk tautan ini sudah habis.");
+  }
+}
+
+export async function createUpload(ctx: AuthCtx, input: { storageId: string; parentId: string; name: string; size: number; mimeType?: string | null; conflictPolicy?: ConflictPolicy }, shareId?: string) {
   const name = validName(input.name);
   if (!Number.isSafeInteger(input.size) || input.size < 0) throw badRequest("Ukuran file tidak valid.");
   if (config.upload.maxFileSize && input.size > config.upload.maxFileSize) throw new AppError(413, "FILE_TOO_LARGE", "File melebihi ukuran maksimum yang diizinkan.");
+  checkQuotas(ctx, input.size, shareId);
   const id = newId();
   await fsp.mkdir(config.stagingDir, { recursive: true });
   const staging = path.join(config.stagingDir, `${id}.part`);
   await fsp.writeFile(staging, "", { mode: 0o600 });
-  db.run("INSERT INTO uploads(id,workspace_id,user_id,storage_id,parent_id,name,size,mime_type,conflict_policy,staging_path) VALUES (?,?,?,?,?,?,?,?,?,?)",
-    id, ctx.workspaceId, ctx.userId, input.storageId, decodeId(input.parentId), name, input.size, input.mimeType ?? null, input.conflictPolicy ?? "RENAME", staging);
+  db.run("INSERT INTO uploads(id,workspace_id,user_id,storage_id,parent_id,name,size,mime_type,conflict_policy,staging_path,share_id,ip) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+    id, ctx.workspaceId, ctx.userId, input.storageId, decodeId(input.parentId), name, input.size, input.mimeType ?? null, input.conflictPolicy ?? "RENAME", staging, shareId ?? null, ctx.ip || null);
+  if (shareId) db.run("UPDATE share_links SET uploaded_bytes = uploaded_bytes + ? WHERE id = ?", input.size, shareId);
   const row = db.get<any>("SELECT * FROM uploads WHERE id = ?", id)!;
   if (input.size === 0) startFinalize(ctx, row);
   return dto(db.get<any>("SELECT * FROM uploads WHERE id = ?", id));
 }
 
-export const getUpload = (ctx: AuthCtx, id: string) => dto(owned(ctx, id));
+export const getUpload = (ctx: AuthCtx, id: string, shareId?: string) => dto(owned(ctx, id, shareId));
 
 /** Append a chunk at `offset`. Only the exact next offset is accepted, so retries are safe. */
-export async function receiveChunk(ctx: AuthCtx, id: string, offset: number, body: Readable) {
-  const r = owned(ctx, id);
+export async function receiveChunk(ctx: AuthCtx, id: string, offset: number, body: Readable, shareId?: string) {
+  const r = owned(ctx, id, shareId);
   if (r.status !== "RECEIVING") { body.resume(); throw conflict("Unggahan ini sudah tidak menerima data.", "UPLOAD_CLOSED"); }
   if (offset !== r.received) { body.resume(); throw new AppError(409, "OFFSET_MISMATCH", `Offset harus ${r.received}.`); }
   const remaining = r.size - r.received;
@@ -85,15 +108,18 @@ export async function receiveChunk(ctx: AuthCtx, id: string, offset: number, bod
   return dto(db.get<any>("SELECT * FROM uploads WHERE id = ?", id));
 }
 
-export function cancelUpload(ctx: AuthCtx, id: string) {
-  const r = owned(ctx, id);
+export function cancelUpload(ctx: AuthCtx, id: string, shareId?: string) {
+  const r = owned(ctx, id, shareId);
   if (r.status === "FINALIZING") throw conflict("Unggahan sedang diselesaikan.", "UPLOAD_BUSY");
   fsp.rm(r.staging_path, { force: true }).catch(() => {});
+  releaseQuota(r);
   db.run("DELETE FROM uploads WHERE id = ?", id);
 }
 
-export function retryUpload(ctx: AuthCtx, id: string) {
-  const r = owned(ctx, id);
+function releaseQuota(r: any) { if (r.share_id && r.status !== "DONE") db.run("UPDATE share_links SET uploaded_bytes = MAX(0, uploaded_bytes - ?) WHERE id = ?", r.size, r.share_id); }
+
+export function retryUpload(ctx: AuthCtx, id: string, shareId?: string) {
+  const r = owned(ctx, id, shareId);
   if (r.status !== "FAILED") throw conflict("Hanya unggahan yang gagal yang bisa diulang.");
   startFinalize(ctx, r);
   return dto(db.get<any>("SELECT * FROM uploads WHERE id = ?", id));
@@ -132,10 +158,11 @@ async function finalize(ctx: AuthCtx, r: any) {
       const counter = new Transform({ transform(c, _e, cb) { pushed.set(r.id, (pushed.get(r.id) ?? 0) + c.length); cb(null, c); } });
       const src = fs.createReadStream(r.staging_path, { highWaterMark: 1024 * 1024 }).pipe(counter);
       file = await p.write({ parentId: r.parent_id, name: tmpName, size: r.size, mimeType: r.mime_type, stream: src });
-      if (swap) { await p.delete(existing!.id); file = await p.rename(file.id, name); }
+      if (swap) { await (await import("./trash.ts")).trashRaw(r.workspace_id, r.user_id, r.storage_id, p, existing!.id); file = await p.rename(file.id, name); }
       await fsp.rm(r.staging_path, { force: true });
     }
     indexItems(r.storage_id, r.parent_id, [file]);
+    prewarmThumbnail(r.storage_id, p, file);
     audit({ workspaceId: r.workspace_id, userId: r.user_id, action: "file.upload", resourceType: "file", resourceId: file.id, metadata: { storageId: r.storage_id, name: file.name, size: r.size }, ip: ctx.ip });
     db.run("UPDATE uploads SET status='DONE', result=?, updated_at=? WHERE id=?", JSON.stringify({ file: toEntry(r.storage_id, file) }), now(), r.id);
   } catch (e) {
@@ -156,7 +183,7 @@ export function recoverUploads() {
 export async function sweepStaleUploads() {
   const cutoff = new Date(Date.now() - config.upload.staleHours * 3600_000).toISOString();
   for (const r of db.all<any>("SELECT * FROM uploads WHERE status IN ('RECEIVING','FAILED') AND updated_at < ?", cutoff)) {
-    await fsp.rm(r.staging_path, { force: true }); db.run("DELETE FROM uploads WHERE id = ?", r.id);
+    await fsp.rm(r.staging_path, { force: true }); releaseQuota(r); db.run("DELETE FROM uploads WHERE id = ?", r.id);
   }
   db.run("DELETE FROM uploads WHERE status = 'DONE' AND updated_at < ?", cutoff);
 }

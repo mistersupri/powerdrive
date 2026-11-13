@@ -54,6 +54,8 @@ export function open<T = unknown>(s: Sealed): T {
   return JSON.parse(pt.toString("utf8")) as T;
 }
 
+/** Stable secret for HMAC-signing short-lived tokens, derived from the master key (never stored). */
+export const deriveSecret = (label: string) => crypto.createHmac("sha256", getRing().keys.get(getRing().current)!).update(label).digest();
 export const currentKeyVersion = () => getRing().current;
 export const resetKeyRingForTests = () => { ring = null; };
 export const randomToken = (bytes = 32) => crypto.randomBytes(bytes).toString("base64url");

@@ -32,7 +32,8 @@ describe("auth & workspace isolation", () => {
     const s = await t.call("alice", "POST", "/storages", { provider: "LOCAL", name: "Alice Private", root: "alice-private" });
     assert.equal(s.status, 200, JSON.stringify(s.body));
     const bobList = await t.call("bob", "GET", "/storages");
-    assert.deepEqual(bobList.data, []);
+    assert.deepEqual(bobList.data.filter((s: any) => !s.isDefault), [], "bob sees only his own built-in storage");
+    assert.ok(bobList.data.every((s: any) => s.workspaceId !== wsAlice));
     // Bob guessing Alice's storage id gets a 403/404, never data.
     const probe = await t.call("bob", "GET", `/files?storageId=${s.data.id}`);
     assert.ok([403, 404].includes(probe.status), String(probe.status));

@@ -82,6 +82,8 @@ export interface StorageConnectionDto {
   permissions: Permission[];
   /** Extra detail worth showing, e.g. the pinned SSH host key fingerprint. */
   info?: string | null;
+  /** The built-in "Semua file" storage (the uploads volume). */
+  isDefault?: boolean;
 }
 
 export interface TransferJobDto {
@@ -118,6 +120,24 @@ export interface TransferItemDto {
   errorMessage: string | null;
   retryCount: number;
 }
+
+export interface TrashItemDto {
+  id: string; storageId: string; storageName: string; name: string; isFolder: boolean; size: number | null;
+  originalPath: string; trashedAt: string; trashedBy: string | null; expiresAt: string;
+}
+
+export interface ShareLinkDto {
+  id: string; storageId: string; storageName: string; fileId: string; name: string; isFolder: boolean; role: "VIEWER" | "EDITOR";
+  url: string; hasPassword: boolean; expiresAt: string | null; maxUploadBytes: number | null; uploadedBytes: number;
+  accessCount: number; lastAccessAt: string | null; createdAt: string; createdByName: string | null; revokedAt: string | null; expired: boolean;
+}
+
+export interface PublicShareDto {
+  name: string; isFolder: boolean; role: "VIEWER" | "EDITOR"; requiresPassword: boolean; unlocked: boolean; expiresAt: string | null;
+  maxUploadBytes: number | null; uploadedBytes: number;
+}
+
+export interface Paged<T> { items: T[]; total: number }
 
 export interface UploadDto {
   id: string;

@@ -9,9 +9,11 @@ import { currentKeyVersion } from "./lib/crypto.ts";
 async function main() {
   currentKeyVersion(); // fail fast on a bad master key
   openDb();
+  await (await import("./modules/storages.ts")).ensureAllDefaultStorages();
   const app = await buildApp();
   engine.start();
   recoverUploads();
+  (await import("./modules/thumbnails.ts")).thumbLog.warn = (o, m) => app.log.warn(o as object, m);
   const stopScheduler = startScheduler(app.log as any);
   await app.listen({ port: config.port, host: config.host });
   app.log.info(`SuperDrive siap di ${config.appUrl}`);

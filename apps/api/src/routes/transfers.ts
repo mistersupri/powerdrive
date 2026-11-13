@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { ok, requireAuth } from "../app.ts";
-import { cancelJob, createTransfer, getJob, listItems, listJobs, pauseJob, resumeJob, retryJob, transferBus } from "../modules/transfers.ts";
+import { cancelJob, clearJobs, createTransfer, getJob, listItems, listJobs, pauseJob, queryJobs, resumeJob, retryJob, transferBus } from "../modules/transfers.ts";
 
 const body = z.object({
   type: z.enum(["COPY", "MOVE"]),
@@ -31,10 +31,17 @@ export async function transferRoutes(app: FastifyInstance) {
     return reply.status(202).send(ok(req, job));
   });
 
-  app.get("/transfers", async (req) => {
+  const filters = z.object({
+    status: z.string().optional(), q: z.string().max(100).optional(), type: z.enum(["COPY", "MOVE"]).optional(), storageId: z.string().optional(),
+    from: z.string().optional(), to: z.string().optional(), page: z.coerce.number().int().min(1).optional(), limit: z.coerce.number().int().min(1).max(200).optional(),
+  });
+  // Paged and filterable history: { items, total }.
+  app.get("/transfers", async (req) => ok(req, queryJobs(requireAuth(req), filters.parse(req.query))));
+  // Remove finished jobs from the history (never touches files). Active jobs are always kept.
+  app.delete("/transfers", async (req) => {
     const ctx = requireAuth(req);
-    const q = z.object({ status: z.string().optional(), limit: z.coerce.number().optional() }).parse(req.query);
-    return ok(req, listJobs(ctx, q));
+    const q = filters.extend({ scope: z.enum(["finished", "done", "failed"]).default("finished") }).parse(req.query);
+    return ok(req, { removed: clearJobs(ctx, q.scope, q) });
   });
 
   // Live updates for every transfer the caller can see. Registered before :id so "events" is not read as an id.

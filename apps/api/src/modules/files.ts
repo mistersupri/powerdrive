@@ -4,6 +4,7 @@ import { db, now } from "../db.ts";
 import { audit } from "../lib/audit.ts";
 import { badRequest, conflict } from "../lib/errors.ts";
 import { encodeId, ROOT, type RemoteFile, type StorageProvider } from "../providers/types.ts";
+import { TRASH } from "../providers/pathutil.ts";
 import { type AuthCtx, permissionsFor } from "./permissions.ts";
 import { mapProviderError } from "./storages.ts";
 
@@ -59,6 +60,7 @@ export async function listFolder(ctx: AuthCtx, storageId: string, p: StorageProv
       pageToken ? Promise.resolve([]) : p.path(folderId),
     ]);
     // Only a full single-page listing can prune the index; paged ones just upsert.
+    if (folderId === ROOT) res.items = res.items.filter((i) => i.name !== TRASH);
     indexItems(storageId, folderId, res.items, { complete: !pageToken && !res.nextPageToken });
     const stars = starredSet(ctx.userId, storageId, res.items.map((i) => i.id));
     return {
@@ -109,14 +111,10 @@ export async function renameFile(ctx: AuthCtx, storageId: string, p: StorageProv
   } catch (e) { mapProviderError(e, storageId); }
 }
 
+/** Deleting moves to the trash (recoverable for TRASH_RETENTION_DAYS). */
 export async function deleteFile(ctx: AuthCtx, storageId: string, p: StorageProvider, fileId: string) {
-  try {
-    const f = await p.stat(fileId);
-    await p.delete(fileId);
-    unindex(storageId, fileId);
-    db.run("DELETE FROM stars WHERE storage_id = ? AND file_id = ?", storageId, fileId);
-    audit({ workspaceId: ctx.workspaceId, userId: ctx.userId, action: "file.delete", resourceType: "file", resourceId: fileId, metadata: { storageId, name: f.name }, ip: ctx.ip });
-  } catch (e) { mapProviderError(e, storageId); }
+  const { trashFiles } = await import("./trash.ts");
+  await trashFiles(ctx, storageId, p, [fileId]);
 }
 
 export function setStar(userId: string, storageId: string, fileId: string, on: boolean) {

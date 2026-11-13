@@ -9,6 +9,8 @@ import { newId } from "../lib/crypto.ts";
 import { AppError, badRequest, conflict, notFound } from "../lib/errors.ts";
 import { decodeId, isRetryable, ProviderError, type RemoteFile, type StorageProvider } from "../providers/types.ts";
 import { indexItems, unindex, uniqueName } from "./files.ts";
+import { trashRaw } from "./trash.ts";
+import { prewarmThumbnail } from "./thumbnails.ts";
 import { can, type AuthCtx } from "./permissions.ts";
 import { providerFor } from "./storages.ts";
 
@@ -75,6 +77,13 @@ export async function createTransfer(ctx: AuthCtx, input: CreateTransferInput) {
     throw new AppError(403, "FORBIDDEN", "Memindahkan antar penyimpanan menghapus file sumber, dan itu memerlukan izin hapus.");
   if (!can(ctx, dst.id, "UPLOAD")) throw new AppError(403, "FORBIDDEN", "Anda tidak punya izin menulis ke penyimpanan tujuan.");
   providerFor(src); providerFor(dst); // throws a clear error when a connection is disabled or expired
+  if (input.type === "MOVE" && src.id === dst.id) {
+    // Moving into the folder an item already lives in does nothing: refuse instead of creating an empty job.
+    const dest = decodeId(input.destination.folderId);
+    const known = ids.map((id) => db.get<{ parent_id: string | null }>("SELECT parent_id FROM files WHERE storage_id = ? AND file_id = ?", src.id, id));
+    if (known.every((k) => k && k.parent_id === dest))
+      throw badRequest("Item sudah berada di folder tujuan.", "SAME_FOLDER");
+  }
 
   const key = input.idempotencyKey?.slice(0, 120) || newId();
   const dup = db.get<any>("SELECT id FROM transfer_jobs WHERE workspace_id = ? AND idempotency_key = ?", ctx.workspaceId, key);
@@ -104,6 +113,7 @@ function ownedJob(ctx: AuthCtx, id: string) {
   return r;
 }
 
+/** Snapshot for the live stream. */
 export function listJobs(ctx: AuthCtx, q: { status?: string; limit?: number } = {}) {
   const mine = ctx.role === "OWNER" || ctx.role === "ADMIN" ? "" : " AND j.user_id = ?";
   const st = q.status === "active" ? ` AND j.status IN (${ACTIVE_TRANSFER_STATUSES.map((s) => `'${s}'`).join(",")})` : q.status ? " AND j.status = ?" : "";
@@ -111,6 +121,40 @@ export function listJobs(ctx: AuthCtx, q: { status?: string; limit?: number } = 
   return db.all<any>(`${JOB_SQL} WHERE j.workspace_id = ?${mine}${st} ORDER BY j.created_at DESC LIMIT ?`, ...args, Math.min(q.limit ?? 100, 500)).map(jobDto);
 }
 export const getJob = (ctx: AuthCtx, id: string) => jobDto(ownedJob(ctx, id));
+
+export interface JobQuery { status?: string; q?: string; type?: string; storageId?: string; from?: string; to?: string; page?: number; limit?: number }
+const GROUPS: Record<string, string[]> = {
+  active: ["QUEUED", "VALIDATING", "RUNNING", "RETRYING", "VERIFYING", "PAUSED"],
+  done: ["COMPLETED", "COPY_COMPLETED_SOURCE_RETAINED"], failed: ["FAILED", "CANCELLED"], finished: ["COMPLETED", "COPY_COMPLETED_SOURCE_RETAINED", "FAILED", "CANCELLED"],
+};
+function jobWhere(ctx: AuthCtx, f: JobQuery) {
+  const where = ["j.workspace_id = ?"]; const args: (string | number)[] = [ctx.workspaceId];
+  if (ctx.role !== "OWNER" && ctx.role !== "ADMIN") { where.push("j.user_id = ?"); args.push(ctx.userId); }
+  if (f.status && f.status !== "all") {
+    const list = GROUPS[f.status] ?? [f.status];
+    where.push(`j.status IN (${list.map(() => "?").join(",")})`); args.push(...list);
+  }
+  if (f.q) { where.push("j.title LIKE ?"); args.push(`%${f.q}%`); }
+  if (f.type) { where.push("j.type = ?"); args.push(f.type); }
+  if (f.storageId) { where.push("(j.source_storage_id = ? OR j.destination_storage_id = ?)"); args.push(f.storageId, f.storageId); }
+  if (f.from) { where.push("j.created_at >= ?"); args.push(f.from); }
+  if (f.to) { where.push("j.created_at <= ?"); args.push(f.to); }
+  return { sql: where.join(" AND "), args };
+}
+/** Paged, filterable history for the Transfers page. */
+export function queryJobs(ctx: AuthCtx, f: JobQuery) {
+  const { sql, args } = jobWhere(ctx, f);
+  const limit = Math.min(Math.max(f.limit ?? 20, 1), 200); const offset = (Math.max(f.page ?? 1, 1) - 1) * limit;
+  const total = db.get<{ n: number }>(`SELECT COUNT(*) n FROM transfer_jobs j WHERE ${sql}`, ...args)!.n;
+  const rows = db.all<any>(`${JOB_SQL} WHERE ${sql} ORDER BY j.created_at DESC LIMIT ? OFFSET ?`, ...args, limit, offset);
+  return { items: rows.map(jobDto), total };
+}
+/** Clear history. Only finished jobs can be removed; files are never touched. */
+export function clearJobs(ctx: AuthCtx, scope: "finished" | "done" | "failed", f: JobQuery = {}) {
+  const { sql, args } = jobWhere(ctx, { ...f, status: scope });
+  const r = db.run(`DELETE FROM transfer_jobs WHERE id IN (SELECT j.id FROM transfer_jobs j WHERE ${sql})`, ...args);
+  return Number(r.changes);
+}
 
 export function listItems(ctx: AuthCtx, id: string, page = 1, limit = 100): { items: TransferItemDto[]; total: number } {
   ownedJob(ctx, id);
@@ -419,11 +463,13 @@ async function processItem(job: any, item: any, src: StorageProvider, dst: Stora
     for (;;) {
       interrupted();
       let sent = 0; let lastFlush = 0;
-      const hash = crypto.createHash("sha256");
+      // Verify integrity against the checksum the source publishes (Google: md5, OneDrive: sha1). No hashing otherwise: it costs CPU for nothing.
+      const algo = source.checksum && /^[0-9a-f]+$/i.test(source.checksum) ? ({ 32: "md5", 40: "sha1", 64: "sha256" } as Record<number, string>)[source.checksum.length] : undefined;
+      const hash = algo ? crypto.createHash(algo) : null;
       const meter = new Transform({
         highWaterMark: config.transfer.bufferSize,
         transform(chunk: Buffer, _e, cb) {
-          sent += chunk.length; hash.update(chunk);
+          sent += chunk.length; hash?.update(chunk);
           const t = Date.now();
           if (t - lastFlush > 400) {
             lastFlush = t;
@@ -447,9 +493,15 @@ async function processItem(job: any, item: any, src: StorageProvider, dst: Stora
         if (size !== null && sent !== size) throw new ProviderError(`Verifikasi gagal: sumber ${size} byte, terbaca ${sent} byte.`, "other");
         if (check.checksum && source.checksum && check.checksum.length === source.checksum.length && /^[0-9a-f]{32,}$/i.test(check.checksum) && check.checksum.toLowerCase() !== source.checksum.toLowerCase())
           throw new ProviderError("Verifikasi gagal: checksum tidak sama.", "other");
+        if (hash) {
+          const got = hash.digest("hex");
+          // What we read must be exactly what the source says it holds; otherwise the copy would be corrupt.
+          if (got.toLowerCase() !== source.checksum!.toLowerCase()) { await dst.delete(written.id).catch(() => {}); throw new ProviderError(`Verifikasi gagal: checksum ${algo} tidak cocok (data rusak saat transfer).`, "other"); }
+          db.run("UPDATE transfer_items SET checksum=? WHERE id=?", got, item.id);
+        }
         result = written;
-        db.run("UPDATE transfer_items SET checksum=? WHERE id=?", hash.digest("hex"), item.id);
-        if (target.replace) { await dst.delete(target.replace.id); result = await dst.rename(written.id, target.name); }
+        // The file being replaced goes to the trash, never straight to oblivion.
+        if (target.replace) { await trashRaw(job.workspace_id, job.user_id, job.destination_storage_id, dst, target.replace.id); result = await dst.rename(written.id, target.name); }
         break;
       } catch (e) {
         if (signal.aborted) throw new Interrupted(controls.get(job.id)?.intent === "cancel" ? "cancel" : "pause");
@@ -466,6 +518,7 @@ async function processItem(job: any, item: any, src: StorageProvider, dst: Stora
   }
 
   indexItems(job.destination_storage_id, item.destination_parent_id, [result]);
+  prewarmThumbnail(job.destination_storage_id, dst, result);
   db.run("UPDATE transfer_items SET destination_file_id=?, transferred_bytes=?, error_message=NULL WHERE id=?", result.id, size ?? 0, item.id);
 
   // MOVE across providers: delete the source only now that the destination is verified and recorded.

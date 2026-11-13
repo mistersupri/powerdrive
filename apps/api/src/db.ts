@@ -183,6 +183,31 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX idx_notif_user ON notifications(user_id, read_at, created_at DESC);
   `,
+  /* 2 */ `
+  ALTER TABLE storages ADD COLUMN is_default INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE uploads ADD COLUMN share_id TEXT;
+  ALTER TABLE uploads ADD COLUMN ip TEXT;
+  CREATE INDEX idx_uploads_share ON uploads(share_id);
+  CREATE TABLE share_links (
+    id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    storage_id TEXT NOT NULL REFERENCES storages(id) ON DELETE CASCADE, file_id TEXT NOT NULL, is_folder INTEGER NOT NULL,
+    name TEXT NOT NULL, role TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, token_enc TEXT NOT NULL, password_hash TEXT,
+    expires_at TEXT, max_upload_bytes INTEGER, uploaded_bytes INTEGER NOT NULL DEFAULT 0, created_by TEXT,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')), revoked_at TEXT,
+    access_count INTEGER NOT NULL DEFAULT 0, last_access_at TEXT
+  );
+  CREATE INDEX idx_share_target ON share_links(storage_id, file_id, role);
+  CREATE INDEX idx_share_ws ON share_links(workspace_id, created_at DESC);
+  CREATE TABLE trash_items (
+    id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    storage_id TEXT NOT NULL REFERENCES storages(id) ON DELETE CASCADE, name TEXT NOT NULL, is_folder INTEGER NOT NULL DEFAULT 0,
+    size INTEGER, original_parent_id TEXT NOT NULL, original_path TEXT, trash_file_id TEXT NOT NULL, trashed_by TEXT,
+    trashed_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')), expires_at TEXT NOT NULL
+  );
+  CREATE INDEX idx_trash_ws ON trash_items(workspace_id, trashed_at DESC);
+  CREATE INDEX idx_trash_storage ON trash_items(storage_id);
+  CREATE INDEX idx_jobs_user_created ON transfer_jobs(workspace_id, created_at DESC);
+  `,
 ];
 
 function migrate(d: Database) {

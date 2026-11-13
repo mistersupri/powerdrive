@@ -139,6 +139,7 @@ export async function storageRoutes(app: FastifyInstance) {
     const row = requireStorage(ctx, id, "MANAGE_STORAGE");
     const b = z.object({ name: z.string().trim().min(1).max(80).optional(), enabled: z.boolean().optional() }).parse(req.body);
     if (b.name) db.run("UPDATE storages SET name = ?, updated_at = ? WHERE id = ?", b.name, now(), id);
+    if (row.is_default && (b.enabled === false)) throw badRequest("Penyimpanan bawaan tidak dapat dinonaktifkan.");
     if (b.enabled === false) { setStatus(id, "DISABLED"); dropProvider(id); }
     if (b.enabled === true && row.status === "DISABLED") { db.run("UPDATE storages SET status = 'DISCONNECTED' WHERE id = ?", id); await testConnection(id).catch(() => {}); }
     audit({ workspaceId: ctx.workspaceId, userId: ctx.userId, action: "storage.update", resourceType: "storage", resourceId: id, metadata: b, ip: ctx.ip });
