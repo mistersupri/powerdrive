@@ -1,0 +1,105 @@
+@import "tailwindcss";
+@import "@fontsource-variable/inter";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Design tokens follow the SuperDrive design file: white surfaces on a cool grey canvas, one blue accent.
+   Components only use these semantic names, so dark mode is a variable swap, not a code branch. */
+:root {
+  --canvas: #f7f8fa;
+  --surface: #ffffff;
+  --surface-2: #f1f4f8;
+  --border: #e5eaf0;
+  --border-strong: #d3dbe6;
+  --ink: #172b4d;
+  --muted: #5b6b82;
+  --faint: #94a3b8;
+  --primary: #1769e8;
+  --primary-hover: #1259c8;
+  --primary-ink: #1769e8;
+  --primary-soft: #eaf2ff;
+  --navy: #102c54;
+  --ok-ink: #047857; --ok-soft: #e7f8f0;
+  --warn-ink: #a65a05; --warn-soft: #fff5e0;
+  --danger-ink: #b42318; --danger-soft: #feeceb; --danger: #dc2f2f;
+  --violet-ink: #6d4bd1; --violet-soft: #f1edff;
+  --shadow-card: 0 1px 2px rgb(16 44 84 / 0.06), 0 1px 1px rgb(16 44 84 / 0.04);
+  --shadow-float: 0 1px 2px rgb(16 44 84 / 0.08), 0 12px 32px rgb(16 44 84 / 0.16);
+  color-scheme: light;
+}
+.dark {
+  --canvas: #0a1220;
+  --surface: #111b2e;
+  --surface-2: #17243b;
+  --border: #223049;
+  --border-strong: #2f4262;
+  --ink: #e8eef8;
+  --muted: #9aaac2;
+  --faint: #6f819d;
+  --primary: #1769e8;
+  --primary-hover: #2f7bf0;
+  --primary-ink: #7fb0ff;
+  --primary-soft: #16294a;
+  --navy: #0c1d38;
+  --ok-ink: #4fd1a1; --ok-soft: #10302a;
+  --warn-ink: #f3b04f; --warn-soft: #34270f;
+  --danger-ink: #ff8a80; --danger-soft: #3a1b1d; --danger: #ef4444;
+  --violet-ink: #b7a2ff; --violet-soft: #26204a;
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-float: 0 1px 2px rgb(0 0 0 / 0.5), 0 16px 40px rgb(0 0 0 / 0.55);
+  color-scheme: dark;
+}
+
+@theme inline {
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--border);
+  --color-line-strong: var(--border-strong);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-ink: var(--primary-ink);
+  --color-primary-soft: var(--primary-soft);
+  --color-navy: var(--navy);
+  --color-ok-ink: var(--ok-ink); --color-ok-soft: var(--ok-soft);
+  --color-warn-ink: var(--warn-ink); --color-warn-soft: var(--warn-soft);
+  --color-danger: var(--danger); --color-danger-ink: var(--danger-ink); --color-danger-soft: var(--danger-soft);
+  --color-violet-ink: var(--violet-ink); --color-violet-soft: var(--violet-soft);
+  --shadow-card: var(--shadow-card);
+  --shadow-float: var(--shadow-float);
+  --radius-card: 12px;
+}
+
+html, body, #root { height: 100%; }
+body {
+  background: var(--canvas); color: var(--ink); font-family: var(--font-sans); font-size: 14px; line-height: 1.45;
+  -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; overscroll-behavior: none;
+}
+* { -webkit-tap-highlight-color: transparent; }
+button { cursor: pointer; }
+button:disabled { cursor: not-allowed; }
+.tnum { font-variant-numeric: tabular-nums; }
+.balance { text-wrap: balance; }
+
+:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: 6px; }
+
+/* Motion: short, ease-out, and only on things people do rarely (menus, dialogs, toasts). Lists never animate. */
+@keyframes pop-in { from { opacity: 0; transform: translateY(4px) scale(0.98); } to { opacity: 1; transform: none; } }
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slide-up { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@keyframes shimmer { 100% { transform: translateX(100%); } }
+.anim-pop { animation: pop-in 140ms cubic-bezier(0.2, 0.8, 0.2, 1); transform-origin: top; }
+.anim-fade { animation: fade-in 160ms ease-out; }
+.anim-slide-up { animation: slide-up 220ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+.skeleton { position: relative; overflow: hidden; background: var(--surface-2); }
+.skeleton::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%); background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--ink) 6%, transparent), transparent); animation: shimmer 1.4s infinite; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}
+
+.scroll-thin { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
+.thumb-img { transition: opacity 180ms ease-out; }

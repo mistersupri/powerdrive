@@ -1,0 +1,158 @@
+import fs from "node:fs";
+import fsp from "node:fs/promises";
+import path from "node:path";
+import { PassThrough, Transform, type Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import type { ConflictPolicy, UploadDto } from "@superdrive/shared";
+import { config } from "../config.ts";
+import { db, now } from "../db.ts";
+import { audit } from "../lib/audit.ts";
+import { newId } from "../lib/crypto.ts";
+import { AppError, badRequest, conflict, notFound } from "../lib/errors.ts";
+import { LocalProvider } from "../providers/local.ts";
+import { type StorageProvider } from "../providers/types.ts";
+import { indexItems, toEntry, uniqueName, validName } from "./files.ts";
+import type { AuthCtx } from "./permissions.ts";
+import { mapProviderError, providerFor } from "./storages.ts";
+import { decodeId } from "../providers/types.ts";
+
+const pushed = new Map<string, number>();
+const finalizing = new Set<string>();
+
+function dto(r: any): UploadDto {
+  return {
+    id: r.id, name: r.name, size: r.size, offset: r.received, status: r.status, errorMessage: r.error_message, chunkSize: config.upload.chunkSize,
+    pushed: pushed.get(r.id), skipped: r.result ? JSON.parse(r.result).skipped : undefined,
+    file: r.result && JSON.parse(r.result).file ? JSON.parse(r.result).file : undefined,
+  };
+}
+
+function owned(ctx: AuthCtx, id: string) {
+  const r = db.get<any>("SELECT * FROM uploads WHERE id = ? AND workspace_id = ? AND user_id = ?", id, ctx.workspaceId, ctx.userId);
+  if (!r) throw notFound("Unggahan tidak ditemukan.");
+  return r;
+}
+
+export async function createUpload(ctx: AuthCtx, input: { storageId: string; parentId: string; name: string; size: number; mimeType?: string | null; conflictPolicy?: ConflictPolicy }) {
+  const name = validName(input.name);
+  if (!Number.isSafeInteger(input.size) || input.size < 0) throw badRequest("Ukuran file tidak valid.");
+  if (config.upload.maxFileSize && input.size > config.upload.maxFileSize) throw new AppError(413, "FILE_TOO_LARGE", "File melebihi ukuran maksimum yang diizinkan.");
+  const id = newId();
+  await fsp.mkdir(config.stagingDir, { recursive: true });
+  const staging = path.join(config.stagingDir, `${id}.part`);
+  await fsp.writeFile(staging, "", { mode: 0o600 });
+  db.run("INSERT INTO uploads(id,workspace_id,user_id,storage_id,parent_id,name,size,mime_type,conflict_policy,staging_path) VALUES (?,?,?,?,?,?,?,?,?,?)",
+    id, ctx.workspaceId, ctx.userId, input.storageId, decodeId(input.parentId), name, input.size, input.mimeType ?? null, input.conflictPolicy ?? "RENAME", staging);
+  const row = db.get<any>("SELECT * FROM uploads WHERE id = ?", id)!;
+  if (input.size === 0) startFinalize(ctx, row);
+  return dto(db.get<any>("SELECT * FROM uploads WHERE id = ?", id));
+}
+
+export const getUpload = (ctx: AuthCtx, id: string) => dto(owned(ctx, id));
+
+/** Append a chunk at `offset`. Only the exact next offset is accepted, so retries are safe. */
+export async function receiveChunk(ctx: AuthCtx, id: string, offset: number, body: Readable) {
+  const r = owned(ctx, id);
+  if (r.status !== "RECEIVING") { body.resume(); throw conflict("Unggahan ini sudah tidak menerima data.", "UPLOAD_CLOSED"); }
+  if (offset !== r.received) { body.resume(); throw new AppError(409, "OFFSET_MISMATCH", `Offset harus ${r.received}.`); }
+  const remaining = r.size - r.received;
+  let got = 0;
+  const limiter = new Transform({
+    transform(chunk, _e, cb) {
+      got += chunk.length;
+      if (got > remaining) return cb(new AppError(413, "CHUNK_TOO_LARGE", "Data melebihi ukuran file yang dijanjikan."));
+      cb(null, chunk);
+    },
+  });
+  const out = fs.createWriteStream(r.staging_path, { flags: "r+", start: offset, highWaterMark: 1024 * 1024 });
+  // Buffer through a PassThrough so a failed write never destroys the request socket — we still need it to send the error response.
+  const gate = new PassThrough({ highWaterMark: 1024 * 1024 });
+  body.pipe(gate);
+  try { await pipeline(gate, limiter, out); }
+  catch (e) {
+    body.unpipe(gate); body.resume();
+    // A chunk is all-or-nothing: drop the partial bytes so the committed offset stays exact and the client can resend it.
+    await fsp.truncate(r.staging_path, r.received).catch(() => {});
+    throw e;
+  }
+  const received = r.received + got;
+  db.run("UPDATE uploads SET received = ?, updated_at = ? WHERE id = ?", received, now(), id);
+  if (received === r.size) startFinalize(ctx, { ...r, received });
+  return dto(db.get<any>("SELECT * FROM uploads WHERE id = ?", id));
+}
+
+export function cancelUpload(ctx: AuthCtx, id: string) {
+  const r = owned(ctx, id);
+  if (r.status === "FINALIZING") throw conflict("Unggahan sedang diselesaikan.", "UPLOAD_BUSY");
+  fsp.rm(r.staging_path, { force: true }).catch(() => {});
+  db.run("DELETE FROM uploads WHERE id = ?", id);
+}
+
+export function retryUpload(ctx: AuthCtx, id: string) {
+  const r = owned(ctx, id);
+  if (r.status !== "FAILED") throw conflict("Hanya unggahan yang gagal yang bisa diulang.");
+  startFinalize(ctx, r);
+  return dto(db.get<any>("SELECT * FROM uploads WHERE id = ?", id));
+}
+
+function startFinalize(ctx: AuthCtx, r: any) {
+  if (finalizing.has(r.id)) return;
+  finalizing.add(r.id);
+  db.run("UPDATE uploads SET status = 'FINALIZING', error_message = NULL, updated_at = ? WHERE id = ?", now(), r.id);
+  void finalize(ctx, r).finally(() => { finalizing.delete(r.id); pushed.delete(r.id); });
+}
+
+/** Moves the staged file to the destination provider. Local destinations just rename the file into place. */
+async function finalize(ctx: AuthCtx, r: any) {
+  try {
+    const row = db.get<any>("SELECT * FROM storages WHERE id = ? AND workspace_id = ?", r.storage_id, r.workspace_id);
+    if (!row) throw notFound("Penyimpanan tujuan sudah tidak ada.");
+    const p: StorageProvider = providerFor(row);
+    let name = r.name as string;
+    const existing = p.findChild ? await p.findChild(r.parent_id, name) : null;
+    if (existing) {
+      if (r.conflict_policy === "FAIL") throw conflict(`“${name}” sudah ada di folder tujuan.`, "NAME_CONFLICT");
+      if (r.conflict_policy === "SKIP") {
+        await fsp.rm(r.staging_path, { force: true });
+        db.run("UPDATE uploads SET status='DONE', result=?, updated_at=? WHERE id=?", JSON.stringify({ skipped: true }), now(), r.id);
+        return;
+      }
+      if (r.conflict_policy === "RENAME") name = await uniqueName(p, r.parent_id, name);
+    }
+    let file;
+    if (p instanceof LocalProvider && !(existing && r.conflict_policy === "OVERWRITE")) file = await p.adopt(r.parent_id, name, r.staging_path);
+    else {
+      // Overwrite on a remote provider: upload under a temporary name, then swap, so a failed upload never destroys the old file.
+      const swap = existing && r.conflict_policy === "OVERWRITE";
+      const tmpName = swap ? `${name}.sdtmp-${r.id.slice(0, 8)}` : name;
+      const counter = new Transform({ transform(c, _e, cb) { pushed.set(r.id, (pushed.get(r.id) ?? 0) + c.length); cb(null, c); } });
+      const src = fs.createReadStream(r.staging_path, { highWaterMark: 1024 * 1024 }).pipe(counter);
+      file = await p.write({ parentId: r.parent_id, name: tmpName, size: r.size, mimeType: r.mime_type, stream: src });
+      if (swap) { await p.delete(existing!.id); file = await p.rename(file.id, name); }
+      await fsp.rm(r.staging_path, { force: true });
+    }
+    indexItems(r.storage_id, r.parent_id, [file]);
+    audit({ workspaceId: r.workspace_id, userId: r.user_id, action: "file.upload", resourceType: "file", resourceId: file.id, metadata: { storageId: r.storage_id, name: file.name, size: r.size }, ip: ctx.ip });
+    db.run("UPDATE uploads SET status='DONE', result=?, updated_at=? WHERE id=?", JSON.stringify({ file: toEntry(r.storage_id, file) }), now(), r.id);
+  } catch (e) {
+    let msg = e instanceof Error ? e.message : String(e);
+    try { mapProviderError(e, r.storage_id); } catch (m) { msg = (m as Error).message; }
+    db.run("UPDATE uploads SET status='FAILED', error_message=?, updated_at=? WHERE id=?", msg, now(), r.id);
+  }
+}
+
+/** On boot: resume finalization of uploads that were interrupted by a restart. */
+export function recoverUploads() {
+  for (const r of db.all<any>("SELECT * FROM uploads WHERE status = 'FINALIZING'")) {
+    const ctx = { userId: r.user_id, userName: "", isSuperAdmin: false, workspaceId: r.workspace_id, role: "ADMIN" as const, ip: "" };
+    startFinalize(ctx, r);
+  }
+}
+
+export async function sweepStaleUploads() {
+  const cutoff = new Date(Date.now() - config.upload.staleHours * 3600_000).toISOString();
+  for (const r of db.all<any>("SELECT * FROM uploads WHERE status IN ('RECEIVING','FAILED') AND updated_at < ?", cutoff)) {
+    await fsp.rm(r.staging_path, { force: true }); db.run("DELETE FROM uploads WHERE id = ?", r.id);
+  }
+  db.run("DELETE FROM uploads WHERE status = 'DONE' AND updated_at < ?", cutoff);
+}

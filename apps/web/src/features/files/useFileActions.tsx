@@ -1,0 +1,123 @@
+import type { ConflictPolicy, FileEntry, Permission, StorageConnectionDto, TransferJobDto } from "@superdrive/shared";
+import { useQueryClient } from "@tanstack/react-query";
+import { Copy, Download, Eye, FolderInput, FolderOpen, FolderPlus, Pencil, RefreshCw, Star, Trash2, Upload } from "lucide-react";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
+import { api, downloadUrl } from "@/lib/api";
+import { kindOf, previewable } from "@/lib/fileType";
+import type { MenuItem } from "@/ui/Menu";
+import { enqueueUploads, type UploadInput } from "@/features/uploads/manager";
+import { DeleteDialog, NameDialog, TransferDialog, type Destination } from "./dialogs";
+import { Preview } from "./Preview";
+import { type Selection } from "./selection";
+
+interface Args {
+  storage: StorageConnectionDto | undefined; folderId: string; folderName: string; entries: FileEntry[]; selection: Selection;
+  onOpenFolder(id: string): void;
+}
+
+export async function startTransfer(type: "COPY" | "MOVE", storageId: string, ids: string[], dest: Destination, policy: ConflictPolicy = "RENAME") {
+  const job = await api<TransferJobDto>("/transfers", { body: { type, source: { storageId, fileIds: ids }, destination: { storageId: dest.storageId, folderId: dest.folderId }, conflictPolicy: policy, idempotencyKey: crypto.randomUUID() } });
+  toast(`${type === "COPY" ? "Menyalin" : "Memindahkan"} ${ids.length} item ke ${dest.folderName}`, { description: "Kemajuan tampil di panel kanan bawah." });
+  return job;
+}
+
+export function triggerDownload(storageId: string, ids: string[]) {
+  ids.forEach((id, i) => setTimeout(() => {
+    const a = document.createElement("a"); a.href = downloadUrl(storageId, id); a.rel = "noopener"; document.body.appendChild(a); a.click(); a.remove();
+  }, i * 450));
+}
+
+/** Everything a file view can do, with its dialogs. Pages render `dialogs` and use `menuFor` / handlers. */
+export function useFileActions({ storage, folderId, folderName, entries, selection, onOpenFolder }: Args) {
+  const qc = useQueryClient();
+  const perms = useMemo(() => new Set<Permission>(storage?.permissions ?? []), [storage]);
+  const can = (p: Permission) => perms.has(p);
+  const [dlg, setDlg] = useState<null | { t: "folder" } | { t: "rename"; e: FileEntry } | { t: "delete"; list: FileEntry[] } | { t: "transfer"; mode: "COPY" | "MOVE"; list: FileEntry[] }>(null);
+  const [preview, setPreview] = useState<number | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null); const dirInput = useRef<HTMLInputElement>(null);
+  const storageId = storage?.id ?? "";
+  const selectedEntries = useMemo(() => entries.filter((e) => selection.selected.has(e.id)), [entries, selection.selected]);
+  const previewList = useMemo(() => entries.filter((e) => previewable(kindOf(e))), [entries]);
+
+  const refresh = useCallback(() => qc.invalidateQueries({ queryKey: ["files", storageId] }), [qc, storageId]);
+
+  const open = useCallback((e: FileEntry) => {
+    if (e.isFolder) return onOpenFolder(e.id);
+    const i = previewList.findIndex((x) => x.id === e.id);
+    if (i >= 0) setPreview(i); else triggerDownload(e.storageId, [e.id]);
+  }, [onOpenFolder, previewList]);
+
+  const upload = useCallback((inputs: UploadInput[], targetFolderId = folderId, label = folderName) => {
+    if (!storage || !inputs.length) return;
+    if (!can("UPLOAD")) return void toast.error("Anda tidak punya izin mengunggah ke penyimpanan ini.");
+    enqueueUploads(inputs, { storageId: storage.id, storageName: storage.name, parentId: targetFolderId, folderLabel: label });
+  }, [storage, folderId, folderName]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const star = useCallback(async (e: FileEntry) => {
+    await api(`/files/${e.storageId}/${e.id}/star`, { body: { starred: !e.starred } });
+    void refresh(); void qc.invalidateQueries({ queryKey: ["search"] });
+  }, [refresh, qc]);
+
+  const dropItems = useCallback(async (target: FileEntry | null, payload: { storageId: string; ids: string[] }, copy: boolean) => {
+    const destFolder = target ? target.id : folderId;
+    if (!storage) return;
+    if (payload.storageId === storage.id && !copy && payload.ids.includes(destFolder)) return;
+    try { await startTransfer(copy ? "COPY" : "MOVE", payload.storageId, payload.ids, { storageId: storage.id, folderId: destFolder, folderName: target?.name ?? folderName }); }
+    catch (e) { toast.error((e as Error).message); }
+  }, [storage, folderId, folderName]);
+
+  const menuFor = useCallback((e: FileEntry | null): MenuItem[] => {
+    if (!e) return [
+      { label: "Folder baru", icon: <FolderPlus />, hidden: !can("UPLOAD"), onSelect: () => setDlg({ t: "folder" }) },
+      { label: "Unggah file", icon: <Upload />, hidden: !can("UPLOAD"), onSelect: () => fileInput.current?.click() },
+      { label: "Muat ulang", icon: <RefreshCw />, divider: true, onSelect: () => { void refresh(); } },
+    ];
+    const list = selection.selected.has(e.id) && selection.selected.size > 1 ? selectedEntries : [e];
+    const multi = list.length > 1;
+    return [
+      { label: e.isFolder ? "Buka" : "Pratinjau", icon: e.isFolder ? <FolderOpen /> : <Eye />, hidden: multi, onSelect: () => open(e) },
+      { label: e.isFolder ? "Unduh sebagai ZIP" : "Unduh", icon: <Download />, hidden: !can("DOWNLOAD"), onSelect: () => triggerDownload(e.storageId, list.map((x) => x.id)) },
+      { label: "Salin ke…", icon: <Copy />, hidden: !can("COPY"), divider: true, onSelect: () => setDlg({ t: "transfer", mode: "COPY", list }) },
+      { label: "Pindahkan ke…", icon: <FolderInput />, hidden: !can("MOVE"), onSelect: () => setDlg({ t: "transfer", mode: "MOVE", list }) },
+      { label: "Ganti nama", icon: <Pencil />, shortcut: "F2", hidden: multi || !can("RENAME"), onSelect: () => setDlg({ t: "rename", e }) },
+      { label: e.starred ? "Hapus bintang" : "Beri bintang", icon: <Star />, hidden: multi, onSelect: () => { void star(e); } },
+      { label: "Hapus", icon: <Trash2 />, danger: true, divider: true, hidden: !can("DELETE"), shortcut: "Del", onSelect: () => setDlg({ t: "delete", list }) },
+    ];
+  }, [perms, selection.selected, selectedEntries, open, star, refresh]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const keyAction = useCallback((a: "selectAll" | "delete" | "rename" | "clear") => {
+    if (a === "selectAll") selection.selectAll(entries);
+    if (a === "clear") selection.clear();
+    if (a === "delete" && selectedEntries.length && can("DELETE")) setDlg({ t: "delete", list: selectedEntries });
+    if (a === "rename" && selectedEntries.length === 1 && can("RENAME")) setDlg({ t: "rename", e: selectedEntries[0]! });
+  }, [entries, selection, selectedEntries]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const dialogs = (<>
+    <input ref={fileInput} type="file" multiple hidden onChange={(e) => { upload([...(e.target.files ?? [])].map((file) => ({ file }))); e.target.value = ""; }} />
+    <input ref={dirInput} type="file" hidden {...({ webkitdirectory: "", directory: "" } as object)} onChange={(e) => { upload([...(e.target.files ?? [])].map((file) => ({ file, relativePath: (file as File & { webkitRelativePath: string }).webkitRelativePath || file.name }))); e.target.value = ""; }} />
+    <NameDialog open={dlg?.t === "folder"} title="Folder baru" label="Nama folder" action="Buat" onClose={() => setDlg(null)} onSubmit={async (name) => { await api("/files/folders", { body: { storageId, parentId: folderId, name } }); await refresh(); }} />
+    <NameDialog open={dlg?.t === "rename"} title="Ganti nama" label="Nama baru" initial={dlg?.t === "rename" ? dlg.e.name : ""} action="Simpan" onClose={() => setDlg(null)}
+      onSubmit={async (name) => { if (dlg?.t !== "rename") return; await api("/files/rename", { body: { storageId, fileId: dlg.e.id, name } }); await refresh(); }} />
+    <DeleteDialog open={dlg?.t === "delete"} entries={dlg?.t === "delete" ? dlg.list : []} provider={storage?.provider} onClose={() => setDlg(null)}
+      onConfirm={async () => {
+        if (dlg?.t !== "delete") return;
+        const list = dlg.list; let fail = 0;
+        for (const e of list) { try { await api(`/files/${storageId}/${e.id}`, { method: "DELETE" }); } catch (err) { fail++; toast.error(`${e.name}: ${(err as Error).message}`); } }
+        selection.clear(); await refresh();
+        if (!fail) toast.success(list.length === 1 ? `“${list[0]!.name}” dihapus` : `${list.length} item dihapus`);
+      }} />
+    <TransferDialog open={dlg?.t === "transfer"} mode={dlg?.t === "transfer" ? dlg.mode : "COPY"} entries={dlg?.t === "transfer" ? dlg.list : []} fromStorageId={storageId} initialStorageId={storageId} initialFolderId={folderId} onClose={() => setDlg(null)}
+      onConfirm={async (dest, policy) => { if (dlg?.t !== "transfer") return; await startTransfer(dlg.mode, storageId, dlg.list.map((e) => e.id), dest, policy); selection.clear(); }} />
+    {preview !== null && <Preview items={previewList} index={preview} onIndex={setPreview} onClose={() => setPreview(null)} />}
+  </>);
+
+  return {
+    can, dialogs, menuFor, open, upload, keyAction, dropItems, star, refresh, selectedEntries,
+    pickFiles: () => fileInput.current?.click(), pickFolder: () => dirInput.current?.click(),
+    newFolder: () => setDlg({ t: "folder" }),
+    transferSelected: (mode: "COPY" | "MOVE") => selectedEntries.length && setDlg({ t: "transfer", mode, list: selectedEntries }),
+    deleteSelected: () => selectedEntries.length && setDlg({ t: "delete", list: selectedEntries }),
+    downloadSelected: () => selectedEntries.length && triggerDownload(storageId, selectedEntries.map((e) => e.id)),
+  };
+}
