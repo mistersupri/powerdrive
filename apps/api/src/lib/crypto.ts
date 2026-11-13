@@ -19,10 +19,13 @@ function loadKeys(): KeyRing {
     return { current: "dev", keys };
   }
   for (const part of raw.split(",")) {
-    const [ver, b64] = part.trim().split(":");
-    if (!ver || !b64) throw new Error("Format ENCRYPTION_MASTER_KEY tidak valid.");
+    // "v2:<base64>" for versioned keys; a bare base64 key is accepted and treated as version v1.
+    const t = part.trim();
+    const i = t.indexOf(":");
+    const [ver, b64] = i < 0 ? ["v1", t] : [t.slice(0, i), t.slice(i + 1)];
+    if (!ver || !b64) throw new Error("Format ENCRYPTION_MASTER_KEY tidak valid. Gunakan base64 dari 32 byte (openssl rand -base64 32), opsional diawali versi, mis. v1:<base64>.");
     const key = Buffer.from(b64, "base64");
-    if (key.length !== 32) throw new Error(`Kunci ${ver} harus 32 byte (base64).`);
+    if (key.length !== 32) throw new Error(`Kunci ${ver} harus 32 byte setelah di-decode dari base64 (didapat ${key.length}). Buat dengan: openssl rand -base64 32`);
     keys.set(ver, key);
     if (!current) current = ver;
   }

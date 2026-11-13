@@ -3,6 +3,8 @@ import os from "node:os";
 
 const env = process.env;
 const num = (v: string | undefined, d: number) => (v && !Number.isNaN(Number(v)) ? Number(v) : d);
+/** Accepts true/false in any case (YAML/compose tools often write True/False). */
+const flag = (v: string | undefined, d: boolean) => (v === undefined || v === "" ? d : /^(true|1|yes|on)$/i.test(v.trim()));
 const dataDir = path.resolve(env.DATA_DIR ?? "./data");
 
 export const config = {
@@ -18,11 +20,11 @@ export const config = {
   sessionTtlDays: num(env.SESSION_TTL_DAYS, 14),
   /** `v1:<base64 32 bytes>,v2:<...>` — first entry is used for new writes. */
   masterKeys: env.ENCRYPTION_MASTER_KEY ?? "",
-  allowRegistration: env.ALLOW_REGISTRATION !== "false",
+  allowRegistration: flag(env.ALLOW_REGISTRATION, true),
   /** Directories the "local" provider may expose. Comma separated. */
   localRoots: (env.LOCAL_ROOTS ?? path.join(dataDir, "files")).split(",").map((s) => path.resolve(s.trim())).filter(Boolean),
   /** Allow external storage (S3 / WebDAV / SFTP) on private networks, e.g. a NAS. */
-  allowPrivateHosts: env.ALLOW_PRIVATE_HOSTS === "true",
+  allowPrivateHosts: flag(env.ALLOW_PRIVATE_HOSTS, false),
   transfer: {
     perWorkspaceConcurrency: num(env.TRANSFER_MAX_CONCURRENCY, 3),
     globalConcurrency: num(env.TRANSFER_GLOBAL_CONCURRENCY, 8),

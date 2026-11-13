@@ -36,3 +36,18 @@ describe("opaque ids", () => {
     assert.ok(!/[/+=]/.test(encodeId("/a/b/c?d=e")), "URL-safe");
   });
 });
+
+describe("master key formats", () => {
+  it("accepts a bare base64 key (as v1), a versioned key, and rotation lists; rejects wrong sizes", async () => {
+    const crypto = await import("node:crypto");
+    const mod = await import("../lib/crypto.ts"); const { config } = await import("../config.ts");
+    const k1 = crypto.randomBytes(32).toString("base64"), k2 = crypto.randomBytes(32).toString("base64");
+    const sealWith = (v: string) => { (config as any).masterKeys = v; mod.resetKeyRingForTests(); return mod.seal({ a: 1 }); };
+    const bare = sealWith(k1); assert.equal(bare.keyVersion, "v1");
+    (config as any).masterKeys = `v2:${k2},${k1}`; mod.resetKeyRingForTests();
+    assert.deepEqual(mod.open(bare), { a: 1 }, "bare key keeps working as v1 after rotation");
+    assert.equal(mod.seal({}).keyVersion, "v2");
+    (config as any).masterKeys = "abc"; mod.resetKeyRingForTests();
+    assert.throws(() => mod.seal({}), /32 byte/);
+  });
+});
