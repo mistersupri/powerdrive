@@ -1,6 +1,6 @@
 import type { FileEntry } from "@superdrive/shared";
 import { PROVIDER_LABEL } from "@superdrive/shared";
-import { ChevronRight, Copy, Info, PanelLeft, Download, FolderInput, FolderOpen, FolderPlus, HardDrive, Share2, Trash2, Upload, X } from "lucide-react";
+import { ChevronRight, Copy, Info, Download, FolderInput, FolderOpen, FolderPlus, HardDrive, Share2, Trash2, Upload, X } from "lucide-react";
 import { useCallback, useMemo } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { toast } from "sonner";
@@ -20,7 +20,6 @@ import { startTransfer } from "./transferApi";
 import { useFileActions } from "./useFileActions";
 import { sortEntries, useFolder, type SortState } from "./useFolder";
 import { useState } from "react";
-import { FolderTree } from "./FolderTree";
 import { DetailsPanel } from "./DetailsPanel";
 
 /** /s/:storageId?f=<folder> — and /files, which is the same screen on the built-in "Semua file" storage. */
@@ -33,7 +32,6 @@ export function StoragePage({ forcedStorageId }: { forcedStorageId?: string }) {
   const [view, setView] = usePersistentState<"grid" | "list">("sd-view", "grid");
   const [sort, setSort] = usePersistentState<SortState>("sd-sort", { key: "name", dir: "asc" });
   const [filter, setFilter] = useState(emptyFilter);
-  const [showTree, setShowTree] = usePersistentState<boolean>("sd-tree-open", true);
   const [showInfo, setShowInfo] = usePersistentState<boolean>("sd-details-open", false);
   const selection = useSelection();
   const go = useCallback((id: string) => { selection.clear(); setFilter(emptyFilter); setSp(id === "root" ? {} : { f: id }); }, [selection, setSp]);
@@ -91,7 +89,6 @@ export function StoragePage({ forcedStorageId }: { forcedStorageId?: string }) {
         </>)}
         <span className="flex-1" />
         <IconButton label={showInfo ? "Sembunyikan detail" : "Tampilkan detail"} className={cn(showInfo && "bg-surface-2")} onClick={() => setShowInfo(!showInfo)}><Info className="size-4" /></IconButton>
-        <IconButton label={showTree ? "Sembunyikan pohon folder" : "Tampilkan pohon folder"} className={cn("hidden md:grid", showTree && "bg-surface-2")} onClick={() => setShowTree(!showTree)}><PanelLeft className="size-4" /></IconButton>
         <SortViewControls sort={sort} setSort={setSort} view={view} setView={setView} />
       </div>
       <FilterChips value={filter} onChange={setFilter} />
@@ -107,7 +104,6 @@ export function StoragePage({ forcedStorageId }: { forcedStorageId?: string }) {
             </CrumbDrop></span>))}
       </nav>
       <div className="flex min-h-0 flex-1">
-        {showTree && storage?.status === "CONNECTED" && <aside className="hidden w-60 shrink-0 border-r border-line bg-surface md:block"><FolderTree storageId={storageId} rootLabel={title} current={folderId} pathIds={crumbs.map((c) => c.id)} onNavigate={go} onDrop={dropToFolder} /></aside>}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">{body}</div>
         {showInfo && detailEntry && storage?.status === "CONNECTED" && <DetailsPanel key={detailEntry.id} entry={detailEntry} storageName={title} location={detailWhere} onClose={() => setShowInfo(false)} className="hidden w-72 shrink-0 border-l border-line lg:flex" />}
       </div>

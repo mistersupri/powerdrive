@@ -19,6 +19,8 @@ import { startTransfer } from "@/features/files/transferApi";
 import { DRAG_MIME } from "@/features/files/dnd";
 import { toast } from "sonner";
 import { useTheme } from "./theme";
+import { FolderTree } from "@/features/files/FolderTree";
+import { useFolder } from "@/features/files/useFolder";
 
 export function useStorages() {
   return useQuery({ queryKey: ["storages"], queryFn: () => api<StorageConnectionDto[]>("/storages"), staleTime: 15_000 });
@@ -43,9 +45,19 @@ const Section = ({ children }: { children: ReactNode }) => <div className="mt-5 
 
 const PROVIDER_DOT: Record<string, string> = { GOOGLE_DRIVE: "bg-[#4285F4]", ONEDRIVE: "bg-[#0078D4]", DROPBOX: "bg-[#0061FF]", LOCAL: "bg-ok-ink", S3: "bg-warn-ink", SMB: "bg-violet-ink", SFTP: "bg-primary-ink", WEBDAV: "bg-danger-ink" };
 
+/** Folder tree of the built-in storage, nested under "Semua file" so any folder is one click away from anywhere. */
+function SidebarTree({ storageId }: { storageId: string }) {
+  const nav = useNavigate(); const loc = useLocation(); const onFiles = loc.pathname === "/files";
+  const current = onFiles ? new URLSearchParams(loc.search).get("f") ?? "root" : "";
+  const folder = useFolder(onFiles ? storageId : "", current || "root").folder;
+  return <FolderTree hideRoot storageId={storageId} rootLabel="Semua file" current={current} pathIds={onFiles ? (folder?.path ?? []).map((c) => c.id) : []}
+    onNavigate={(id) => nav(id === "root" ? "/files" : `/files?f=${encodeURIComponent(id)}`)}
+    onDrop={(target, p, copy) => { void startTransfer(copy ? "COPY" : "MOVE", p.storageId, p.ids, { storageId, folderId: target, folderName: "folder tujuan" }).catch((er) => toast.error((er as Error).message)); }} />;
+}
+
 function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const storages = useStorages().data ?? [];
-  const { isAdmin } = useWorkspace();
+  const { isAdmin } = useWorkspace(); const home = storages.find((s) => s.isDefault && s.status === "CONNECTED");
   const activeCount = transferStore.use((s) => s.jobs.filter((j) => ["QUEUED", "VALIDATING", "RUNNING", "RETRYING", "VERIFYING"].includes(j.status)).length);
   return (
     <nav aria-label="Navigasi utama" className="flex h-full flex-col" onClick={(e) => { if ((e.target as HTMLElement).closest("a")) onNavigate?.(); }}>
@@ -55,6 +67,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         <NavItem to="/" end icon={LayoutDashboard}>Beranda</NavItem>
         <Section>Berkas</Section>
         <NavItem to="/files" icon={FolderOpen}>Semua file</NavItem>
+        {home && <SidebarTree storageId={home.id} />}
         <NavItem to="/recent" icon={Clock}>Terbaru</NavItem>
         <NavItem to="/starred" icon={Star}>Berbintang</NavItem>
         <NavItem to="/shares" icon={Link2}>Tautan berbagi</NavItem>

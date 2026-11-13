@@ -52,7 +52,13 @@ function Node({ c, id, name, depth, root }: { c: Ctx; id: string; name: string; 
   );
 }
 
-export function FolderTree({ storageId, rootLabel, current, pathIds, onNavigate, onDrop }: { storageId: string; rootLabel: string; current: string; pathIds: string[]; onNavigate(id: string): void; onDrop(target: string, p: DropPayload, copy: boolean): void }) {
+function RootChildren({ c }: { c: Ctx }) {
+  const q = useChildren(c.storageId, "root", true);
+  if (q.isLoading) return <li className="px-3 py-1 text-[12px] text-muted">Memuat…</li>;
+  return <>{q.data?.map((f) => <Node key={f.id} c={c} id={f.id} name={f.name} depth={0} />)}</>;
+}
+
+export function FolderTree({ storageId, rootLabel, current, pathIds, onNavigate, onDrop, hideRoot }: { hideRoot?: boolean; storageId: string; rootLabel: string; current: string; pathIds: string[]; onNavigate(id: string): void; onDrop(target: string, p: DropPayload, copy: boolean): void }) {
   const [saved, setSaved] = usePersistentState<string[]>(`sd-tree:${storageId}`, ["root"]);
   const expanded = new Set(saved); const [over, setOver] = useState("");
   // Keep the path to the current folder open, so the tree always shows where you are.
@@ -66,8 +72,8 @@ export function FolderTree({ storageId, rootLabel, current, pathIds, onNavigate,
     toggle: (id, on) => { const has = expanded.has(id); const want = on ?? !has; if (want === has) return; setSaved(want ? [...saved, id] : saved.filter((x) => x !== id)); },
   };
   return (
-    <nav aria-label="Pohon folder" className="scroll-thin h-full overflow-y-auto p-2">
-      <ul role="tree"><Node c={ctx} id="root" name={rootLabel} depth={0} root /></ul>
+    <nav aria-label="Pohon folder" className={hideRoot ? "py-0.5 pl-2" : "scroll-thin h-full overflow-y-auto p-2"}>
+      <ul role="tree">{hideRoot ? <RootChildren c={ctx} /> : <Node c={ctx} id="root" name={rootLabel} depth={0} root />}</ul>
     </nav>
   );
 }
