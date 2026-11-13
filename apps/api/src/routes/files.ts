@@ -31,9 +31,9 @@ export async function fileRoutes(app: FastifyInstance) {
   };
 
   app.get("/files", async (req) => {
-    const q = z.object({ storageId: z.string(), folderId: z.string().default(ROOT), pageToken: z.string().optional(), limit: z.coerce.number().int().min(1).max(1000).default(200) }).parse(req.query);
+    const q = z.object({ storageId: z.string(), folderId: z.string().default(ROOT), pageToken: z.string().optional(), limit: z.coerce.number().int().min(1).max(1000).default(200), foldersOnly: z.enum(["true", "false"]).optional() }).parse(req.query);
     const { ctx, p } = open(req, "READ", q.storageId);
-    return ok(req, await listFolder(ctx, q.storageId, p, decodeId(q.folderId), q.pageToken ?? null, q.limit));
+    return ok(req, await listFolder(ctx, q.storageId, p, decodeId(q.folderId), q.pageToken ?? null, q.limit, q.foldersOnly === "true"));
   });
 
   app.get("/files/:storageId/:fileId", async (req) => {
@@ -44,6 +44,22 @@ export async function fileRoutes(app: FastifyInstance) {
       const starred = !!db.get("SELECT 1 FROM stars WHERE user_id = ? AND storage_id = ? AND file_id = ?", ctx.userId, storageId, f.id);
       return ok(req, toEntry(storageId, f, starred));
     } catch (e) { mapProviderError(e, storageId); }
+  });
+
+  // Recursive size/count of a folder for the details panel. Bounded so a huge drive cannot tie up the server.
+  app.get("/files/:storageId/:fileId/stats", async (req) => {
+    const { storageId, fileId } = req.params as any;
+    const { p } = open(req, "READ", storageId);
+    const out = { files: 0, folders: 0, bytes: 0, truncated: false };
+    const deadline = Date.now() + 8000; const stack = [decodeId(fileId)];
+    try {
+      while (stack.length) {
+        if (Date.now() > deadline || out.files + out.folders > 50_000) { out.truncated = true; break; }
+        const id = stack.pop()!; let token: string | null = null;
+        do { const page = await p.list(id, { pageToken: token, limit: 1000 }); token = page.nextPageToken; for (const i of page.items) { if (i.isFolder) { out.folders++; stack.push(i.id); } else { out.files++; out.bytes += i.size ?? 0; } } } while (token && Date.now() < deadline);
+      }
+    } catch (e) { mapProviderError(e, storageId); }
+    return ok(req, out);
   });
 
   app.post("/files/folders", async (req) => {

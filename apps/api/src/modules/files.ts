@@ -68,7 +68,7 @@ export function listFolderShared(ctx: AuthCtx, storageId: string, p: StorageProv
   return value;
 }
 
-export async function listFolder(ctx: AuthCtx, storageId: string, p: StorageProvider, folderId: string, pageToken: string | null, limit = 200): Promise<FileListing> {
+export async function listFolder(ctx: AuthCtx, storageId: string, p: StorageProvider, folderId: string, pageToken: string | null, limit = 200, foldersOnly = false): Promise<FileListing> {
   try {
     const [res, folder, crumbs] = await Promise.all([
       p.list(folderId, { pageToken, limit }),
@@ -81,7 +81,7 @@ export async function listFolder(ctx: AuthCtx, storageId: string, p: StorageProv
     indexItems(storageId, folderId, res.items, { complete: !pageToken && !res.nextPageToken });
     const stars = starredSet(ctx.userId, storageId, res.items.map((i) => i.id));
     return {
-      items: res.items.map((i) => toEntry(storageId, i, stars.has(i.id))), nextPageToken: res.nextPageToken,
+      items: (foldersOnly ? res.items.filter((i) => i.isFolder) : res.items).map((i) => toEntry(storageId, i, stars.has(i.id))), nextPageToken: res.nextPageToken,
       folder: { id: encodeId(folderId), name: folder?.name ?? "", parentId: folder?.parentId ? encodeId(folder.parentId) : folderId === ROOT ? null : ROOT, path: crumbs.map((c) => ({ id: encodeId(c.id), name: c.name })) },
     };
   } catch (e) { mapProviderError(e, storageId); }
@@ -183,10 +183,18 @@ export function searchIndex(ctx: AuthCtx, s: SearchParams) {
   const W = where.join(" AND ");
   const total = db.get<{ n: number }>(`SELECT COUNT(*) n FROM ${from} WHERE ${W}`, ...(s.starred ? args : args))!.n;
   const rows = db.all<any>(`SELECT f.* FROM ${from} WHERE ${W} ORDER BY f.is_folder DESC, ${order} LIMIT ? OFFSET ?`, ...args, limit, offset);
+  const pathCache = new Map<string, string>();
+  const pathOf = (sid: string, parent: string | null): string => {
+    const key = `${sid}|${parent}`; const hit = pathCache.get(key); if (hit !== undefined) return hit;
+    const names: string[] = []; let cur = parent;
+    // The root folder itself is never a row in the index, so a missing row means we reached it.
+    for (let i = 0; cur && cur !== ROOT && i < 40; i++) { const r = db.get<{ name: string; parent_id: string | null }>("SELECT name, parent_id FROM files WHERE storage_id = ? AND file_id = ?", sid, cur); if (!r) break; names.unshift(r.name); cur = r.parent_id; }
+    const p = "/" + names.join("/"); pathCache.set(key, p); return p;
+  };
   const items: FileEntry[] = rows.map((r) => ({
     id: encodeId(r.file_id), storageId: r.storage_id, parentId: r.parent_id ? encodeId(r.parent_id) : null, name: r.name, isFolder: !!r.is_folder,
     mimeType: r.mime_type, size: r.size, modifiedAt: r.modified_at, createdAt: r.created_at_remote, checksum: r.checksum,
-    hasThumbnail: !!r.has_thumbnail, version: r.version, starred: false,
+    hasThumbnail: !!r.has_thumbnail, version: r.version, starred: false, path: pathOf(r.storage_id, r.parent_id),
   }));
   if (!s.starred) {
     const byStorage = new Map<string, string[]>();

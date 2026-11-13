@@ -13,6 +13,7 @@ async function main() {
   const app = await buildApp();
   engine.start();
   recoverUploads();
+  (await import("./modules/indexer.ts")).setIndexerLog({ warn: (o, m) => app.log.warn(o as object, m) });
   (await import("./modules/thumbnails.ts")).thumbLog.warn = (o, m) => app.log.warn(o as object, m);
   const stopScheduler = startScheduler(app.log as any);
   await app.listen({ port: config.port, host: config.host });

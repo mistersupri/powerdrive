@@ -19,6 +19,7 @@ import { WebdavProvider, type WebdavConfig, type WebdavCredentials } from "../pr
 import { ProviderError, ROOT, type StorageProvider } from "../providers/types.ts";
 import { permissionsFor, type AuthCtx } from "./permissions.ts";
 import { slugify } from "./auth.ts";
+import { indexInfo, scheduleIndex } from "./indexer.ts";
 
 const providers = new Map<string, StorageProvider>();
 const OAUTH_PROVIDERS = new Set(["GOOGLE_DRIVE", "ONEDRIVE", "DROPBOX"]);
@@ -108,6 +109,7 @@ export async function ensureDefaultStorage(workspaceId: string) {
   db.run("INSERT INTO storages(id,workspace_id,provider,name,status,config,is_default) VALUES (?,?,?,?,?,?,1)", id, workspaceId, "LOCAL", "Semua file", "DISCONNECTED", JSON.stringify({ root }));
   db.run("INSERT INTO mounts(id,workspace_id,storage_id,name,virtual_path,root_folder_id) VALUES (?,?,?,?,?,?)", newId(), workspaceId, id, "Semua file", uniqueMountPath(workspaceId, "semua-file"), ROOT);
   await testConnection(id);
+  scheduleIndex(id);
 }
 export async function ensureAllDefaultStorages() {
   for (const w of db.all<{ id: string }>("SELECT id FROM workspaces")) await ensureDefaultStorage(w.id).catch(() => {});
@@ -121,7 +123,7 @@ export function toDto(row: any, ctx: AuthCtx): StorageConnectionDto {
     // Unknown quota stays null — it must never be shown as zero.
     quota: row.quota_used === null && row.quota_total === null ? null : { used: row.quota_used, total: row.quota_total },
     mount: mount ? { id: mount.id, virtualPath: mount.virtual_path, enabled: !!mount.enabled } : null,
-    isDefault: !!row.is_default, rootFolderId: ROOT, permissions: permissionsFor(ctx, row.id) as Permission[],
+    index: indexInfo(row.id), isDefault: !!row.is_default, rootFolderId: ROOT, permissions: permissionsFor(ctx, row.id) as Permission[],
     info: row.provider === "SFTP" && row.config ? (JSON.parse(row.config).hostKey ? `Sidik jari host: ${JSON.parse(row.config).hostKey}` : null) : null,
   };
 }
@@ -148,6 +150,7 @@ export async function createConnection(ctx: AuthCtx, input: {
   }
   db.run("INSERT INTO mounts(id,workspace_id,storage_id,name,virtual_path,root_folder_id) VALUES (?,?,?,?,?,?)",
     newId(), ctx.workspaceId, id, input.name, uniqueMountPath(ctx.workspaceId, input.name), ROOT);
+  scheduleIndex(id); // crawl the whole storage in the background so search covers it
   audit({ workspaceId: ctx.workspaceId, userId: ctx.userId, action: "storage.connect", resourceType: "storage", resourceId: id, metadata: { provider: input.provider, name: input.name }, ip: ctx.ip });
   return db.get<any>("SELECT * FROM storages WHERE id = ?", id)!;
 }

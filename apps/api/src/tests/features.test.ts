@@ -189,3 +189,57 @@ describe("share links", () => {
     assert.equal((await t.call("viv", "POST", "/shares", { storageId: sid, fileId: dirId, role: "VIEWER" })).status, 403);
   });
 });
+
+describe("trash as a tree", () => {
+  it("lets you browse a deleted folder, restore some of its files and purge others", async () => {
+    const dir = (await t.call("ana", "POST", "/files/folders", { storageId: sid, name: "Arsip Lama" })).data;
+    const sub = (await t.call("ana", "POST", "/files/folders", { storageId: sid, parentId: dir.id, name: "2025" })).data;
+    await mk("a.txt", "A", dir.id); await mk("b.txt", "B", sub.id); await mk("c.txt", "C", sub.id);
+    await t.call("ana", "DELETE", `/files/${sid}/${dir.id}`);
+    assert.deepEqual((await list()).filter((i: any) => i.name === "Arsip Lama"), []);
+    const item = (await t.call("ana", "GET", "/trash")).data.items.find((i: any) => i.name === "Arsip Lama");
+    const top = (await t.call("ana", "GET", `/trash/${item.id}/children`)).data.items; assert.deepEqual(top.map((i: any) => i.name).sort(), ["2025", "a.txt"]);
+    const inner = (await t.call("ana", "GET", `/trash/${item.id}/children?folderId=${top.find((i: any) => i.name === "2025").id}`)).data.items;
+    assert.deepEqual(inner.map((i: any) => i.name).sort(), ["b.txt", "c.txt"]);
+    // restore just b.txt: its folder chain is recreated at the original place
+    const r = await t.call("ana", "POST", `/trash/${item.id}/restore-entries`, { ids: [inner.find((i: any) => i.name === "b.txt").id] });
+    assert.equal(r.status, 200, JSON.stringify(r.body)); assert.equal(fs.readFileSync(path.join(t.root, "s", "Arsip Lama", "2025", "b.txt"), "utf8"), "B");
+    // purge c.txt for good; a.txt is still in the trash
+    await t.call("ana", "POST", `/trash/${item.id}/purge-entries`, { ids: [inner.find((i: any) => i.name === "c.txt").id] });
+    assert.deepEqual((await t.call("ana", "GET", `/trash/${item.id}/children`)).data.items.map((i: any) => i.name), ["a.txt"]);
+    // a file from somewhere else cannot be smuggled in
+    const other = await mk("liar.txt", "x");
+    assert.equal((await t.call("ana", "POST", `/trash/${item.id}/purge-entries`, { ids: [other.id] })).status, 403);
+    assert.ok(fs.existsSync(path.join(t.root, "s", "liar.txt")));
+    // restoring the last entry removes the now-empty trashed folder
+    const last = (await t.call("ana", "GET", `/trash/${item.id}/children`)).data.items[0];
+    const done = await t.call("ana", "POST", `/trash/${item.id}/restore-entries`, { ids: [last.id] }); assert.equal(done.data.removedParent, true);
+    assert.ok(!(await t.call("ana", "GET", "/trash")).data.items.some((i: any) => i.id === item.id));
+  });
+});
+
+describe("tree, details and search location", () => {
+  it("lists folders only for the tree, and reports recursive folder stats", async () => {
+    const dir = (await t.call("ana", "POST", "/files/folders", { storageId: sid, name: "Statistik" })).data;
+    const inner = (await t.call("ana", "POST", "/files/folders", { storageId: sid, parentId: dir.id, name: "Dalam" })).data;
+    await mk("x.bin", Buffer.alloc(1000), dir.id); await mk("y.bin", Buffer.alloc(500), inner.id);
+    const l = (await t.call("ana", "GET", `/files?storageId=${sid}&folderId=${dir.id}&foldersOnly=true`)).data.items; assert.deepEqual(l.map((i: any) => i.name), ["Dalam"]);
+    assert.deepEqual((await t.call("ana", "GET", `/files/${sid}/${dir.id}/stats`)).data, { files: 2, folders: 1, bytes: 1500, truncated: false });
+  });
+  it("the background crawler indexes folders nobody opened, and search shows where each result lives", async () => {
+    fs.mkdirSync(path.join(t.root, "s", "Dalam1", "Dalam2"), { recursive: true }); fs.writeFileSync(path.join(t.root, "s", "Dalam1", "Dalam2", "ketemu-saya.txt"), "x");
+    assert.equal((await t.call("ana", "GET", "/search?q=ketemu-saya")).data.total, 0, "unopened folders are not indexed yet");
+    const rx = await t.call("ana", "POST", `/storages/${sid}/reindex`); assert.equal(rx.status, 200);
+    await t.wait(async () => (await t.call("ana", "GET", `/storages/${sid}`)).data.index.status === "DONE");
+    const s = (await t.call("ana", "GET", "/search?q=ketemu-saya")).data; assert.equal(s.total, 1);
+    assert.equal(s.items[0].path, "/Dalam1/Dalam2", "result carries its folder path");
+    const info = (await t.call("ana", "GET", `/storages/${sid}`)).data.index; assert.ok(info.count > 0 && info.finishedAt);
+    // a file removed behind our back disappears from the index on the next crawl
+    fs.rmSync(path.join(t.root, "s", "Dalam1"), { recursive: true });
+    await t.call("ana", "POST", `/storages/${sid}/reindex`); await t.wait(async () => (await t.call("ana", "GET", `/storages/${sid}`)).data.index.status === "DONE");
+    assert.equal((await t.call("ana", "GET", "/search?q=ketemu-saya")).data.total, 0);
+  });
+  it("only admins can trigger a re-index", async () => {
+    assert.equal((await t.call("viv", "POST", `/storages/${sid}/reindex`)).status, 403);
+  });
+});

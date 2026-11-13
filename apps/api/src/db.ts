@@ -208,6 +208,12 @@ const MIGRATIONS: string[] = [
   CREATE INDEX idx_trash_storage ON trash_items(storage_id);
   CREATE INDEX idx_jobs_user_created ON transfer_jobs(workspace_id, created_at DESC);
   `,
+  /* 3 */ `
+  CREATE TABLE index_state (
+    storage_id TEXT PRIMARY KEY REFERENCES storages(id) ON DELETE CASCADE, status TEXT NOT NULL,
+    started_at TEXT, finished_at TEXT, folders_scanned INTEGER NOT NULL DEFAULT 0, files_indexed INTEGER NOT NULL DEFAULT 0, error TEXT
+  );
+  `,
 ];
 
 function migrate(d: Database) {

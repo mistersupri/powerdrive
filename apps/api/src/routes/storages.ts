@@ -12,6 +12,7 @@ import { assertLocalRoot, createConnection, deleteConnection, dropProvider, mapP
 import { buildAuthUrl, consumeState, exchangeCode, oauthConfigured, oauthDef, saveCredential, SLUG_TO_PROVIDER, type OAuthSlug } from "../providers/oauth.ts";
 import { providerFor } from "../modules/storages.ts";
 import { ALL_PERMISSIONS } from "@superdrive/shared";
+import { indexInfo, scheduleIndex } from "../modules/indexer.ts";
 import { smbAvailable } from "../providers/smb.ts";
 import { assertSafeHost } from "../lib/ssrf.ts";
 
@@ -144,6 +145,14 @@ export async function storageRoutes(app: FastifyInstance) {
     if (b.enabled === true && row.status === "DISABLED") { db.run("UPDATE storages SET status = 'DISCONNECTED' WHERE id = ?", id); await testConnection(id).catch(() => {}); }
     audit({ workspaceId: ctx.workspaceId, userId: ctx.userId, action: "storage.update", resourceType: "storage", resourceId: id, metadata: b, ip: ctx.ip });
     return ok(req, toDto(db.get<any>("SELECT * FROM storages WHERE id = ?", id), ctx));
+  });
+
+  // Re-crawl a storage so global search sees everything in it.
+  app.post("/storages/:id/reindex", async (req) => {
+    const ctx = requireAuth(req); requireRole(ctx, "ADMIN");
+    const id = (req.params as any).id; requireStorage(ctx, id, "MANAGE_STORAGE");
+    scheduleIndex(id);
+    return ok(req, indexInfo(id));
   });
 
   app.post("/storages/:id/test", async (req) => {

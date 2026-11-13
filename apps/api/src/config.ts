@@ -6,7 +6,8 @@ const num = (v: string | undefined, d: number) => (v && !Number.isNaN(Number(v))
 /** Accepts true/false in any case (YAML/compose tools often write True/False). */
 const flag = (v: string | undefined, d: boolean) => (v === undefined || v === "" ? d : /^(true|1|yes|on)$/i.test(v.trim()));
 const dataDir = path.resolve(env.DATA_DIR ?? "./data");
-const uploadsDir = path.resolve(env.UPLOADS_DIR ?? path.join(dataDir, "files"));
+// One setting. LOCAL_ROOTS is the old name: honoured only as a fallback for UPLOADS_DIR (its first entry).
+const uploadsDir = path.resolve(env.UPLOADS_DIR ?? env.LOCAL_ROOTS?.split(",")[0]?.trim() ?? path.join(dataDir, "files"));
 
 export const config = {
   env: env.NODE_ENV ?? "development",
@@ -25,7 +26,8 @@ export const config = {
   /** Directories the "local" provider may expose. Comma separated. */
   /** The folder behind the "Semua file" page. Defaults to ./data/files. */
   uploadsDir,
-  localRoots: [...new Set([...(env.LOCAL_ROOTS ?? uploadsDir).split(",").map((s) => path.resolve(s.trim())).filter(Boolean), uploadsDir])],
+  /** Extra "Folder server" storages must live inside the uploads folder. */
+  localRoots: [uploadsDir],
   trashRetentionDays: num(env.TRASH_RETENTION_DAYS, 30),
   /** Allow external storage (S3 / WebDAV / SFTP) on private networks, e.g. a NAS. */
   allowPrivateHosts: flag(env.ALLOW_PRIVATE_HOSTS, false),

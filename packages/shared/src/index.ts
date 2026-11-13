@@ -56,6 +56,8 @@ export interface FileEntry {
   checksum: string | null;
   hasThumbnail: boolean;
   starred?: boolean;
+  /** Where the item lives (search results): "/Laporan/2026". */
+  path?: string;
   /** Changes whenever the file content changes. Used as a cache key for thumbnails. */
   version: string | null;
 }
@@ -84,6 +86,8 @@ export interface StorageConnectionDto {
   info?: string | null;
   /** The built-in "Semua file" storage (the uploads volume). */
   isDefault?: boolean;
+  /** State of the background index that powers global search. */
+  index?: { status: "IDLE" | "RUNNING" | "DONE" | "PARTIAL" | "FAILED"; filesIndexed: number; foldersScanned: number; startedAt: string | null; finishedAt: string | null; count: number; error: string | null };
 }
 
 export interface TransferJobDto {
@@ -136,6 +140,8 @@ export interface PublicShareDto {
   name: string; isFolder: boolean; role: "VIEWER" | "EDITOR"; requiresPassword: boolean; unlocked: boolean; expiresAt: string | null;
   maxUploadBytes: number | null; uploadedBytes: number;
 }
+
+export interface FolderStats { files: number; folders: number; bytes: number; truncated: boolean }
 
 export interface Paged<T> { items: T[]; total: number }
 

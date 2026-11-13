@@ -4,7 +4,7 @@ import { db } from "../db.ts";
 import { ok, requireAuth } from "../app.ts";
 import { forbidden } from "../lib/errors.ts";
 import { permissionsFor, requireRole } from "../modules/permissions.ts";
-import { listTrash, purgeItem, restoreItem } from "../modules/trash.ts";
+import { listTrash, listTrashChildren, purgeChildren, purgeItem, restoreChildren, restoreItem } from "../modules/trash.ts";
 
 export async function trashRoutes(app: FastifyInstance) {
   const allowed = (ctx: ReturnType<typeof requireAuth>) =>
@@ -32,6 +32,20 @@ export async function trashRoutes(app: FastifyInstance) {
     guard(ctx, ids);
     for (const id of ids) await purgeItem(ctx, id);
     return ok(req, {});
+  });
+  // Browse inside a trashed folder, and restore/purge individual entries from it.
+  app.get("/trash/:id/children", async (req) => {
+    const ctx = requireAuth(req); const id = (req.params as any).id; guard(ctx, [id]);
+    const q = z.object({ folderId: z.string().optional(), pageToken: z.string().optional(), limit: z.coerce.number().int().min(1).max(500).default(200) }).parse(req.query);
+    return ok(req, await listTrashChildren(ctx, id, q.folderId, q.pageToken ?? null, q.limit));
+  });
+  app.post("/trash/:id/restore-entries", async (req) => {
+    const ctx = requireAuth(req); const id = (req.params as any).id; guard(ctx, [id]);
+    return ok(req, await restoreChildren(ctx, id, z.object({ ids: z.array(z.string()).min(1).max(500) }).parse(req.body).ids));
+  });
+  app.post("/trash/:id/purge-entries", async (req) => {
+    const ctx = requireAuth(req); const id = (req.params as any).id; guard(ctx, [id]);
+    return ok(req, await purgeChildren(ctx, id, z.object({ ids: z.array(z.string()).min(1).max(500) }).parse(req.body).ids));
   });
   // Empty the trash (admins), optionally for one storage.
   app.delete("/trash", async (req) => {

@@ -5,8 +5,8 @@ import { audit } from "../lib/audit.ts";
 import { newId } from "../lib/crypto.ts";
 import { AppError, notFound } from "../lib/errors.ts";
 import { TRASH } from "../providers/pathutil.ts";
-import { ProviderError, ROOT, encodeId, type RemoteFile, type StorageProvider } from "../providers/types.ts";
-import { bustListCache, indexItems, uniqueName, unindex } from "./files.ts";
+import { ProviderError, ROOT, decodeId, encodeId, type RemoteFile, type StorageProvider } from "../providers/types.ts";
+import { bustListCache, indexItems, toEntry, uniqueName, unindex } from "./files.ts";
 import type { AuthCtx } from "./permissions.ts";
 import { mapProviderError, providerFor } from "./storages.ts";
 
@@ -119,4 +119,87 @@ export async function sweepTrash(limit = 100) {
   const due = db.all<any>("SELECT id, workspace_id FROM trash_items WHERE expires_at < ? ORDER BY expires_at LIMIT ?", now(), limit);
   for (const d of due) await purgeItem(null, d.id, d.workspace_id).catch(() => {});
   return due.length;
+}
+
+/* ---------------- inside a trashed folder ---------------- */
+
+/** Make sure `raw` really is inside the trashed folder (or is it), so ids cannot be used to reach other files. */
+async function assertInside(p: StorageProvider, r: any, raw: string) {
+  if (raw === r.trash_file_id) return;
+  const chain = await p.path(raw).catch(() => { throw notFound("Tidak ditemukan."); });
+  if (!chain.some((c) => c.id === r.trash_file_id)) throw new AppError(403, "FORBIDDEN", "Item ini bukan bagian dari folder di sampah.");
+}
+const trashProvider = (r: any) => { const row = db.get<any>("SELECT * FROM storages WHERE id = ?", r.storage_id); if (!row) throw notFound("Penyimpanan sudah tidak ada."); return providerFor(row); };
+
+export async function listTrashChildren(ctx: AuthCtx, trashId: string, folderEnc: string | undefined, pageToken: string | null, limit = 200) {
+  const r = ownedItem(ctx, trashId); if (!r.is_folder) return { items: [], nextPageToken: null };
+  const p = trashProvider(r);
+  try {
+    const raw = folderEnc && folderEnc !== "root" ? decodeId(folderEnc) : r.trash_file_id;
+    await assertInside(p, r, raw);
+    const res = await p.list(raw, { pageToken, limit });
+    return { items: res.items.map((f) => toEntry(r.storage_id, f)), nextPageToken: res.nextPageToken };
+  } catch (e) { return mapProviderError(e, r.storage_id); }
+}
+
+async function ensureChain(p: StorageProvider, parentId: string, names: string[]) {
+  let cur = parentId;
+  for (const n of names) { const hit = p.findChild ? await p.findChild(cur, n) : null; cur = hit?.isFolder ? hit.id : (await p.createFolder(cur, n)).id; }
+  return cur;
+}
+
+/** Restore selected files/folders from inside a trashed folder, recreating the folders they were in. */
+export async function restoreChildren(ctx: AuthCtx, trashId: string, ids: string[]) {
+  const r = ownedItem(ctx, trashId); const p = trashProvider(r); const restored: string[] = [];
+  try {
+    for (const enc of ids) {
+      const raw = decodeId(enc); await assertInside(p, r, raw);
+      if (raw === r.trash_file_id) { await restoreItem(ctx, trashId); return { restored: [r.name], removedParent: true }; }
+      const f = await p.stat(raw);
+      const chain = f.parentId ? await p.path(f.parentId) : [];
+      const at = chain.findIndex((c) => c.id === r.trash_file_id);
+      const rel = at >= 0 ? chain.slice(at + 1).map((c) => c.name) : [];
+      let base = r.original_parent_id as string;
+      try { if (!(await p.stat(base)).isFolder) base = ROOT; } catch { base = ROOT; }
+      const dest = await ensureChain(p, base, [r.name, ...rel]);
+      const name = await uniqueName(p, dest, f.name);
+      const moved = await p.move!(raw, dest, name);
+      indexItems(r.storage_id, dest, [moved]); bustListCache(r.storage_id); restored.push(moved.name);
+      await pruneEmpty(p, r, f.parentId);
+    }
+    const removedParent = await dropIfEmpty(p, r);
+    audit({ workspaceId: ctx.workspaceId, userId: ctx.userId, action: "file.restore", resourceType: "file", metadata: { storageId: r.storage_id, count: restored.length, from: r.name }, ip: ctx.ip });
+    return { restored, removedParent };
+  } catch (e) { return mapProviderError(e, r.storage_id); }
+}
+
+export async function purgeChildren(ctx: AuthCtx, trashId: string, ids: string[]) {
+  const r = ownedItem(ctx, trashId); const p = trashProvider(r);
+  try {
+    for (const enc of ids) {
+      const raw = decodeId(enc); await assertInside(p, r, raw);
+      if (raw === r.trash_file_id) { await purgeItem(ctx, trashId); return { removedParent: true }; }
+      const f = await p.stat(raw); await p.delete(raw); await pruneEmpty(p, r, f.parentId);
+    }
+    const removedParent = await dropIfEmpty(p, r);
+    audit({ workspaceId: ctx.workspaceId, userId: ctx.userId, action: "file.purge", resourceType: "file", metadata: { storageId: r.storage_id, count: ids.length, from: r.name }, ip: ctx.ip });
+    return { removedParent };
+  } catch (e) { return mapProviderError(e, r.storage_id); }
+}
+
+/** Remove folders left empty inside the trashed folder, walking up until something is still there. */
+async function pruneEmpty(p: StorageProvider, r: any, start: string | null) {
+  let cur = start;
+  for (let i = 0; cur && cur !== r.trash_file_id && i < 40; i++) {
+    const left = await p.list(cur, { limit: 1 }).catch(() => null); if (!left || left.items.length) return;
+    const f = await p.stat(cur).catch(() => null); if (!f) return;
+    await p.delete(cur).catch(() => {}); cur = f.parentId;
+  }
+}
+
+/** A trashed folder that has been emptied by restoring/purging its contents has nothing left to show. */
+async function dropIfEmpty(p: StorageProvider, r: any) {
+  const left = await p.list(r.trash_file_id, { limit: 1 }).catch(() => null);
+  if (left && left.items.length === 0) { await p.delete(r.trash_file_id).catch(() => {}); db.run("DELETE FROM trash_items WHERE id = ?", r.id); return true; }
+  return false;
 }

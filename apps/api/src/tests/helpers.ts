@@ -7,7 +7,7 @@ export async function bootstrap() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sd-test-"));
   process.env.DATA_DIR = dir;
   process.env.DATABASE_FILE = ":memory:";
-  process.env.LOCAL_ROOTS = path.join(dir, "files");
+  process.env.UPLOADS_DIR = path.join(dir, "files");
   process.env.NODE_ENV = "test";
   process.env.TRANSFER_RETRY_BASE_MS = "20";
   const { buildApp } = await import("../app.ts");
