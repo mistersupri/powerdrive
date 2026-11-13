@@ -15,12 +15,12 @@ import { type Selection } from "./selection";
 
 export { startTransfer, triggerDownload };
 interface Args {
-  storage: StorageConnectionDto | undefined; folderId: string; folderName: string; entries: FileEntry[]; /** Everything in the folder, before filtering — used to recognise no-op drops. */ allEntries?: FileEntry[]; selection: Selection;
+  storage: StorageConnectionDto | undefined; folderId: string; folderName: string; /** Path of the current folder, shown in the details panel. */ location?: string; entries: FileEntry[]; /** Everything in the folder, before filtering — used to recognise no-op drops. */ allEntries?: FileEntry[]; selection: Selection;
   onOpenFolder(id: string): void;
 }
 
 /** Everything a file view can do, with its dialogs. Pages render `dialogs` and use `menuFor` / handlers. */
-export function useFileActions({ storage, folderId, folderName, entries, allEntries, selection, onOpenFolder }: Args) {
+export function useFileActions({ storage, folderId, folderName, location, entries, allEntries, selection, onOpenFolder }: Args) {
   const qc = useQueryClient();
   const perms = useMemo(() => new Set<Permission>(storage?.permissions ?? []), [storage]);
   const can = (p: Permission) => perms.has(p);
@@ -105,7 +105,7 @@ export function useFileActions({ storage, folderId, folderName, entries, allEntr
       }} />
     <TransferDialog open={dlg?.t === "transfer"} mode={dlg?.t === "transfer" ? dlg.mode : "COPY"} entries={dlg?.t === "transfer" ? dlg.list : []} fromStorageId={storageId} initialStorageId={storageId} initialFolderId={folderId} onClose={() => setDlg(null)}
       onConfirm={async (dest, policy) => { if (dlg?.t !== "transfer") return; await startTransfer(dlg.mode, storageId, dlg.list.map((e) => e.id), dest, policy); selection.clear(); }} />
-    {preview !== null && <Preview items={previewList} index={preview} onIndex={setPreview} onClose={() => setPreview(null)} onShare={can("SHARE") ? (f) => { setPreview(null); setShareTarget(f); } : undefined} canDownload={can("DOWNLOAD")} />}
+    {preview !== null && <Preview location={location} storageName={storage?.isDefault ? "Semua file" : storage?.name} items={previewList} index={preview} onIndex={setPreview} onClose={() => setPreview(null)} onShare={can("SHARE") ? (f) => { setPreview(null); setShareTarget(f); } : undefined} canDownload={can("DOWNLOAD")} />}
     <ShareDialog open={!!shareTarget} storageId={storageId} file={shareTarget} onClose={() => setShareTarget(null)} />
   </>);
 

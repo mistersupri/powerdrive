@@ -7,7 +7,7 @@ services:
     env_file: .env
     environment:
       DATA_DIR: /data
-      LOCAL_ROOTS: /data/files
+      UPLOADS_DIR: /data/files
     volumes:
       - ./data:/data
       # Expose extra server folders as storages, e.g.:

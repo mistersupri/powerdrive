@@ -34,7 +34,7 @@ ID file di API adalah `~base64url(id penyedia)` (atau `root`), sehingga aman di 
 
 ## Keamanan
 
-Argon2id; cookie `HttpOnly` + `SameSite=Lax`; cek Origin pada tulis; rate limit login; sesi dapat dicabut. Setiap permintaan memeriksa pengguna → workspace → keanggotaan → izin penyimpanan di backend; id lintas workspace menghasilkan 404/403 yang sama. Kredensial dienkripsi AES-256-GCM dengan kunci versi (rotasi lewat `ENCRYPTION_MASTER_KEY=v2:…,v1:…`); token tidak pernah dikirim ke browser maupun dicatat. OAuth memakai `state` sekali pakai + PKCE. Folder server dibatasi `LOCAL_ROOTS` dengan pengecekan `realpath` (path traversal dan symlink). Endpoint S3 divalidasi (DNS, IP privat/loopback/link-local, metadata cloud) kecuali `ALLOW_PRIVATE_HOSTS=true`. Batasan: validasi DNS dilakukan saat koneksi dibuat/diuji, belum mengunci IP pada tiap permintaan (DNS rebinding).
+Argon2id; cookie `HttpOnly` + `SameSite=Lax`; cek Origin pada tulis; rate limit login; sesi dapat dicabut. Setiap permintaan memeriksa pengguna → workspace → keanggotaan → izin penyimpanan di backend; id lintas workspace menghasilkan 404/403 yang sama. Kredensial dienkripsi AES-256-GCM dengan kunci versi (rotasi lewat `ENCRYPTION_MASTER_KEY=v2:…,v1:…`); token tidak pernah dikirim ke browser maupun dicatat. OAuth memakai `state` sekali pakai + PKCE. Folder server dibatasi `UPLOADS_DIR` (satu-satunya pengaturan folder server; `LOCAL_ROOTS` lama hanya dibaca sebagai cadangan) dengan pengecekan `realpath` (path traversal dan symlink). Endpoint S3 divalidasi (DNS, IP privat/loopback/link-local, metadata cloud) kecuali `ALLOW_PRIVATE_HOSTS=true`. Batasan: validasi DNS dilakukan saat koneksi dibuat/diuji, belum mengunci IP pada tiap permintaan (DNS rebinding).
 
 ## API
 

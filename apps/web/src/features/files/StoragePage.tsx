@@ -1,5 +1,6 @@
+import type { FileEntry } from "@superdrive/shared";
 import { PROVIDER_LABEL } from "@superdrive/shared";
-import { ChevronRight, Copy, Download, FolderInput, FolderOpen, FolderPlus, HardDrive, Share2, Trash2, Upload, X } from "lucide-react";
+import { ChevronRight, Copy, Info, PanelLeft, Download, FolderInput, FolderOpen, FolderPlus, HardDrive, Share2, Trash2, Upload, X } from "lucide-react";
 import { useCallback, useMemo } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { toast } from "sonner";
@@ -19,6 +20,8 @@ import { startTransfer } from "./transferApi";
 import { useFileActions } from "./useFileActions";
 import { sortEntries, useFolder, type SortState } from "./useFolder";
 import { useState } from "react";
+import { FolderTree } from "./FolderTree";
+import { DetailsPanel } from "./DetailsPanel";
 
 /** /s/:storageId?f=<folder> — and /files, which is the same screen on the built-in "Semua file" storage. */
 export function StoragePage({ forcedStorageId }: { forcedStorageId?: string }) {
@@ -30,15 +33,21 @@ export function StoragePage({ forcedStorageId }: { forcedStorageId?: string }) {
   const [view, setView] = usePersistentState<"grid" | "list">("sd-view", "grid");
   const [sort, setSort] = usePersistentState<SortState>("sd-sort", { key: "name", dir: "asc" });
   const [filter, setFilter] = useState(emptyFilter);
+  const [showTree, setShowTree] = usePersistentState<boolean>("sd-tree-open", true);
+  const [showInfo, setShowInfo] = usePersistentState<boolean>("sd-details-open", false);
   const selection = useSelection();
   const go = useCallback((id: string) => { selection.clear(); setFilter(emptyFilter); setSp(id === "root" ? {} : { f: id }); }, [selection, setSp]);
   const shown = useMemo(() => sortEntries(applyFilter(f.entries, filter), sort), [f.entries, filter, sort]);
   const title = storage?.isDefault ? "Semua file" : storage?.name ?? "Memuat…";
-  const a = useFileActions({ storage, folderId, folderName: folderId === "root" ? title : f.folder?.name ?? "", entries: shown, allEntries: f.entries, selection, onOpenFolder: go });
+  const crumbPath = "/" + (f.folder?.path ?? []).map((c) => c.name).join("/");
+  const a = useFileActions({ storage, folderId, location: crumbPath === "/" ? "/" : crumbPath, folderName: folderId === "root" ? title : f.folder?.name ?? "", entries: shown, allEntries: f.entries, selection, onOpenFolder: go });
   const menu = useMenu(); const uploadMenu = useMenu();
   const missing = storages.isSuccess && !storage;
   const sel = a.selectedEntries;
   const crumbs = f.folder?.path ?? [];
+  // The selected item, or — with nothing selected — the folder you are in.
+  const detailEntry: FileEntry | null = sel.length === 1 ? sel[0]! : sel.length === 0 && f.folder ? { id: f.folder.id, storageId, parentId: f.folder.parentId, name: folderId === "root" ? title : f.folder.name, isFolder: true, mimeType: null, size: null, modifiedAt: null, createdAt: null, checksum: null, hasThumbnail: false, version: null } : null;
+  const detailWhere = sel.length === 1 ? (crumbPath === "/" ? "/" : crumbPath) : crumbs.length > 1 ? "/" + crumbs.slice(0, -1).map((c) => c.name).join("/") : "/";
 
   const dropToFolder = (target: string, p: DropPayload, copy: boolean) => {
     // Items already in the target folder: nothing to do, and no progress dialog.
@@ -81,6 +90,8 @@ export function StoragePage({ forcedStorageId }: { forcedStorageId?: string }) {
           {a.can("DELETE") && <Button size="sm" variant="ghost" className="text-danger-ink hover:bg-danger-soft hover:text-danger-ink" icon={<Trash2 className="size-4" />} onClick={a.deleteSelected}>Hapus</Button>}
         </>)}
         <span className="flex-1" />
+        <IconButton label={showInfo ? "Sembunyikan detail" : "Tampilkan detail"} className={cn(showInfo && "bg-surface-2")} onClick={() => setShowInfo(!showInfo)}><Info className="size-4" /></IconButton>
+        <IconButton label={showTree ? "Sembunyikan pohon folder" : "Tampilkan pohon folder"} className={cn("hidden md:grid", showTree && "bg-surface-2")} onClick={() => setShowTree(!showTree)}><PanelLeft className="size-4" /></IconButton>
         <SortViewControls sort={sort} setSort={setSort} view={view} setView={setView} />
       </div>
       <FilterChips value={filter} onChange={setFilter} />
@@ -95,7 +106,11 @@ export function StoragePage({ forcedStorageId }: { forcedStorageId?: string }) {
               <button className={cn("rounded-md px-2 py-1 whitespace-nowrap hover:bg-surface-2", i === crumbs.length - 1 ? "font-semibold" : "text-muted hover:text-ink")} onClick={() => go(c.id)}>{c.name}</button>
             </CrumbDrop></span>))}
       </nav>
-      {body}
+      <div className="flex min-h-0 flex-1">
+        {showTree && storage?.status === "CONNECTED" && <aside className="hidden w-60 shrink-0 border-r border-line bg-surface md:block"><FolderTree storageId={storageId} rootLabel={title} current={folderId} pathIds={crumbs.map((c) => c.id)} onNavigate={go} onDrop={dropToFolder} /></aside>}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">{body}</div>
+        {showInfo && detailEntry && storage?.status === "CONNECTED" && <DetailsPanel key={detailEntry.id} entry={detailEntry} storageName={title} location={detailWhere} onClose={() => setShowInfo(false)} className="hidden w-72 shrink-0 border-l border-line lg:flex" />}
+      </div>
       {menu.element}{uploadMenu.element}{a.dialogs}
     </div>
   );

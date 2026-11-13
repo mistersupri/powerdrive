@@ -15,7 +15,7 @@ FROM node:22-bookworm-slim AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg smbclient tini ca-certificates \
  && rm -rf /var/lib/apt/lists/* && corepack enable
 WORKDIR /app
-ENV NODE_ENV=production PORT=3000 DATA_DIR=/data LOCAL_ROOTS=/data/files
+ENV NODE_ENV=production PORT=3000 DATA_DIR=/data UPLOADS_DIR=/data/files
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/

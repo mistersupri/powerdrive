@@ -124,7 +124,7 @@ export function FileBrowser(p: BrowserProps) {
     rowOf.clear();
     if (p.view === "list") {
       out.push({ key: "hdr", h: 36, node: () => <ListHeader showStorage={!!p.storageNames} compact={p.compact} /> });
-      ordered.forEach((e, i) => { rowOf.set(e.id, out.length); out.push({ key: e.id, h: 52, node: () => <ListRow e={e} i={i} sel={p.selected.has(e.id)} drop={dropTarget === e.id} cursor={cursor === i} props={itemProps(e, i)} storageName={p.storageNames?.[e.storageId]} compact={p.compact} onMenu={(x, y) => p.onContext(e, x, y)} /> }); });
+      ordered.forEach((e, i) => { rowOf.set(e.id, out.length); out.push({ key: e.id, h: 52, node: () => <ListRow e={e} i={i} sel={p.selected.has(e.id)} drop={dropTarget === e.id} cursor={cursor === i} props={itemProps(e, i)} storageName={whereOf(p.storageNames, e)} compact={p.compact} onMenu={(x, y) => p.onContext(e, x, y)} /> }); });
       return out;
     }
     const fCols = Math.max(1, Math.floor((width + GAP) / (p.compact ? 200 : 236 + GAP)));
@@ -134,14 +134,14 @@ export function FileBrowser(p: BrowserProps) {
       out.push({ key: "lbl-f", h: 30, node: () => <SectionLabel>Folder · {folders.length}</SectionLabel> });
       for (let i = 0; i < folders.length; i += fCols) {
         const chunk = folders.slice(i, i + fCols); chunk.forEach((e) => rowOf.set(e.id, out.length));
-        out.push({ key: `f${i}`, h: 52 + GAP, node: () => <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${fCols}, minmax(0, 1fr))` }}>{chunk.map((e) => <FolderChip key={e.id} e={e} sel={p.selected.has(e.id)} drop={dropTarget === e.id} props={itemProps(e, idx.get(e.id)!)} onMenu={(x, y) => p.onContext(e, x, y)} />)}</div> });
+        out.push({ key: `f${i}`, h: 52 + GAP, node: () => <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${fCols}, minmax(0, 1fr))` }}>{chunk.map((e) => <FolderChip key={e.id} e={e} sel={p.selected.has(e.id)} drop={dropTarget === e.id} props={itemProps(e, idx.get(e.id)!)} where={whereOf(p.storageNames, e)} onMenu={(x, y) => p.onContext(e, x, y)} />)}</div> });
       }
     }
     if (files.length) {
       out.push({ key: "lbl-d", h: 30, node: () => <SectionLabel>File · {files.length}</SectionLabel> });
       for (let i = 0; i < files.length; i += cols) {
         const chunk = files.slice(i, i + cols); chunk.forEach((e) => rowOf.set(e.id, out.length));
-        out.push({ key: `d${i}`, h: tileH + GAP, node: () => <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>{chunk.map((e) => <FileTile key={e.id} e={e} sel={p.selected.has(e.id)} cursor={cursor === idx.get(e.id)} props={itemProps(e, idx.get(e.id)!)} onMenu={(x, y) => p.onContext(e, x, y)} />)}</div> });
+        out.push({ key: `d${i}`, h: tileH + GAP, node: () => <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>{chunk.map((e) => <FileTile key={e.id} e={e} sel={p.selected.has(e.id)} cursor={cursor === idx.get(e.id)} props={itemProps(e, idx.get(e.id)!)} where={whereOf(p.storageNames, e)} onMenu={(x, y) => p.onContext(e, x, y)} />)}</div> });
       }
     }
     return out;
@@ -259,19 +259,22 @@ const Check1 = ({ on }: { on: boolean }) => (
   </span>
 );
 
-const FolderChip = memo(function FolderChip({ e, sel, drop, props, onMenu }: { e: FileEntry; sel: boolean; drop: boolean; props: any; onMenu(x: number, y: number): void }) {
+/** "Google Drive/Foto/2025" — where a search result lives. Only set when results span several storages. */
+const whereOf = (names: Record<string, string> | undefined, e: FileEntry) => (names ? `${names[e.storageId] ?? ""}${e.path && e.path !== "/" ? e.path : ""}` : undefined);
+
+const FolderChip = memo(function FolderChip({ e, sel, drop, props, where, onMenu }: { e: FileEntry; sel: boolean; drop: boolean; props: any; where?: string; onMenu(x: number, y: number): void }) {
   const Icon = KIND_ICON.folder;
   return (
     <div {...props} className={cn("group flex h-[52px] cursor-default items-center gap-3 rounded-xl border bg-surface px-3 transition-colors select-none", sel ? "border-primary bg-primary-soft" : "border-line hover:border-line-strong hover:bg-surface-2", drop && "border-primary bg-primary-soft ring-2 ring-primary")}>
       <span className={cn("grid size-9 shrink-0 place-items-center rounded-lg", KIND_TONE.folder)}><Icon className="size-[18px]" fill="currentColor" fillOpacity={0.15} aria-hidden /></span>
-      <span className="min-w-0 flex-1 truncate text-[13px] font-medium" title={e.name}>{e.name}</span>
+      <span className="min-w-0 flex-1"><span className="block truncate text-[13px] font-medium" title={e.name}>{e.name}</span>{where && <span className="block truncate text-[11px] text-muted" title={where}>{where}</span>}</span>
       {e.starred && <Star className="size-3.5 shrink-0 fill-warn-ink text-warn-ink" aria-label="Berbintang" />}
       <button aria-label={`Menu untuk ${e.name}`} className="grid size-7 place-items-center rounded-md text-muted opacity-0 group-hover:opacity-100 hover:bg-surface focus:opacity-100 pointer-coarse:opacity-100" onClick={(ev) => { ev.stopPropagation(); const r = ev.currentTarget.getBoundingClientRect(); onMenu(r.right - 200, r.bottom); }}><MoreVertical className="size-4" /></button>
     </div>
   );
 });
 
-const FileTile = memo(function FileTile({ e, sel, cursor, props, onMenu }: { e: FileEntry; sel: boolean; cursor: boolean; props: any; onMenu(x: number, y: number): void }) {
+const FileTile = memo(function FileTile({ e, sel, cursor, props, where, onMenu }: { e: FileEntry; sel: boolean; cursor: boolean; props: any; where?: string; onMenu(x: number, y: number): void }) {
   const kind = kindOf(e); const Icon = KIND_ICON[kind];
   return (
     <div {...props} className={cn("group relative flex flex-col overflow-hidden rounded-xl border bg-surface transition-colors select-none", sel ? "border-primary ring-2 ring-primary/40" : "border-line hover:border-line-strong", cursor && !sel && "ring-2 ring-primary/20")}>
@@ -280,7 +283,7 @@ const FileTile = memo(function FileTile({ e, sel, cursor, props, onMenu }: { e: 
       <button aria-label={`Menu untuk ${e.name}`} className="absolute top-2 right-2 grid size-7 place-items-center rounded-md bg-surface/90 text-muted opacity-0 shadow-card group-hover:opacity-100 hover:text-ink focus:opacity-100 pointer-coarse:opacity-100" onClick={(ev) => { ev.stopPropagation(); const r = ev.currentTarget.getBoundingClientRect(); onMenu(r.right - 200, r.bottom); }}><MoreVertical className="size-4" /></button>
       <div className="flex min-w-0 items-center gap-2 px-3 py-2.5">
         <Icon className="size-4 shrink-0 text-muted" aria-hidden />
-        <div className="min-w-0 flex-1"><div className="truncate text-[13px] font-medium" title={e.name}>{e.name}</div><div className="tnum text-[11px] text-muted">{formatBytes(e.size)} · {shortDate(e.modifiedAt)}</div></div>
+        <div className="min-w-0 flex-1"><div className="truncate text-[13px] font-medium" title={e.name}>{e.name}</div><div className="tnum truncate text-[11px] text-muted" title={where}>{where ?? `${formatBytes(e.size)} · ${shortDate(e.modifiedAt)}`}</div></div>
         {e.starred && <Star className="size-3.5 shrink-0 fill-warn-ink text-warn-ink" aria-label="Berbintang" />}
       </div>
     </div>
@@ -288,19 +291,20 @@ const FileTile = memo(function FileTile({ e, sel, cursor, props, onMenu }: { e: 
 });
 
 const COLS = "grid-cols-[28px_minmax(0,1fr)_88px_120px_32px] md:grid-cols-[28px_minmax(0,1fr)_100px_88px_128px_32px]";
+const COLS_WIDE = "grid-cols-[28px_minmax(0,1fr)_88px_120px_32px] md:grid-cols-[28px_minmax(0,1fr)_minmax(0,1.1fr)_88px_128px_32px]";
 const COLS_COMPACT = "grid-cols-[28px_minmax(0,1fr)_72px_28px]";
 function ListHeader({ showStorage, compact }: { showStorage: boolean; compact?: boolean }) {
   if (compact) return <div className={cn("grid h-9 items-center gap-3 border-b border-line px-3 text-[12px] font-semibold text-muted", COLS_COMPACT)} data-bg="1"><span /><span>Nama</span><span className="text-right">Ukuran</span><span /></div>;
-  return <div className={cn("grid h-9 items-center gap-3 border-b border-line px-3 text-[12px] font-semibold text-muted", COLS)} data-bg="1"><span /><span>Nama</span><span className="hidden md:block">{showStorage ? "Penyimpanan" : "Jenis"}</span><span className="text-right">Ukuran</span><span className="hidden md:block">Diubah</span><span /></div>;
+  return <div className={cn("grid h-9 items-center gap-3 border-b border-line px-3 text-[12px] font-semibold text-muted", showStorage ? COLS_WIDE : COLS)} data-bg="1"><span /><span>Nama</span><span className="hidden md:block">{showStorage ? "Lokasi" : "Jenis"}</span><span className="text-right">Ukuran</span><span className="hidden md:block">Diubah</span><span /></div>;
 }
 const ListRow = memo(function ListRow({ e, sel, drop, cursor, props, storageName, compact, onMenu }: { e: FileEntry; i: number; sel: boolean; drop: boolean; cursor: boolean; props: any; storageName?: string; compact?: boolean; onMenu(x: number, y: number): void }) {
   const kind = kindOf(e);
   const menuBtn = <button aria-label={`Menu untuk ${e.name}`} className="grid size-7 place-items-center rounded-md text-muted opacity-0 group-hover:opacity-100 hover:bg-surface focus:opacity-100 pointer-coarse:opacity-100" onClick={(ev) => { ev.stopPropagation(); const r = ev.currentTarget.getBoundingClientRect(); onMenu(r.right - 200, r.bottom); }}><MoreVertical className="size-4" /></button>;
   return (
-    <div {...props} className={cn("group grid h-[52px] items-center gap-3 border-b border-line px-3 text-[13px] select-none", compact ? COLS_COMPACT : COLS, sel ? "bg-primary-soft" : "hover:bg-surface-2", cursor && !sel && "bg-surface-2", drop && "bg-primary-soft ring-2 ring-primary ring-inset")}>
+    <div {...props} className={cn("group grid h-[52px] items-center gap-3 border-b border-line px-3 text-[13px] select-none", compact ? COLS_COMPACT : storageName ? COLS_WIDE : COLS, sel ? "bg-primary-soft" : "hover:bg-surface-2", cursor && !sel && "bg-surface-2", drop && "bg-primary-soft ring-2 ring-primary ring-inset")}>
       <span className="relative"><FileThumb file={e} size={128} className="size-7 rounded-md" iconClass="size-4" />{sel && <span className="absolute -top-1 -left-1 grid size-3.5 place-items-center rounded-full bg-primary text-white"><Check className="size-2.5" strokeWidth={3.5} /></span>}</span>
       <span className="flex min-w-0 items-center gap-2"><span className="truncate font-medium" title={e.name}>{e.name}</span>{e.starred && <Star className="size-3.5 shrink-0 fill-warn-ink text-warn-ink" aria-label="Berbintang" />}</span>
-      {!compact && <span className="hidden truncate text-muted md:block">{storageName ?? (e.isFolder ? "Folder" : (e.name.split(".").pop() || kind).toUpperCase())}</span>}
+      {!compact && <span className="hidden truncate text-muted md:block" title={storageName}>{storageName ?? (e.isFolder ? "Folder" : (e.name.split(".").pop() || kind).toUpperCase())}</span>}
       <span className="tnum text-right whitespace-nowrap text-muted">{e.isFolder ? "—" : formatBytes(e.size)}</span>
       {!compact && <span className="tnum hidden text-muted md:block">{shortDate(e.modifiedAt)}</span>}
       {menuBtn}

@@ -1,14 +1,17 @@
 import type { ConflictPolicy, FileEntry } from "@superdrive/shared";
-import { ArrowLeft, ArrowRight, ChevronRight, Copy, FolderInput } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { ArrowLeft, ArrowRight, ChevronRight, Copy, FolderInput, FolderPlus } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
+import { NameDialog } from "@/features/files/dialogs";
 import { PageHeader, useStorages } from "@/features/layout/Shell";
 import { FileBrowser } from "@/features/files/FileBrowser";
 import { useSelection } from "@/features/files/selection";
 import { startTransfer } from "@/features/files/transferApi";
 import { sortEntries, useFolder } from "@/features/files/useFolder";
-import { Button } from "@/ui/Button";
+import { Button, IconButton } from "@/ui/Button";
 import { Select } from "@/ui/Field";
 import { EmptyState } from "@/ui/misc";
 import { Columns2 } from "lucide-react";
@@ -17,7 +20,7 @@ function Pane({ label, storageId, setStorageId, folderId, setFolderId, selection
   label: string; storageId: string; setStorageId(s: string): void; folderId: string; setFolderId(f: string): void; selection: ReturnType<typeof useSelection>;
   onDrop(payload: { storageId: string; ids: string[] }, targetFolder: string, copy: boolean): void; storages: { id: string; name: string }[]; onEntries(e: FileEntry[]): void;
 }) {
-  const f = useFolder(storageId, folderId);
+  const f = useFolder(storageId, folderId); const qc = useQueryClient(); const [mk, setMk] = useState(false);
   const shown = useMemo(() => sortEntries(f.entries, { key: "name", dir: "asc" }), [f.entries]);
   useEffect(() => onEntries(shown), [shown]); // eslint-disable-line react-hooks/exhaustive-deps
   const open = (e: FileEntry) => { if (e.isFolder) { selection.clear(); setFolderId(e.id); } };
@@ -25,7 +28,7 @@ function Pane({ label, storageId, setStorageId, folderId, setFolderId, selection
   return (
     <section aria-label={label} className="flex min-h-0 min-w-0 flex-1 flex-col rounded-xl border border-line bg-surface shadow-card">
       <header className="space-y-2 border-b border-line p-3">
-        <div className="flex items-center gap-2"><span className="text-[11px] font-semibold tracking-wider text-muted uppercase">{label}</span><Select aria-label={`Penyimpanan ${label}`} className="h-8 flex-1 text-[13px]" value={storageId} onChange={(e) => { setStorageId(e.target.value); setFolderId("root"); selection.clear(); }}>{storages.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></div>
+        <div className="flex items-center gap-2"><span className="text-[11px] font-semibold tracking-wider text-muted uppercase">{label}</span><Select aria-label={`Penyimpanan ${label}`} className="h-8 flex-1 text-[13px]" value={storageId} onChange={(e) => { setStorageId(e.target.value); setFolderId("root"); selection.clear(); }}>{storages.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select><IconButton label={`Folder baru di panel ${label}`} disabled={!storageId} onClick={() => setMk(true)}><FolderPlus className="size-4" /></IconButton></div>
         <nav aria-label="Lokasi" className="flex items-center gap-0.5 overflow-x-auto text-[12px] scroll-thin">
           <button onClick={() => setFolderId("root")} className={cn("rounded px-1.5 py-0.5 whitespace-nowrap hover:bg-surface-2", !path.length && "font-semibold")}>Akar</button>
           {path.map((c, i) => <span key={c.id} className="flex items-center"><ChevronRight className="size-3 text-faint" aria-hidden /><button onClick={() => setFolderId(c.id)} className={cn("rounded px-1.5 py-0.5 whitespace-nowrap hover:bg-surface-2", i === path.length - 1 && "font-semibold")}>{c.name}</button></span>)}
@@ -36,6 +39,8 @@ function Pane({ label, storageId, setStorageId, folderId, setFolderId, selection
         onSelect={(e, m) => selection.click(e.id, shown, { ...m, additive: m.additive || true })} onSetSelection={(ids) => selection.setSelected(new Set(ids))} onOpen={open} onContext={() => {}}
         onKeyAction={(k) => { if (k === "selectAll") selection.selectAll(shown); if (k === "clear") selection.clear(); }}
         onDropItems={(t, p, copy) => onDrop(p, t ? t.id : folderId, copy)} onDropFiles={() => toast.info("Untuk mengunggah dari komputer, gunakan halaman penyimpanan.")} dropLabel="Lepaskan untuk memindahkan ke sini (Alt = salin)" />
+      <NameDialog open={mk} title="Folder baru" label="Nama folder" action="Buat" onClose={() => setMk(false)}
+        onSubmit={async (name) => { await api("/files/folders", { body: { storageId, parentId: folderId, name } }); await qc.invalidateQueries({ queryKey: ["files", storageId] }); toast.success(`Folder “${name}” dibuat`); }} />
     </section>
   );
 }

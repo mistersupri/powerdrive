@@ -49,7 +49,12 @@ Daftarkan redirect URI OAuth: `${APP_URL}/api/v1/storages/{google-drive|onedrive
 | **Berbagi tautan** (viewer/editor, sandi, kedaluwarsa, kuota unggah, dicabut kapan saja), halaman publik tanpa login, **Sampah** (pulihkan/hapus permanen, 30 hari), **Semua file** = volume `UPLOADS_DIR` | ✅ diuji otomatis + browser + uji beban |
 | Pratinjau lanjutan: foto (zoom/putar), video, audio, PDF (pdf.js), CSV, Excel (.xlsx), Word (.docx), JSON (pohon), teks/kode, isi ZIP | ✅ diuji di browser |
 | Filter lanjutan (nama, jenis, ekstensi, ukuran, tanggal, bintang), seleksi kotak, seret-lepas multi-item dengan penanda jumlah, dropdown folder di breadcrumb saat menyeret | ✅ diuji di browser |
+| **Pohon folder** di "Semua file"/penyimpanan (lazy, seret-lepas ke folder, buka otomatis saat menahan), **Sampah sebagai pohon** (buka folder terhapus, pulihkan/hapus sebagian isi), **Folder baru** di dua panel, **panel Detail** (ukuran folder rekursif), **cetak**, **tayangan slide**, **pencarian global** lintas penyimpanan terhubung lewat indeks latar belakang (lokasi folder tampil di hasil) | ✅ diuji otomatis + browser |
 | Audit log, notifikasi, dashboard (kapasitas yang tidak dilaporkan tampil "—", bukan 0), tema terang/gelap, responsif | ✅ |
+
+## Pencarian global
+
+Setiap penyimpanan yang terhubung (termasuk Google Drive, OneDrive, SMB, SFTP…) dirayapi di latar belakang ke indeks metadata lokal, sehingga pencarian menjangkau folder yang belum pernah dibuka. Perayapan berjalan saat penyimpanan dihubungkan, saat server menyala, tiap 6 jam, dan bisa dipicu admin lewat **Penyimpanan → Indeks ulang pencarian**. Untuk penyimpanan cloud, perayapan diberi jeda agar tidak menghabiskan kuota API. Hasil menampilkan penyimpanan dan folder tempat file berada.
 
 ## Berbagi lewat tautan
 

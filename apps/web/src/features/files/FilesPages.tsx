@@ -1,8 +1,8 @@
 import type { FileEntry, StorageConnectionDto } from "@superdrive/shared";
 import { formatBytes, PROVIDER_LABEL } from "@superdrive/shared";
-import { useQuery } from "@tanstack/react-query";
-import { ArrowDownAZ, ArrowUpAZ, ChevronRight, Clock, Copy, Download, FolderInput, FolderOpen, FolderPlus, Grid2x2, HardDrive, List, Plus, Search, Star, Trash2, Upload, X } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowDownAZ, ArrowUpAZ, ChevronRight, Clock, Copy, Download, FolderInput, FolderOpen, FolderPlus, Grid2x2, HardDrive, Info, List, Loader2, Plus, Search, Star, Trash2, Upload, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { api, ApiError } from "@/lib/api";
 import { cn } from "@/lib/cn";
@@ -51,6 +51,20 @@ export function StorageTile({ s }: { s: StorageConnectionDto }) {
 }
 
 /** /search, /recent, /starred — results come from the local metadata index. */
+/** Tells people whether global search already covers every connected storage. */
+function IndexBanner() {
+  const qc = useQueryClient(); const storages = useStorages().data ?? [];
+  const busy = storages.filter((s) => s.index?.status === "RUNNING"); const partial = storages.filter((s) => s.index?.status === "PARTIAL" || s.index?.status === "FAILED");
+  useEffect(() => { if (!busy.length) return; const t = setInterval(() => void qc.invalidateQueries({ queryKey: ["storages"] }), 4000); return () => clearInterval(t); }, [busy.length, qc]);
+  if (!busy.length && !partial.length) return null;
+  return (
+    <div role="status" className="flex items-center gap-2 border-b border-line bg-warn-soft px-4 py-2 text-[13px] text-warn-ink sm:px-8">
+      {busy.length > 0 ? <Loader2 className="size-4 shrink-0 animate-spin" aria-hidden /> : <Info className="size-4 shrink-0" aria-hidden />}
+      <span>{busy.length > 0 ? `Sedang mengindeks ${busy.map((s) => `${s.isDefault ? "Semua file" : s.name} (${s.index!.count.toLocaleString("id-ID")} item)`).join(", ")}. Hasil pencarian mungkin belum lengkap.` : `Indeks ${partial.map((s) => s.name).join(", ")} belum lengkap; sebagian folder tidak bisa dibaca.`}</span>
+    </div>
+  );
+}
+
 export function ResultsPage({ mode }: { mode: "search" | "recent" | "starred" }) {
   const [sp] = useSearchParams(); const q = sp.get("q") ?? ""; const nav = useNavigate();
   const [view, setView] = usePersistentState<"grid" | "list">("sd-view", "grid"); const [filter, setFilter] = useState(emptyFilter);
@@ -78,8 +92,9 @@ export function ResultsPage({ mode }: { mode: "search" | "recent" | "starred" })
         <div className="flex rounded-lg bg-surface-2 p-0.5">{([["grid", Grid2x2], ["list", List]] as const).map(([v, I]) => <button key={v} aria-label={v === "grid" ? "Tampilan kisi" : "Tampilan daftar"} aria-pressed={view === v} onClick={() => setView(v)} className={cn("grid size-8 place-items-center rounded-md text-muted", view === v && "bg-surface text-ink shadow-card")}><I className="size-4" /></button>)}</div>
       </div>
       <FilterChips value={filter} onChange={setFilter} />
+      {mode === "search" && <IndexBanner />}
       <FileBrowser entries={entries} view={view} selected={selection.selected} loading={res.isLoading} storageNames={names}
-        empty={<EmptyState icon={mode === "starred" ? Star : mode === "recent" ? Clock : Search} title={mode === "search" ? "Tidak ada hasil" : mode === "starred" ? "Belum ada file berbintang" : "Belum ada file"}>{mode === "starred" ? "Beri bintang pada file penting agar mudah ditemukan." : mode === "search" ? "Pencarian memakai indeks nama file. Buka folder agar isinya ikut terindeks." : "File akan muncul setelah folder dibuka atau diunggah."}</EmptyState>}
+        empty={<EmptyState icon={mode === "starred" ? Star : mode === "recent" ? Clock : Search} title={mode === "search" ? "Tidak ada hasil" : mode === "starred" ? "Belum ada file berbintang" : "Belum ada file"}>{mode === "starred" ? "Beri bintang pada file penting agar mudah ditemukan." : mode === "search" ? "Pencarian mencakup seluruh isi penyimpanan yang terhubung (diindeks di latar belakang)." : "File akan muncul setelah folder dibuka atau diunggah."}</EmptyState>}
         onSelect={(e, m) => selection.click(e.id, entries, m)} onSetSelection={(ids) => selection.setSelected(new Set(ids))} onOpen={openEntry}
         onContext={(e, x, y) => e && menu.open(x, y, [
           { label: e.isFolder ? "Buka" : "Pratinjau", onSelect: () => openEntry(e) }, { label: "Buka lokasi file", onSelect: () => nav(`/s/${e.storageId}${e.parentId && e.parentId !== "root" ? `?f=${e.parentId}` : ""}`) },

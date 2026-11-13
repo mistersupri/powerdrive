@@ -150,6 +150,7 @@ function StorageRow({ s, onPerms }: { s: StorageConnectionDto; onPerms(): void }
         {s.permissions.includes("MANAGE_STORAGE") && <IconButton label="Aksi" disabled={busy} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); menu.open(r.right - 210, r.bottom + 4, [
           { label: "Uji koneksi", icon: <RefreshCw />, onSelect: () => run(() => api(`/storages/${s.id}/test`, { body: {} }), "Koneksi diperiksa") },
           { label: "Hubungkan ulang", icon: <Link2 />, hidden: !oauth, onSelect: () => run(async () => { const r = await api<{ url: string }>(`/storages/${s.id}/reconnect`, { body: {} }); location.href = r.url; }) },
+          { label: "Indeks ulang pencarian", icon: <RefreshCw />, hidden: s.status !== "CONNECTED" || s.index?.status === "RUNNING", onSelect: () => run(() => api(`/storages/${s.id}/reindex`, { body: {} }), "Pengindeksan dimulai") },
           { label: "Ganti nama", onSelect: () => setRename(true) },
           { label: "Hak akses…", icon: <KeyRound />, onSelect: onPerms },
           { label: s.status === "DISABLED" ? "Aktifkan" : "Nonaktifkan", onSelect: () => run(() => api(`/storages/${s.id}`, { method: "PATCH", body: { enabled: s.status === "DISABLED" } })) },
@@ -160,7 +161,7 @@ function StorageRow({ s, onPerms }: { s: StorageConnectionDto; onPerms(): void }
       {s.lastError && s.status !== "CONNECTED" && <p className="mt-3 rounded-lg bg-warn-soft px-3 py-2 text-[12px] text-warn-ink">{s.lastError}</p>}
       <div className="mt-4 grid gap-x-8 gap-y-2 text-[12px] sm:grid-cols-3">
         <div className="sm:col-span-2">{pct !== null ? <><Progress value={pct} tone={pct > 90 ? "danger" : pct > 75 ? "warn" : "primary"} /><p className="tnum mt-1.5 text-muted">{formatBytes(s.quota!.used)} dari {formatBytes(s.quota!.total)} · {pct}%</p></> : <p className="text-muted">{s.quota?.used != null ? `${formatBytes(s.quota.used)} terpakai` : "Kapasitas tidak dilaporkan penyedia"}</p>}</div>
-        <div className="text-muted"><p>Path virtual: <code className="text-ink">{s.mount?.virtualPath}</code></p><p>Terakhir terhubung {timeAgo(s.lastConnectedAt)}</p></div>
+        <div className="text-muted"><p>Path virtual: <code className="text-ink">{s.mount?.virtualPath}</code></p><p>Terakhir terhubung {timeAgo(s.lastConnectedAt)}</p>{s.index && <p>Indeks pencarian: <span className="text-ink">{s.index.status === "RUNNING" ? `mengindeks… ${s.index.count.toLocaleString("id-ID")} item` : s.index.status === "DONE" ? `${s.index.count.toLocaleString("id-ID")} item` : s.index.status === "IDLE" ? "belum dimulai" : s.index.status === "PARTIAL" ? `sebagian (${s.index.count.toLocaleString("id-ID")} item)` : "gagal"}</span></p>}</div>
       </div>
       {menu.element}
       <Dialog open={rename} onClose={() => setRename(false)} width="max-w-sm" title="Ganti nama koneksi" footer={<><Button onClick={() => setRename(false)}>Batal</Button><Button variant="primary" onClick={() => { void run(() => api(`/storages/${s.id}`, { method: "PATCH", body: { name } }), "Nama diperbarui"); setRename(false); }}>Simpan</Button></>}>

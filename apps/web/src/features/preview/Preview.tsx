@@ -1,7 +1,11 @@
 import type { FileEntry } from "@superdrive/shared";
 import { formatBytes } from "@superdrive/shared";
-import { ChevronLeft, ChevronRight, Download, Share2, X } from "lucide-react";
-import { lazy, Suspense, useEffect, useRef, type ReactNode } from "react";
+import { ChevronLeft, ChevronRight, Download, Info, Presentation, Printer, Share2, X } from "lucide-react";
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
+import { toast } from "sonner";
+import { DetailsPanel } from "@/features/files/DetailsPanel";
+import { printable, printFile } from "./print";
+import { Slideshow } from "./Slideshow";
 import { previewKind } from "@/lib/fileType";
 import { IconButton } from "@/ui/Button";
 import { Spinner } from "@/ui/misc";
@@ -29,18 +33,22 @@ function Viewer({ f }: { f: FileEntry }) {
  * Preview in a centered window (not full screen), so the page behind stays recognisable and the layout never
  * shifts. Arrow keys move between previewable files, Escape closes.
  */
-export function Preview({ items, index, onIndex, onClose, onShare, canDownload = true }: { items: FileEntry[]; index: number; onIndex(i: number): void; onClose(): void; onShare?(f: FileEntry): void; canDownload?: boolean }) {
+export function Preview({ items, index, onIndex, onClose, onShare, canDownload = true, location, storageName }: { location?: string; storageName?: string; items: FileEntry[]; index: number; onIndex(i: number): void; onClose(): void; onShare?(f: FileEntry): void; canDownload?: boolean }) {
   const f = items[index]; const urls = useFileUrls(); const panel = useRef<HTMLDivElement>(null);
+  const [info, setInfo] = useState(false); const [show, setShow] = useState(false);
+  const images = items.filter((x) => previewKind(x) === "image");
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
       const typing = (e.target as HTMLElement)?.closest("input,textarea,select");
+      if (show) return;
       if (e.key === "Escape") onClose();
+      if (!typing && e.key.toLowerCase() === "i") setInfo((v) => !v);
       if (typing) return;
       if (e.key === "ArrowRight" && index < items.length - 1) onIndex(index + 1);
       if (e.key === "ArrowLeft" && index > 0) onIndex(index - 1);
     };
     addEventListener("keydown", k); return () => removeEventListener("keydown", k);
-  }, [index, items.length, onClose, onIndex]);
+  }, [index, items.length, onClose, onIndex, show]);
   useEffect(() => { panel.current?.focus(); }, []);
   if (!f) return null;
   const Nav = ({ dir, children }: { dir: -1 | 1; children: ReactNode }) => {
@@ -52,11 +60,18 @@ export function Preview({ items, index, onIndex, onClose, onShare, canDownload =
       <div ref={panel} tabIndex={-1} role="dialog" aria-modal="true" aria-label={`Pratinjau ${f.name}`} className="anim-pop relative flex h-[min(88vh,860px)] w-[min(1120px,100%)] flex-col overflow-hidden rounded-2xl bg-surface text-ink shadow-float focus:outline-none">
         <header className="flex shrink-0 items-center gap-3 border-b border-line px-4 py-2.5">
           <div className="min-w-0 flex-1"><p className="truncate text-[14px] font-semibold" title={f.name}>{f.name}</p><p className="tnum text-[12px] text-muted">{formatBytes(f.size)} · {index + 1} dari {items.length}</p></div>
+          <IconButton label="Detail" aria-pressed={info} className={info ? "bg-surface-2" : ""} onClick={() => setInfo(!info)}><Info className="size-[18px]" /></IconButton>
+          {images.length > 0 && <IconButton label="Tayangan slide" onClick={() => setShow(true)}><Presentation className="size-[18px]" /></IconButton>}
+          {canDownload && printable(f) && <IconButton label="Cetak" onClick={() => void printFile(f, urls.preview(f)).catch((e) => toast.error((e as Error).message))}><Printer className="size-[18px]" /></IconButton>}
           {onShare && <IconButton label="Bagikan" onClick={() => onShare(f)}><Share2 className="size-[18px]" /></IconButton>}
           {canDownload && <a href={urls.download(f)} className="inline-flex h-9 items-center gap-2 rounded-lg bg-surface-2 px-3 text-[13px] font-medium hover:bg-line"><Download className="size-4" aria-hidden />Unduh</a>}
           <IconButton label="Tutup" onClick={onClose}><X className="size-5" /></IconButton>
         </header>
-        <div className="relative min-h-0 flex-1"><Viewer key={f.id} f={f} /><Nav dir={-1}><ChevronLeft className="size-5" /></Nav><Nav dir={1}><ChevronRight className="size-5" /></Nav></div>
+        <div className="flex min-h-0 flex-1">
+          <div className="relative min-h-0 min-w-0 flex-1"><Viewer key={f.id} f={f} /><Nav dir={-1}><ChevronLeft className="size-5" /></Nav><Nav dir={1}><ChevronRight className="size-5" /></Nav></div>
+          {info && <DetailsPanel entry={f} storageName={storageName} location={location ?? f.path} stats={false} onClose={() => setInfo(false)} className="hidden w-72 shrink-0 border-l border-line sm:flex" />}
+        </div>
+        {show && <Slideshow items={images} start={Math.max(0, images.findIndex((x) => x.id === f.id))} onClose={() => setShow(false)} />}
       </div>
     </div>
   );
