@@ -6,7 +6,7 @@ import { newId } from "../lib/crypto.ts";
 import { AppError, notFound } from "../lib/errors.ts";
 import { TRASH } from "../providers/pathutil.ts";
 import { ProviderError, ROOT, encodeId, type RemoteFile, type StorageProvider } from "../providers/types.ts";
-import { indexItems, uniqueName, unindex } from "./files.ts";
+import { bustListCache, indexItems, uniqueName, unindex } from "./files.ts";
 import type { AuthCtx } from "./permissions.ts";
 import { mapProviderError, providerFor } from "./storages.ts";
 
@@ -91,7 +91,7 @@ export async function restoreItem(ctx: AuthCtx, id: string) {
     try { const pf = await p.stat(parent); if (!pf.isFolder) parent = ROOT; } catch { parent = ROOT; } // original folder is gone: restore at the root
     const name = await uniqueName(p, parent, r.name);
     const moved: RemoteFile = await p.move!(r.trash_file_id, parent, name);
-    indexItems(r.storage_id, parent, [moved]);
+    indexItems(r.storage_id, parent, [moved]); bustListCache(r.storage_id);
     db.run("DELETE FROM trash_items WHERE id = ?", id);
     audit({ workspaceId: ctx.workspaceId, userId: ctx.userId, action: "file.restore", resourceType: "file", resourceId: moved.id, metadata: { storageId: r.storage_id, name: moved.name }, ip: ctx.ip });
     return { name: moved.name, storageId: r.storage_id, parentId: encodeId(parent) };

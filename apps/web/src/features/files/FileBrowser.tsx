@@ -9,6 +9,7 @@ import { shortDate } from "@/lib/format";
 import { Skeleton } from "@/ui/misc";
 import { DRAG_MIME, collectDropped, hasFiles, setActiveDrag, activeDrag } from "./dnd";
 import { FileThumb } from "./FileThumb";
+import { setDragGhost } from "./dragGhost";
 import { prefetchFolder } from "./useFolder";
 import type { UploadInput } from "@/features/uploads/manager";
 
@@ -21,6 +22,8 @@ export interface BrowserProps {
   storageNames?: Record<string, string>;
   compact?: boolean;
   onSelect(e: FileEntry, mods: { shift: boolean; additive: boolean }): void;
+  /** Replace the whole selection (rubber-band selection). */
+  onSetSelection?(ids: string[]): void;
   onOpen(e: FileEntry): void;
   onContext(e: FileEntry | null, x: number, y: number): void;
   onKeyAction(action: "selectAll" | "delete" | "rename" | "clear"): void;
@@ -54,17 +57,31 @@ export function FileBrowser(p: BrowserProps) {
   const folders = useMemo(() => p.entries.filter((e) => e.isFolder), [p.entries]);
   const files = useMemo(() => p.entries.filter((e) => !e.isFolder), [p.entries]);
 
+  const entryIds = useMemo(() => new Set(p.entries.map((e) => e.id)), [p.entries]);
+  // Whatever happens to a drag (dropped elsewhere, cancelled with Esc, left the window), never leave the highlight behind.
+  useEffect(() => {
+    const clear = () => setTimeout(() => { setDropTarget(null); dragDepth.current = 0; }, 0);
+    window.addEventListener("dragend", clear, true); window.addEventListener("drop", clear, true);
+    return () => { window.removeEventListener("dragend", clear, true); window.removeEventListener("drop", clear, true); };
+  }, []);
+
   const dropHandlers = (target: FileEntry | null) => ({
     onDragOver: (ev: React.DragEvent) => {
       const internal = ev.dataTransfer.types.includes(DRAG_MIME);
       if (!internal && !hasFiles(ev.dataTransfer)) return;
       if (target && !target.isFolder) return;
       if (internal && target && activeDrag?.ids.includes(target.id)) return; // not onto itself
+      // Dragging items that already live in this folder onto empty space is a no-op: show nothing.
+      if (internal && !target && activeDrag && activeDrag.ids.every((id) => entryIds.has(id))) return;
       ev.preventDefault(); ev.stopPropagation();
       ev.dataTransfer.dropEffect = ev.altKey ? "copy" : internal ? "move" : "copy";
       setDropTarget(target ? target.id : "__pane");
     },
-    onDragLeave: (ev: React.DragEvent) => { ev.stopPropagation(); if (target) setDropTarget((c) => (c === target.id ? null : c)); },
+    onDragLeave: (ev: React.DragEvent) => {
+      ev.stopPropagation();
+      if (target) setDropTarget((c) => (c === target.id ? null : c));
+      else if (!(ev.currentTarget as HTMLElement).contains(ev.relatedTarget as Node | null)) setDropTarget(null); // left the pane
+    },
     onDrop: async (ev: React.DragEvent) => {
       if (target && !target.isFolder) return;
       ev.preventDefault(); ev.stopPropagation(); setDropTarget(null); dragDepth.current = 0;
@@ -81,6 +98,7 @@ export function FileBrowser(p: BrowserProps) {
       const ids = p.selected.has(e.id) ? [...p.selected] : [e.id];
       const payload = { storageId: e.storageId, ids, names: ids.map((i) => p.entries.find((x) => x.id === i)?.name ?? "") };
       ev.dataTransfer.setData(DRAG_MIME, JSON.stringify(payload)); ev.dataTransfer.effectAllowed = "copyMove";
+      setDragGhost(ev.nativeEvent, ids.map((i) => p.entries.find((x) => x.id === i)).filter(Boolean) as FileEntry[], ids.length, scroller.current);
       setActiveDrag(payload);
       if (!p.selected.has(e.id)) p.onSelect(e, { shift: false, additive: false });
     },
@@ -152,21 +170,83 @@ export function FileBrowser(p: BrowserProps) {
   };
 
   const pane = dropHandlers(null);
+
+  /* ---- rubber-band selection ---- */
+  const drag = useRef<{ x0: number; y0: number; sx: number; sy: number; base: Set<string>; hit: Set<string>; active: boolean; lastX: number; lastY: number; raf: number } | null>(null);
+  const suppressClick = useRef(false);
+  const [box, setBox] = useState<{ l: number; t: number; w: number; h: number } | null>(null);
+
+  const updateMarquee = () => {
+    const d = drag.current, el = scroller.current; if (!d || !el || !d.active) return;
+    const r = el.getBoundingClientRect();
+    // Work in content coordinates so the box keeps growing while the list auto-scrolls underneath it.
+    const x1 = d.lastX - r.left + el.scrollLeft, y1 = d.lastY - r.top + el.scrollTop;
+    const left = Math.min(d.x0, x1), right = Math.max(d.x0, x1), top = Math.min(d.y0, y1), bottom = Math.max(d.y0, y1);
+    setBox({ l: left - el.scrollLeft, t: top - el.scrollTop, w: right - left, h: bottom - top });
+    for (const node of el.querySelectorAll<HTMLElement>("[role=option]")) {
+      const nr = node.getBoundingClientRect();
+      const nl = nr.left - r.left + el.scrollLeft, nt = nr.top - r.top + el.scrollTop;
+      const id = node.dataset.id!;
+      if (nl < right && nl + nr.width > left && nt < bottom && nt + nr.height > top) d.hit.add(id); else d.hit.delete(id);
+    }
+    p.onSetSelection?.([...new Set([...d.base, ...d.hit])]);
+  };
+  const tick = () => {
+    const d = drag.current, el = scroller.current; if (!d || !el) return;
+    if (d.active) {
+      const r = el.getBoundingClientRect(); const edge = 48;
+      const dy = d.lastY < r.top + edge ? -((r.top + edge - d.lastY) / 4 + 2) : d.lastY > r.bottom - edge ? (d.lastY - (r.bottom - edge)) / 4 + 2 : 0;
+      if (dy) { el.scrollTop += dy; updateMarquee(); }
+    }
+    d.raf = requestAnimationFrame(tick);
+  };
+  const stopMarquee = () => { const d = drag.current; if (d) cancelAnimationFrame(d.raf); drag.current = null; setBox(null); };
+  useEffect(() => () => stopMarquee(), []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (e.button !== 0 || e.pointerType === "touch" || !p.onSetSelection) return;
+    if ((e.target as HTMLElement).closest("[role=option],button,input,a,video,audio")) return;
+    const el = scroller.current!; const r = el.getBoundingClientRect();
+    // Ignore presses on the scrollbar itself.
+    if (e.clientX > r.left + el.clientWidth || e.clientY > r.top + el.clientHeight) return;
+    const additive = e.ctrlKey || e.metaKey || e.shiftKey;
+    drag.current = { x0: e.clientX - r.left + el.scrollLeft, y0: e.clientY - r.top + el.scrollTop, sx: e.clientX, sy: e.clientY, base: additive ? new Set(p.selected) : new Set(), hit: new Set(), active: false, lastX: e.clientX, lastY: e.clientY, raf: 0 };
+    el.setPointerCapture(e.pointerId);
+    drag.current.raf = requestAnimationFrame(tick);
+  };
+  const onPointerMove = (e: React.PointerEvent) => {
+    const d = drag.current; if (!d) return;
+    d.lastX = e.clientX; d.lastY = e.clientY;
+    if (!d.active && Math.hypot(e.clientX - d.sx, e.clientY - d.sy) > 5) { d.active = true; if (!d.base.size) p.onKeyAction("clear"); }
+    if (d.active) updateMarquee();
+  };
+  const onPointerUp = (e: React.PointerEvent) => {
+    const d = drag.current; if (!d) return;
+    if (d.active) suppressClick.current = true; // the click that follows a drag must not clear the selection
+    try { scroller.current?.releasePointerCapture(e.pointerId); } catch { /* already released */ }
+    stopMarquee();
+  };
+
+  const internalDrop = dropTarget === "__pane";
   return (
-    <div
-      ref={scroller} tabIndex={0} role="listbox" aria-multiselectable aria-label="Daftar file" onKeyDown={onKey}
-      onClick={(e) => { if (e.target === e.currentTarget || (e.target as HTMLElement).dataset.bg) p.onKeyAction("clear"); }}
-      onContextMenu={(e) => { if (!(e.target as HTMLElement).closest("[role=option]")) { e.preventDefault(); p.onContext(null, e.clientX, e.clientY); } }}
-      {...pane}
-      className={cn("scroll-thin relative min-h-0 flex-1 overflow-y-auto overscroll-contain focus:outline-none", p.compact ? "px-3 pb-6" : "px-4 pb-24 sm:px-6", dropTarget === "__pane" && "bg-primary-soft/60 ring-2 ring-primary ring-inset")}
-    >
-      {p.loading ? <BrowserSkeleton view={p.view} /> : p.entries.length === 0 ? p.empty : (
-        <div style={{ height: virt.getTotalSize(), position: "relative" }} data-bg="1">
-          {virt.getVirtualItems().map((v) => (
-            <div key={v.key} style={{ position: "absolute", top: 0, left: 0, width: "100%", height: v.size, transform: `translateY(${v.start}px)` }} data-bg="1">{rows[v.index]!.node(width)}</div>
-          ))}
-        </div>)}
-      {dropTarget === "__pane" && <div className="pointer-events-none sticky bottom-4 mx-auto w-fit rounded-full bg-primary px-4 py-2 text-[13px] font-medium text-white shadow-float">{p.dropLabel ?? "Lepaskan di sini"}</div>}
+    <div className="relative flex min-h-0 flex-1 flex-col">
+      <div
+        ref={scroller} tabIndex={0} role="listbox" aria-multiselectable aria-label="Daftar file" onKeyDown={onKey}
+        onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
+        onClick={(e) => { if (suppressClick.current) { suppressClick.current = false; return; } if (e.target === e.currentTarget || (e.target as HTMLElement).dataset.bg) p.onKeyAction("clear"); }}
+        onContextMenu={(e) => { if (!(e.target as HTMLElement).closest("[role=option]")) { e.preventDefault(); p.onContext(null, e.clientX, e.clientY); } }}
+        {...pane}
+        className={cn("scroll-thin relative min-h-0 flex-1 overflow-y-auto overscroll-contain focus:outline-none", box && "select-none", p.compact ? "px-3 pb-6" : "px-4 pb-24 sm:px-6", internalDrop && "bg-primary-soft/60 ring-2 ring-primary ring-inset")}
+      >
+        {p.loading ? <BrowserSkeleton view={p.view} /> : p.entries.length === 0 ? p.empty : (
+          <div style={{ height: virt.getTotalSize(), position: "relative" }} data-bg="1">
+            {virt.getVirtualItems().map((v) => (
+              <div key={v.key} style={{ position: "absolute", top: 0, left: 0, width: "100%", height: v.size, transform: `translateY(${v.start}px)` }} data-bg="1">{rows[v.index]!.node(width)}</div>
+            ))}
+          </div>)}
+        {internalDrop && <div className="pointer-events-none sticky bottom-4 mx-auto w-fit rounded-full bg-primary px-4 py-2 text-[13px] font-medium text-white shadow-float">{activeDrag ? (p.dropLabel?.replace(/^Unggah/, "Pindahkan") ?? "Pindahkan ke sini") : p.dropLabel ?? "Lepaskan di sini"}</div>}
+      </div>
+      {box && <div aria-hidden className="pointer-events-none absolute rounded-[3px] border border-primary bg-primary/15" style={{ left: box.l, top: box.t, width: box.w, height: box.h }} />}
     </div>
   );
 }

@@ -27,17 +27,14 @@ export function NameDialog({ open, title, label, initial = "", action, onClose, 
   );
 }
 
-const TRASH_NOTE: Record<string, string> = {
-  GOOGLE_DRIVE: "File dipindahkan ke Sampah Google Drive dan bisa dipulihkan dari sana.", ONEDRIVE: "File dipindahkan ke Recycle Bin OneDrive dan bisa dipulihkan dari sana.",
-  DROPBOX: "File yang dihapus masih bisa dipulihkan dari Dropbox selama 30 hari.", LOCAL: "File dipindahkan ke folder tersembunyi .superdrive-trash di server.", S3: "Objek S3 dihapus permanen kecuali bucket memakai versioning.",
-};
+const TRASH_NOTE = "Item dipindahkan ke Sampah dan bisa dipulihkan selama 30 hari.";
 export function DeleteDialog({ open, entries, provider, onClose, onConfirm }: { open: boolean; entries: FileEntry[]; provider?: string; onClose(): void; onConfirm(): Promise<void> }) {
   const [busy, setBusy] = useState(false);
   const one = entries.length === 1 ? entries[0]! : null;
   return (
     <Dialog open={open} onClose={onClose} title={one ? `Hapus “${one.name}”?` : `Hapus ${entries.length} item?`} width="max-w-sm"
       footer={<><Button onClick={onClose}>Batal</Button><Button variant="danger" loading={busy} onClick={async () => { setBusy(true); try { await onConfirm(); onClose(); } finally { setBusy(false); } }}>Hapus</Button></>}>
-      <p className="text-[14px] text-muted">{one?.isFolder ? "Folder beserta seluruh isinya akan dihapus. " : ""}{TRASH_NOTE[provider ?? ""] ?? ""}</p>
+      <p className="text-[14px] text-muted">{one?.isFolder ? "Folder beserta seluruh isinya akan dihapus. " : ""}{TRASH_NOTE}</p>
     </Dialog>
   );
 }

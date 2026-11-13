@@ -8,7 +8,7 @@ import { audit, notify } from "../lib/audit.ts";
 import { newId } from "../lib/crypto.ts";
 import { AppError, badRequest, conflict, notFound } from "../lib/errors.ts";
 import { decodeId, isRetryable, ProviderError, type RemoteFile, type StorageProvider } from "../providers/types.ts";
-import { indexItems, unindex, uniqueName } from "./files.ts";
+import { bustListCache, indexItems, unindex, uniqueName } from "./files.ts";
 import { trashRaw } from "./trash.ts";
 import { prewarmThumbnail } from "./thumbnails.ts";
 import { can, type AuthCtx } from "./permissions.ts";
@@ -517,7 +517,7 @@ async function processItem(job: any, item: any, src: StorageProvider, dst: Stora
     }
   }
 
-  indexItems(job.destination_storage_id, item.destination_parent_id, [result]);
+  indexItems(job.destination_storage_id, item.destination_parent_id, [result]); bustListCache(job.destination_storage_id);
   prewarmThumbnail(job.destination_storage_id, dst, result);
   db.run("UPDATE transfer_items SET destination_file_id=?, transferred_bytes=?, error_message=NULL WHERE id=?", result.id, size ?? 0, item.id);
 

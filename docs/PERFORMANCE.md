@@ -26,6 +26,20 @@ Diukur di sandbox pengembangan (4 vCPU, disk lokal, loopback), server produksi h
 
 Skrip ukur ada di riwayat pengembangan; ulangi dengan folder foto Anda sendiri untuk angka yang mewakili perangkat keras Anda.
 
+## Beban banyak pengguna (tautan berbagi)
+
+Skrip mensimulasikan pengunjung anonim memakai tautan editor: tiap unggahan = buat sesi + kirim isi + tunggu selesai, file 50 KB–2,5 MB acak, semua dari satu IP (jadi pembatas laju paling keras terkena).
+
+| Skenario | Hasil |
+|---|---|
+| 100 pengunjung × 30 file (3.000 unggahan, 3,7 GB) | 0 galat · 197 file/dtk · 244 MB/dtk · p50 434 ms · p95 985 ms · p99 1,4 dtk |
+| Memori server | 129 MB → puncak 281 MB |
+| 200 permintaan daftar folder bersamaan pada folder besar | 7 dtk → **0,29 dtk** setelah cache daftar singkat + penggabungan permintaan kembar (dibatalkan otomatis oleh setiap perubahan) |
+
+Yang menjaga server tetap sehat: pembatas laju per IP, maksimum unggahan aktif per IP (`MAX_ACTIVE_UPLOADS_PER_IP`), kuota staging global (`STAGING_MAX_BYTES`), kuota per tautan, potongan atomik (bayangan memori tetap kecil), antrean thumbnail yang membuang permintaan dari baris yang sudah keluar layar, dan klien yang mengulang otomatis saat server sibuk (429/503).
+
+Batasan jujur: satu proses Node + SQLite. Ribuan unggahan per detik atau beberapa server membutuhkan arsitektur lain (PostgreSQL + antrean eksternal), yang sengaja tidak dipakai (lihat DECISIONS).
+
 ## Unduh, lanjutkan, dan pindah
 
 - **Satu file:** unduhan biasa dari URL-nya; browser yang mengurus progres, jeda, dan lanjut (server mengirim `Accept-Ranges` + `ETag`, uji `206`).

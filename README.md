@@ -16,7 +16,7 @@ pnpm dev            # API :3000 + web :5173 (buka http://localhost:5173)
 Akun pertama yang mendaftar menjadi administrator. Tanpa konfigurasi apa pun Anda bisa langsung menghubungkan **Folder server** (data di `./data/files`) dan mencoba semua fitur.
 
 ```bash
-pnpm test           # tes API (SFTP/SMB asli diuji bila SD_TEST_SFTP / SD_TEST_SMB diisi; lihat scripts/ci-external-servers.sh)
+pnpm test           # 78 tes API (SFTP/SMB asli diuji bila SD_TEST_SFTP / SD_TEST_SMB diisi; lihat scripts/ci-external-servers.sh)
 #                     37 tes API (otentikasi, isolasi workspace, unggah, transfer, izin, keamanan, kontrak adapter cloud dengan fetch tiruan)
 pnpm typecheck
 ```
@@ -46,7 +46,18 @@ Daftarkan redirect URI OAuth: `${APP_URL}/api/v1/storages/{google-drive|onedrive
 | Transfer salin/pindah antar penyimpanan: file, folder bertingkat, bulk, kebijakan nama bentrok, jeda/lanjut/batal/ulang, SSE, pemulihan setelah restart, pindah aman (sumber dihapus setelah tujuan terverifikasi) | ✅ diuji (antar folder server) |
 | Penyimpanan eksternal: **SMB/NAS**, **SFTP**, **WebDAV** (form di UI, kredensial terenkripsi, host key SFTP dikunci) | ✅ diuji terhadap **Samba (SMB3, signing + enkripsi wajib) dan OpenSSH asli**, serta server WebDAV; termasuk transfer lintas-storage dan pindah aman |
 | Penyimpanan: **Folder server**, **S3-compatible**, Google Drive, OneDrive, Dropbox (OAuth + PKCE, banyak akun, token terenkripsi) | Folder server ✅ diuji. **Cloud & S3: ditulis sesuai dokumentasi API resmi; Google/OneDrive/Dropbox diuji terhadap respons tiruan (paging, unggah per potongan, Range, error), S3 dan semuanya belum diuji ke layanan sungguhan** (tidak ada kredensial di lingkungan pengembangan) |
+| **Berbagi tautan** (viewer/editor, sandi, kedaluwarsa, kuota unggah, dicabut kapan saja), halaman publik tanpa login, **Sampah** (pulihkan/hapus permanen, 30 hari), **Semua file** = volume `UPLOADS_DIR` | ✅ diuji otomatis + browser + uji beban |
+| Pratinjau lanjutan: foto (zoom/putar), video, audio, PDF (pdf.js), CSV, Excel (.xlsx), Word (.docx), JSON (pohon), teks/kode, isi ZIP | ✅ diuji di browser |
+| Filter lanjutan (nama, jenis, ekstensi, ukuran, tanggal, bintang), seleksi kotak, seret-lepas multi-item dengan penanda jumlah, dropdown folder di breadcrumb saat menyeret | ✅ diuji di browser |
 | Audit log, notifikasi, dashboard (kapasitas yang tidak dilaporkan tampil "—", bukan 0), tema terang/gelap, responsif | ✅ |
+
+## Berbagi lewat tautan
+
+Klik kanan file/folder → **Bagikan…**. Setiap item bisa punya dua tautan: **penonton** (lihat, putar, unduh) dan **editor** (khusus folder: unggah, folder baru, ganti nama, hapus ke Sampah; tidak pernah menimpa file yang sudah ada). Opsi: kata sandi, masa berlaku, kuota unggah. Semua tautan aktif ada di **Tautan berbagi**.
+
+Keamanan: token acak 256-bit (hanya hash yang dipakai untuk mencari; token terenkripsi agar bisa disalin lagi oleh pemilik), setiap permintaan memastikan item ada di dalam folder yang dibagikan (percobaan keluar folder → 403, diuji), pembatas laju per IP, batas unggahan aktif per IP dan kuota staging global, dan tautan yang tidak valid/kedaluwarsa/dicabut selalu menjawab sama (404) agar tidak bisa ditebak. Siapa pun yang memegang tautan bisa memakainya: bagikan seperlunya.
+
+**Beban:** 100 pengunjung anonim × 30 file lewat tautan editor (3.000 unggahan, 3,7 GB) selesai tanpa galat, 197 file/dtk, p95 985 ms, memori server puncak 281 MB (`docs/PERFORMANCE.md`).
 
 ## Catatan penyimpanan eksternal
 

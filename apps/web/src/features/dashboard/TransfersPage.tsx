@@ -1,14 +1,17 @@
-import type { TransferItemDto } from "@superdrive/shared";
+import type { Paged, TransferItemDto, TransferJobDto } from "@superdrive/shared";
 import { formatBytes } from "@superdrive/shared";
-import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, ChevronDown, Columns2, Pause, Play, RotateCcw, X } from "lucide-react";
-import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowRight, ChevronDown, Columns2, Eraser, FilterX, Pause, Play, RotateCcw, Search, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { dateTime, formatEta, formatSpeed, percent } from "@/lib/format";
-import { PageHeader } from "@/features/layout/Shell";
+import { PageHeader, useStorages } from "@/features/layout/Shell";
+import { useDebounced } from "@/lib/useDebounced";
+import { Dialog } from "@/ui/Dialog";
+import { Input, Select } from "@/ui/Field";
 import { transferActions, transferStore, type JobView } from "@/features/transfers/store";
 import { Button } from "@/ui/Button";
 import { EmptyState, Progress, Skeleton, TransferStatusBadge } from "@/ui/misc";
@@ -72,24 +75,57 @@ function JobCard({ j }: { j: JobView }) {
   );
 }
 
+const EMPTY = { status: "all", q: "", type: "", storageId: "", from: "", to: "" };
+
 export default function TransfersPage() {
-  const jobs = transferStore.use((s) => s.jobs); const [tab, setTab] = useState<(typeof TABS)[number][0]>("all");
-  const n = (f: (j: JobView) => boolean) => jobs.filter(f).length;
-  const counts = { active: n((j) => j.status === "RUNNING" || j.status === "VALIDATING" || j.status === "VERIFYING" || j.status === "RETRYING"), queued: n((j) => j.status === "QUEUED"), done: n((j) => j.status === "COMPLETED" || j.status === "COPY_COMPLETED_SOURCE_RETAINED"), failed: n((j) => j.status === "FAILED") };
-  const list = jobs.filter((j) => tab === "all" || (tab === "active" && (ACTIVE.includes(j.status) || j.status === "PAUSED")) || (tab === "done" && (j.status === "COMPLETED" || j.status === "COPY_COMPLETED_SOURCE_RETAINED")) || (tab === "failed" && (j.status === "FAILED" || j.status === "CANCELLED")));
+  const qc = useQueryClient(); const storages = useStorages().data ?? []; const live = transferStore.use((s) => s.jobs);
+  const [f, setF] = useState(EMPTY); const [page, setPage] = useState(1); const [limit, setLimit] = useState(20); const [clear, setClear] = useState<null | "finished" | "done" | "failed">(null);
+  const q = useDebounced(f.q, 300);
+  useEffect(() => setPage(1), [f.status, q, f.type, f.storageId, f.from, f.to, limit]);
+  const qs = (extra = "") => `status=${f.status}${q ? `&q=${encodeURIComponent(q)}` : ""}${f.type ? `&type=${f.type}` : ""}${f.storageId ? `&storageId=${f.storageId}` : ""}${f.from ? `&from=${new Date(`${f.from}T00:00:00`).toISOString()}` : ""}${f.to ? `&to=${new Date(`${f.to}T23:59:59`).toISOString()}` : ""}${extra}`;
+  const res = useQuery({ queryKey: ["transfers", f.status, q, f.type, f.storageId, f.from, f.to, page, limit], queryFn: () => api<Paged<TransferJobDto>>(`/transfers?${qs(`&page=${page}&limit=${limit}`)}`), placeholderData: (p) => p, staleTime: 3000 });
+  const count = (status: string) => useQuery({ queryKey: ["transfers-count", status], queryFn: () => api<Paged<TransferJobDto>>(`/transfers?status=${status}&limit=1`).then((r) => r.total), staleTime: 5000 }).data ?? 0; // eslint-disable-line react-hooks/rules-of-hooks
+  const nActive = count("active"), nDone = count("done"), nFailed = count("failed");
+
+  // Keep the list fresh as jobs change state (progress itself comes from the live stream below).
+  const signature = useMemo(() => live.map((j) => `${j.id}:${j.status}`).join("|"), [live]);
+  useEffect(() => { void qc.invalidateQueries({ queryKey: ["transfers"] }); void qc.invalidateQueries({ queryKey: ["transfers-count"] }); }, [signature, qc]);
+  const liveById = useMemo(() => new Map(live.map((j) => [j.id, j])), [live]);
+  const items: JobView[] = (res.data?.items ?? []).map((j) => liveById.get(j.id) ?? { ...j, speed: null, eta: null });
+  const pages = Math.max(1, Math.ceil((res.data?.total ?? 0) / limit));
+  const dirty = JSON.stringify(f) !== JSON.stringify(EMPTY);
+  const clearHistory = async () => { try { const r = await api<{ removed: number }>(`/transfers?${qs()}&scope=${clear}`, { method: "DELETE" }); toast.success(`${r.removed} riwayat dibersihkan`); setClear(null); void qc.invalidateQueries({ queryKey: ["transfers"] }); void qc.invalidateQueries({ queryKey: ["transfers-count"] }); } catch (e) { toast.error((e as Error).message); } };
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <PageHeader title="Transfer" subtitle="Pantau pemindahan file antar penyimpanan." actions={<Link to="/dual"><Button variant="primary" size="sm" icon={<Columns2 className="size-4" />}>Transfer baru</Button></Link>} />
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-line bg-surface px-4 py-3 sm:px-8">
-        {([["Berjalan", counts.active, "bg-primary"], ["Antre", counts.queued, "bg-warn-ink"], ["Selesai", counts.done, "bg-ok-ink"], ["Gagal", counts.failed, "bg-danger"]] as const).map(([l, v, c]) => (
+        {([["Aktif", nActive, "bg-primary"], ["Selesai", nDone, "bg-ok-ink"], ["Gagal/batal", nFailed, "bg-danger"]] as const).map(([l, v, c]) => (
           <div key={l} className="flex items-center gap-1.5 text-[12px]"><span className={cn("size-2 rounded-full", c)} aria-hidden /><span className="text-muted">{l}</span><span className="tnum text-[13px] font-semibold">{v}</span></div>))}
         <span className="flex-1" />
-        <div className="flex rounded-lg bg-surface-2 p-0.5" role="tablist">{TABS.map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className={cn("rounded-md px-3.5 py-1.5 text-[12px] font-medium text-muted transition-colors", tab === k && "bg-surface text-ink shadow-card")}>{l}</button>)}</div>
+        <div className="flex rounded-lg bg-surface-2 p-0.5" role="tablist">{TABS.map(([k, l]) => <button key={k} role="tab" aria-selected={f.status === k} onClick={() => setF({ ...f, status: k })} className={cn("rounded-md px-3.5 py-1.5 text-[12px] font-medium text-muted transition-colors", f.status === k && "bg-surface text-ink shadow-card")}>{l}</button>)}</div>
+      </div>
+      <div className="flex flex-wrap items-center gap-2 border-b border-line bg-surface px-4 py-2.5 sm:px-8">
+        <div className="relative"><Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-faint" aria-hidden /><Input aria-label="Cari transfer" className="h-8 w-52 pl-8 text-[13px]" placeholder="Cari nama" value={f.q} onChange={(e) => setF({ ...f, q: e.target.value })} /></div>
+        <Select aria-label="Jenis" className="h-8 w-32 text-[13px]" value={f.type} onChange={(e) => setF({ ...f, type: e.target.value })}><option value="">Semua jenis</option><option value="COPY">Salin</option><option value="MOVE">Pindah</option></Select>
+        <Select aria-label="Penyimpanan" className="h-8 w-44 text-[13px]" value={f.storageId} onChange={(e) => setF({ ...f, storageId: e.target.value })}><option value="">Semua penyimpanan</option>{storages.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select>
+        <Input type="date" aria-label="Dari tanggal" className="h-8 w-36 text-[13px]" value={f.from} onChange={(e) => setF({ ...f, from: e.target.value })} /><span className="text-muted">–</span><Input type="date" aria-label="Sampai tanggal" className="h-8 w-36 text-[13px]" value={f.to} onChange={(e) => setF({ ...f, to: e.target.value })} />
+        <Button size="sm" variant="ghost" disabled={!dirty} icon={<FilterX className="size-4" />} onClick={() => setF(EMPTY)}>Reset filter</Button>
+        <span className="flex-1" />
+        <Select aria-label="Bersihkan riwayat" className="h-8 w-44 text-[13px]" value="" onChange={(e) => { if (e.target.value) setClear(e.target.value as "finished" | "done" | "failed"); }}><option value="">Bersihkan riwayat…</option><option value="done">Yang selesai</option><option value="failed">Yang gagal / dibatalkan</option><option value="finished">Semua yang sudah berakhir</option></Select>
       </div>
       <div className="scroll-thin flex-1 overflow-y-auto p-4 sm:p-8">
-        {list.length === 0 ? <EmptyState icon={Columns2} title="Belum ada transfer" action={<Link to="/dual"><Button variant="primary">Buka salin dua panel</Button></Link>}>Pilih file di file manager lalu pilih Salin atau Pindahkan, atau gunakan tampilan dua panel.</EmptyState>
-          : <ul className="mx-auto max-w-4xl space-y-3">{list.map((j) => <JobCard key={j.id} j={j} />)}</ul>}
+        {res.isLoading ? <Skeleton className="mx-auto h-48 max-w-4xl" /> : items.length === 0 ? <EmptyState icon={Columns2} title={dirty ? "Tidak ada transfer yang cocok" : "Belum ada transfer"} action={dirty ? <Button onClick={() => setF(EMPTY)}>Reset filter</Button> : <Link to="/dual"><Button variant="primary">Buka salin dua panel</Button></Link>}>{dirty ? "Ubah atau reset filter." : "Pilih file di file manager lalu pilih Salin atau Pindahkan, atau gunakan tampilan dua panel."}</EmptyState>
+          : <ul className="mx-auto max-w-4xl space-y-3">{items.map((j) => <JobCard key={j.id} j={j} />)}</ul>}
       </div>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line bg-surface px-4 py-2.5 text-[12px] text-muted sm:px-8">
+        <span className="tnum">{res.data?.total ?? 0} transfer{res.isFetching ? " · memperbarui…" : ""}</span>
+        <div className="flex items-center gap-2"><label className="flex items-center gap-1.5">Per halaman<Select aria-label="Per halaman" className="h-7 w-16 text-[12px]" value={limit} onChange={(e) => setLimit(Number(e.target.value))}>{[10, 20, 50, 100].map((n) => <option key={n}>{n}</option>)}</Select></label>
+          <Button size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>Sebelumnya</Button><span className="tnum">{page} / {pages}</span><Button size="sm" disabled={page >= pages} onClick={() => setPage(page + 1)}>Berikutnya</Button></div>
+      </div>
+      <Dialog open={clear !== null} onClose={() => setClear(null)} width="max-w-sm" title="Bersihkan riwayat?" footer={<><Button onClick={() => setClear(null)}>Batal</Button><Button variant="danger" icon={<Eraser className="size-4" />} onClick={clearHistory}>Bersihkan</Button></>}>
+        <p className="text-[14px] text-muted">Catatan transfer yang sudah berakhir{dirty ? " dan cocok dengan filter saat ini" : ""} akan dihapus dari daftar. <b className="text-ink">File tidak disentuh</b>, dan transfer yang masih berjalan tidak ikut terhapus.</p>
+      </Dialog>
     </div>
   );
 }

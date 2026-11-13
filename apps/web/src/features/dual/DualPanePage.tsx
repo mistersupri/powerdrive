@@ -33,7 +33,7 @@ function Pane({ label, storageId, setStorageId, folderId, setFolderId, selection
       </header>
       <FileBrowser compact entries={shown} view="list" selected={selection.selected} loading={f.isLoading}
         empty={<p className="py-12 text-center text-[13px] text-muted">Folder kosong.</p>}
-        onSelect={(e, m) => selection.click(e.id, shown, { ...m, additive: m.additive || true })} onOpen={open} onContext={() => {}}
+        onSelect={(e, m) => selection.click(e.id, shown, { ...m, additive: m.additive || true })} onSetSelection={(ids) => selection.setSelected(new Set(ids))} onOpen={open} onContext={() => {}}
         onKeyAction={(k) => { if (k === "selectAll") selection.selectAll(shown); if (k === "clear") selection.clear(); }}
         onDropItems={(t, p, copy) => onDrop(p, t ? t.id : folderId, copy)} onDropFiles={() => toast.info("Untuk mengunggah dari komputer, gunakan halaman penyimpanan.")} dropLabel="Lepaskan untuk memindahkan ke sini (Alt = salin)" />
     </section>

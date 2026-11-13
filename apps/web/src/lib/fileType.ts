@@ -28,4 +28,22 @@ export const KIND_TONE: Record<FileKind, string> = {
   audio: "text-warn-ink bg-warn-soft", pdf: "text-danger-ink bg-danger-soft", text: "text-muted bg-surface-2", sheet: "text-ok-ink bg-ok-soft",
   slides: "text-warn-ink bg-warn-soft", doc: "text-primary-ink bg-primary-soft", archive: "text-muted bg-surface-2", code: "text-muted bg-surface-2", other: "text-muted bg-surface-2",
 };
-export const previewable = (k: FileKind) => ["image", "video", "audio", "pdf", "text"].includes(k);
+export type PreviewKind = "image" | "video" | "audio" | "pdf" | "json" | "csv" | "xlsx" | "docx" | "zip" | "text";
+const TEXT_EXT = new Set(["txt", "md", "log", "js", "ts", "tsx", "jsx", "css", "html", "xml", "yml", "yaml", "py", "sh", "ini", "conf", "env", "sql", "java", "c", "cpp", "h", "go", "rs", "php", "rb", "toml", "csv", "tsv"]);
+/** Which viewer can show this file, or null when only download makes sense. */
+export function previewKind(f: Pick<FileEntry, "isFolder" | "mimeType" | "name">): PreviewKind | null {
+  if (f.isFolder) return null;
+  const ext = f.name.split(".").pop()?.toLowerCase() ?? ""; const m = f.mimeType ?? "";
+  if (m.startsWith("image/") && m !== "image/svg+xml" && m !== "image/heic" && m !== "image/heif") return "image";
+  if (m.startsWith("video/")) return "video";
+  if (m.startsWith("audio/")) return "audio";
+  if (ext === "pdf" || m === "application/pdf") return "pdf";
+  if (ext === "json" || ext === "geojson") return "json";
+  if (ext === "csv" || ext === "tsv") return "csv";
+  if (ext === "xlsx" || ext === "xlsm") return "xlsx";
+  if (ext === "docx") return "docx";
+  if (ext === "zip") return "zip";
+  if (TEXT_EXT.has(ext) || m.startsWith("text/")) return "text";
+  return null;
+}
+export const previewable = (f: Pick<FileEntry, "isFolder" | "mimeType" | "name">) => previewKind(f) !== null;

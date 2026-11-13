@@ -11,7 +11,7 @@ import { newId } from "../lib/crypto.ts";
 import { AppError, badRequest, conflict, notFound } from "../lib/errors.ts";
 import { LocalProvider } from "../providers/local.ts";
 import { type StorageProvider } from "../providers/types.ts";
-import { indexItems, toEntry, uniqueName, validName } from "./files.ts";
+import { bustListCache, indexItems, toEntry, uniqueName, validName } from "./files.ts";
 import { prewarmThumbnail } from "./thumbnails.ts";
 import type { AuthCtx } from "./permissions.ts";
 import { mapProviderError, providerFor } from "./storages.ts";
@@ -161,7 +161,7 @@ async function finalize(ctx: AuthCtx, r: any) {
       if (swap) { await (await import("./trash.ts")).trashRaw(r.workspace_id, r.user_id, r.storage_id, p, existing!.id); file = await p.rename(file.id, name); }
       await fsp.rm(r.staging_path, { force: true });
     }
-    indexItems(r.storage_id, r.parent_id, [file]);
+    indexItems(r.storage_id, r.parent_id, [file]); bustListCache(r.storage_id);
     prewarmThumbnail(r.storage_id, p, file);
     audit({ workspaceId: r.workspace_id, userId: r.user_id, action: "file.upload", resourceType: "file", resourceId: file.id, metadata: { storageId: r.storage_id, name: file.name, size: r.size }, ip: ctx.ip });
     db.run("UPDATE uploads SET status='DONE', result=?, updated_at=? WHERE id=?", JSON.stringify({ file: toEntry(r.storage_id, file) }), now(), r.id);

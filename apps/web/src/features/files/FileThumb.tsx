@@ -1,6 +1,6 @@
 import type { FileEntry } from "@superdrive/shared";
 import { memo, useState } from "react";
-import { thumbUrl } from "@/lib/api";
+import { useFileUrls } from "./urls";
 import { cn } from "@/lib/cn";
 import { KIND_ICON, KIND_TONE, kindOf } from "@/lib/fileType";
 
@@ -10,6 +10,7 @@ import { KIND_ICON, KIND_TONE, kindOf } from "@/lib/fileType";
  */
 export const FileThumb = memo(function FileThumb({ file, size = 256, className, iconClass }: { file: FileEntry; size?: number; className?: string; iconClass?: string }) {
   const [state, setState] = useState<"loading" | "ok" | "fail">("loading");
+  const urls = useFileUrls();
   const kind = kindOf(file);
   const Icon = KIND_ICON[kind];
   const useImg = file.hasThumbnail && !file.isFolder && state !== "fail";
@@ -18,7 +19,7 @@ export const FileThumb = memo(function FileThumb({ file, size = 256, className, 
       <Icon className={cn("size-1/3 min-h-5 min-w-5 transition-opacity", useImg && state === "ok" && "opacity-0", iconClass)} aria-hidden strokeWidth={1.6} />
       {useImg && (
         <img
-          src={thumbUrl(file.storageId, file.id, file.version, size)} alt="" loading="lazy" decoding="async" draggable={false}
+          src={urls.thumb(file, size)} alt="" loading="lazy" decoding="async" draggable={false}
           onLoad={() => setState("ok")} onError={() => setState("fail")}
           className={cn("thumb-img absolute inset-0 size-full object-cover", state === "ok" ? "opacity-100" : "opacity-0")}
         />

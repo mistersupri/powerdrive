@@ -1,34 +1,36 @@
 import type { ConflictPolicy, FileEntry, Permission, StorageConnectionDto, TransferJobDto } from "@superdrive/shared";
 import { useQueryClient } from "@tanstack/react-query";
-import { Copy, Download, Eye, FolderInput, FolderOpen, FolderPlus, Pencil, RefreshCw, Star, Trash2, Upload } from "lucide-react";
+import { Copy, Download, Eye, FolderInput, FolderOpen, FolderPlus, Pencil, RefreshCw, Share2, Star, Trash2, Upload } from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { startTransfer, triggerDownload, type Destination } from "./transferApi";
-import { kindOf, previewable } from "@/lib/fileType";
+import { previewable } from "@/lib/fileType";
 import type { MenuItem } from "@/ui/Menu";
 import { enqueueUploads, type UploadInput } from "@/features/uploads/manager";
 import { DeleteDialog, NameDialog, TransferDialog } from "./dialogs";
-import { Preview } from "./Preview";
+import { Preview } from "@/features/preview/Preview";
+import { ShareDialog } from "@/features/share/ShareDialog";
 import { type Selection } from "./selection";
 
 export { startTransfer, triggerDownload };
 interface Args {
-  storage: StorageConnectionDto | undefined; folderId: string; folderName: string; entries: FileEntry[]; selection: Selection;
+  storage: StorageConnectionDto | undefined; folderId: string; folderName: string; entries: FileEntry[]; /** Everything in the folder, before filtering — used to recognise no-op drops. */ allEntries?: FileEntry[]; selection: Selection;
   onOpenFolder(id: string): void;
 }
 
 /** Everything a file view can do, with its dialogs. Pages render `dialogs` and use `menuFor` / handlers. */
-export function useFileActions({ storage, folderId, folderName, entries, selection, onOpenFolder }: Args) {
+export function useFileActions({ storage, folderId, folderName, entries, allEntries, selection, onOpenFolder }: Args) {
   const qc = useQueryClient();
   const perms = useMemo(() => new Set<Permission>(storage?.permissions ?? []), [storage]);
   const can = (p: Permission) => perms.has(p);
+  const [shareTarget, setShareTarget] = useState<FileEntry | null>(null);
   const [dlg, setDlg] = useState<null | { t: "folder" } | { t: "rename"; e: FileEntry } | { t: "delete"; list: FileEntry[] } | { t: "transfer"; mode: "COPY" | "MOVE"; list: FileEntry[] }>(null);
   const [preview, setPreview] = useState<number | null>(null);
   const fileInput = useRef<HTMLInputElement>(null); const dirInput = useRef<HTMLInputElement>(null);
   const storageId = storage?.id ?? "";
   const selectedEntries = useMemo(() => entries.filter((e) => selection.selected.has(e.id)), [entries, selection.selected]);
-  const previewList = useMemo(() => entries.filter((e) => previewable(kindOf(e))), [entries]);
+  const previewList = useMemo(() => entries.filter((e) => previewable(e)), [entries]);
 
   const refresh = useCallback(() => qc.invalidateQueries({ queryKey: ["files", storageId] }), [qc, storageId]);
 
@@ -53,9 +55,12 @@ export function useFileActions({ storage, folderId, folderName, entries, selecti
     const destFolder = target ? target.id : folderId;
     if (!storage) return;
     if (payload.storageId === storage.id && !copy && payload.ids.includes(destFolder)) return;
+    // Dropping items back into the folder they already live in does nothing — no job, no progress dialog.
+    const here = allEntries ?? entries;
+    if (payload.storageId === storage.id && !copy && destFolder === folderId && payload.ids.every((id) => here.some((e) => e.id === id))) return;
     try { await startTransfer(copy ? "COPY" : "MOVE", payload.storageId, payload.ids, { storageId: storage.id, folderId: destFolder, folderName: target?.name ?? folderName }); }
     catch (e) { toast.error((e as Error).message); }
-  }, [storage, folderId, folderName]);
+  }, [storage, folderId, folderName, allEntries, entries]);
 
   const menuFor = useCallback((e: FileEntry | null): MenuItem[] => {
     if (!e) return [
@@ -71,6 +76,7 @@ export function useFileActions({ storage, folderId, folderName, entries, selecti
       { label: "Salin ke…", icon: <Copy />, hidden: !can("COPY"), divider: true, onSelect: () => setDlg({ t: "transfer", mode: "COPY", list }) },
       { label: "Pindahkan ke…", icon: <FolderInput />, hidden: !can("MOVE"), onSelect: () => setDlg({ t: "transfer", mode: "MOVE", list }) },
       { label: "Ganti nama", icon: <Pencil />, shortcut: "F2", hidden: multi || !can("RENAME"), onSelect: () => setDlg({ t: "rename", e }) },
+      { label: "Bagikan…", icon: <Share2 />, hidden: multi || !can("SHARE"), onSelect: () => setShareTarget(e) },
       { label: e.starred ? "Hapus bintang" : "Beri bintang", icon: <Star />, hidden: multi, onSelect: () => { void star(e); } },
       { label: "Hapus", icon: <Trash2 />, danger: true, divider: true, hidden: !can("DELETE"), shortcut: "Del", onSelect: () => setDlg({ t: "delete", list }) },
     ];
@@ -99,13 +105,14 @@ export function useFileActions({ storage, folderId, folderName, entries, selecti
       }} />
     <TransferDialog open={dlg?.t === "transfer"} mode={dlg?.t === "transfer" ? dlg.mode : "COPY"} entries={dlg?.t === "transfer" ? dlg.list : []} fromStorageId={storageId} initialStorageId={storageId} initialFolderId={folderId} onClose={() => setDlg(null)}
       onConfirm={async (dest, policy) => { if (dlg?.t !== "transfer") return; await startTransfer(dlg.mode, storageId, dlg.list.map((e) => e.id), dest, policy); selection.clear(); }} />
-    {preview !== null && <Preview items={previewList} index={preview} onIndex={setPreview} onClose={() => setPreview(null)} />}
+    {preview !== null && <Preview items={previewList} index={preview} onIndex={setPreview} onClose={() => setPreview(null)} onShare={can("SHARE") ? (f) => { setPreview(null); setShareTarget(f); } : undefined} canDownload={can("DOWNLOAD")} />}
+    <ShareDialog open={!!shareTarget} storageId={storageId} file={shareTarget} onClose={() => setShareTarget(null)} />
   </>);
 
   return {
     can, dialogs, menuFor, open, upload, keyAction, dropItems, star, refresh, selectedEntries,
     pickFiles: () => fileInput.current?.click(), pickFolder: () => dirInput.current?.click(),
-    newFolder: () => setDlg({ t: "folder" }),
+    newFolder: () => setDlg({ t: "folder" }), share: (e: FileEntry) => setShareTarget(e),
     transferSelected: (mode: "COPY" | "MOVE") => selectedEntries.length && setDlg({ t: "transfer", mode, list: selectedEntries }),
     deleteSelected: () => selectedEntries.length && setDlg({ t: "delete", list: selectedEntries }),
     downloadSelected: () => selectedEntries.length && triggerDownload(storageId, selectedEntries.map((e) => e.id)),

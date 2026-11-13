@@ -1,6 +1,6 @@
 import type { NotificationDto, StorageConnectionDto } from "@superdrive/shared";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Activity, ArrowRightLeft, Bell, Check, ChevronsUpDown, Clock, Columns2, FolderOpen, HardDrive, LayoutDashboard, LogOut, Menu as MenuIcon, Moon, Search, Settings, Star, Sun, Users, X } from "lucide-react";
+import { Activity, ArrowRightLeft, Bell, Check, ChevronsUpDown, Clock, Columns2, FolderOpen, HardDrive, LayoutDashboard, Link2, LogOut, Menu as MenuIcon, Moon, Search, Settings, Star, Sun, Trash2, Users, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { NavLink, Navigate, Outlet, useLocation, useNavigate } from "react-router";
 import { Toaster } from "sonner";
@@ -57,8 +57,10 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         <NavItem to="/files" icon={FolderOpen}>Semua file</NavItem>
         <NavItem to="/recent" icon={Clock}>Terbaru</NavItem>
         <NavItem to="/starred" icon={Star}>Berbintang</NavItem>
+        <NavItem to="/shares" icon={Link2}>Tautan berbagi</NavItem>
+        <NavItem to="/trash" icon={Trash2}>Sampah</NavItem>
         <Section>Penyimpanan</Section>
-        {storages.map((s) => (
+        {storages.filter((s) => !s.isDefault).map((s) => (
           <NavLink key={s.id} to={`/s/${s.id}`} className={({ isActive }) => cn(item, "h-8", isActive && active)}
             onDragOver={(e) => { if (e.dataTransfer.types.includes(DRAG_MIME)) { e.preventDefault(); e.currentTarget.classList.add("ring-2", "ring-primary"); } }}
             onDragLeave={(e) => e.currentTarget.classList.remove("ring-2", "ring-primary")}

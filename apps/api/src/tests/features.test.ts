@@ -141,6 +141,11 @@ describe("share links", () => {
     const up = await pub("POST", etoken, "/uploads", { name: "dari-tamu.txt", size: 5 }); assert.equal(up.status, 201, JSON.stringify(up.body));
     const done = await t.call("", "PATCH", `/public/share/${etoken}/uploads/${up.data.id}`, Buffer.from("halo!"), { "upload-offset": "0", "content-type": "application/octet-stream" });
     assert.equal(done.data.status, "DONE"); assert.equal(fs.readFileSync(path.join(t.root, "s", "Bersama", "dari-tamu.txt"), "utf8"), "halo!");
+    // The short-lived listing cache must never hide a write: the new file is visible to the very next listing.
+    await pub("GET", etoken, "/list"); // warm the cache before the next write
+    const up2 = await pub("POST", etoken, "/uploads", { name: "segera-terlihat.txt", size: 2 });
+    await t.call("", "PATCH", `/public/share/${etoken}/uploads/${up2.data.id}`, Buffer.from("ok"), { "upload-offset": "0", "content-type": "application/octet-stream" });
+    assert.ok((await pub("GET", etoken, "/list")).data.items.some((i: any) => i.name === "segera-terlihat.txt"), "listing cache is busted by writes");
     // another share's upload id is not reachable through this token
     assert.equal((await t.call("", "GET", `/public/share/${vtoken}/uploads/${up.data.id}`)).status, 403);
     const nf = await pub("POST", etoken, "/folders", { name: "Tamu" }); assert.equal(nf.data.name, "Tamu");

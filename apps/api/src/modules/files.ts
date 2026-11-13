@@ -39,6 +39,7 @@ export function indexItems(storageId: string, parentId: string, items: RemoteFil
 }
 
 export function unindex(storageId: string, fileId: string) {
+  bustListCache(storageId);
   db.run(
     `WITH RECURSIVE sub(file_id) AS (SELECT ? UNION ALL SELECT f.file_id FROM files f JOIN sub s ON f.parent_id = s.file_id WHERE f.storage_id = ?)
      DELETE FROM files WHERE storage_id = ? AND file_id IN (SELECT file_id FROM sub)`, fileId, storageId, storageId);
@@ -49,6 +50,22 @@ function starredSet(userId: string, storageId: string, ids: string[]) {
   const rows = db.all<{ file_id: string }>(
     `SELECT file_id FROM stars WHERE user_id = ? AND storage_id = ? AND file_id IN (${ids.map(() => "?").join(",")})`, userId, storageId, ...ids);
   return new Set(rows.map((r) => r.file_id));
+}
+
+/**
+ * Many visitors opening the same shared folder must cost one directory read, not one each. Identical in-flight requests
+ * are always merged; public pages additionally reuse a result for a few seconds. Any change to a storage busts its entries.
+ */
+const listCache = new Map<string, { at: number; value: Promise<FileListing> }>();
+export const bustListCache = (storageId: string) => { for (const k of listCache.keys()) if (k.startsWith(storageId + "|")) listCache.delete(k); };
+export function listFolderShared(ctx: AuthCtx, storageId: string, p: StorageProvider, folderId: string, pageToken: string | null, limit: number, ttlMs = 3000): Promise<FileListing> {
+  const key = `${storageId}|${folderId}|${pageToken ?? ""}|${limit}`; const hit = listCache.get(key);
+  if (hit && Date.now() - hit.at < ttlMs) return hit.value;
+  const value = listFolder(ctx, storageId, p, folderId, pageToken, limit);
+  listCache.set(key, { at: Date.now(), value });
+  value.catch(() => listCache.delete(key));
+  if (listCache.size > 500) for (const [k, v] of listCache) if (Date.now() - v.at > ttlMs) listCache.delete(k);
+  return value;
 }
 
 export async function listFolder(ctx: AuthCtx, storageId: string, p: StorageProvider, folderId: string, pageToken: string | null, limit = 200): Promise<FileListing> {
@@ -94,7 +111,7 @@ export function validName(name: unknown): string {
 export async function createFolder(ctx: AuthCtx, storageId: string, p: StorageProvider, parentId: string, name: string) {
   try {
     const f = await p.createFolder(parentId, validName(name));
-    indexItems(storageId, parentId, [f]);
+    indexItems(storageId, parentId, [f]); bustListCache(storageId);
     audit({ workspaceId: ctx.workspaceId, userId: ctx.userId, action: "file.create_folder", resourceType: "file", resourceId: f.id, metadata: { storageId, name: f.name }, ip: ctx.ip });
     return toEntry(storageId, f);
   } catch (e) { mapProviderError(e, storageId); }
@@ -105,7 +122,7 @@ export async function renameFile(ctx: AuthCtx, storageId: string, p: StorageProv
     const old = await p.stat(fileId);
     const f = await p.rename(fileId, validName(name));
     if (f.id !== fileId) unindex(storageId, fileId);
-    indexItems(storageId, f.parentId ?? ROOT, [f]);
+    indexItems(storageId, f.parentId ?? ROOT, [f]); bustListCache(storageId);
     audit({ workspaceId: ctx.workspaceId, userId: ctx.userId, action: "file.rename", resourceType: "file", resourceId: f.id, metadata: { storageId, from: old.name, to: f.name }, ip: ctx.ip });
     return toEntry(storageId, f);
   } catch (e) { mapProviderError(e, storageId); }
@@ -124,6 +141,7 @@ export function setStar(userId: string, storageId: string, fileId: string, on: b
 
 const TYPE_FILTERS: Record<string, string> = {
   folder: "f.is_folder = 1",
+  sheet: "f.ext IN ('xls','xlsx','ods','csv')", slides: "f.ext IN ('ppt','pptx','odp')", text: "(f.mime_type LIKE 'text/%' AND f.ext NOT IN ('csv'))", code: "f.ext IN ('js','ts','json','html','css','py','sh','xml','yml','yaml')", doc: "f.ext IN ('doc','docx','odt','rtf')",
   image: "f.mime_type LIKE 'image/%'",
   video: "f.mime_type LIKE 'video/%'",
   audio: "f.mime_type LIKE 'audio/%'",
@@ -147,8 +165,11 @@ export function searchIndex(ctx: AuthCtx, s: SearchParams) {
   if (s.q?.trim()) {
     for (const term of s.q.toLowerCase().split(/\s+/).filter(Boolean).slice(0, 6)) { where.push("f.name_lower LIKE ? ESCAPE '\\'"); args.push(`%${term.replace(/[\\%_]/g, "\\$&")}%`); }
   }
-  if (s.type && TYPE_FILTERS[s.type]) where.push(TYPE_FILTERS[s.type]!);
-  if (s.ext) { where.push("f.ext = ?"); args.push(s.ext.toLowerCase().replace(/^\./, "")); }
+  // `type` and `ext` accept comma-separated lists (OR within each list).
+  const types = (s.type ?? "").split(",").map((x) => TYPE_FILTERS[x.trim()]).filter(Boolean) as string[];
+  if (types.length) where.push(`(${types.join(" OR ")})`);
+  const exts = (s.ext ?? "").split(",").map((x) => x.trim().toLowerCase().replace(/^\./, "")).filter(Boolean).slice(0, 20);
+  if (exts.length) { where.push(`f.ext IN (${exts.map(() => "?").join(",")})`); args.push(...exts); }
   if (s.folderId) { where.push("f.parent_id = ?"); args.push(s.folderId); }
   if (s.minSize !== undefined) { where.push("f.size >= ?"); args.push(s.minSize); }
   if (s.maxSize !== undefined) { where.push("f.size <= ?"); args.push(s.maxSize); }

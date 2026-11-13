@@ -1,0 +1,63 @@
+import type { FileEntry } from "@superdrive/shared";
+import { formatBytes } from "@superdrive/shared";
+import { ChevronLeft, ChevronRight, Download, Share2, X } from "lucide-react";
+import { lazy, Suspense, useEffect, useRef, type ReactNode } from "react";
+import { previewKind } from "@/lib/fileType";
+import { IconButton } from "@/ui/Button";
+import { Spinner } from "@/ui/misc";
+import { useFileUrls } from "@/features/files/urls";
+import { AudioViewer, CsvViewer, DocxViewer, ImageViewer, JsonViewer, TextViewer, VideoViewer, XlsxViewer, ZipViewer } from "./viewers";
+
+const PdfViewer = lazy(() => import("./PdfViewer"));
+
+function Viewer({ f }: { f: FileEntry }) {
+  switch (previewKind(f)) {
+    case "image": return <ImageViewer f={f} />;
+    case "video": return <VideoViewer f={f} />;
+    case "audio": return <AudioViewer f={f} />;
+    case "pdf": return <Suspense fallback={<div className="grid h-full place-items-center"><Spinner className="size-6" /></div>}><PdfViewer f={f} /></Suspense>;
+    case "json": return <JsonViewer f={f} />;
+    case "csv": return <CsvViewer f={f} />;
+    case "xlsx": return <XlsxViewer f={f} />;
+    case "docx": return <DocxViewer f={f} />;
+    case "zip": return <ZipViewer f={f} />;
+    default: return <TextViewer f={f} />;
+  }
+}
+
+/**
+ * Preview in a centered window (not full screen), so the page behind stays recognisable and the layout never
+ * shifts. Arrow keys move between previewable files, Escape closes.
+ */
+export function Preview({ items, index, onIndex, onClose, onShare, canDownload = true }: { items: FileEntry[]; index: number; onIndex(i: number): void; onClose(): void; onShare?(f: FileEntry): void; canDownload?: boolean }) {
+  const f = items[index]; const urls = useFileUrls(); const panel = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => {
+      const typing = (e.target as HTMLElement)?.closest("input,textarea,select");
+      if (e.key === "Escape") onClose();
+      if (typing) return;
+      if (e.key === "ArrowRight" && index < items.length - 1) onIndex(index + 1);
+      if (e.key === "ArrowLeft" && index > 0) onIndex(index - 1);
+    };
+    addEventListener("keydown", k); return () => removeEventListener("keydown", k);
+  }, [index, items.length, onClose, onIndex]);
+  useEffect(() => { panel.current?.focus(); }, []);
+  if (!f) return null;
+  const Nav = ({ dir, children }: { dir: -1 | 1; children: ReactNode }) => {
+    const target = index + dir; if (target < 0 || target >= items.length) return null;
+    return <button aria-label={dir < 0 ? "Sebelumnya" : "Berikutnya"} onClick={() => onIndex(target)} className={`absolute top-1/2 z-10 grid size-10 -translate-y-1/2 place-items-center rounded-full bg-surface/90 text-ink shadow-float hover:bg-surface ${dir < 0 ? "left-3" : "right-3"}`}>{children}</button>;
+  };
+  return (
+    <div className="anim-fade fixed inset-0 z-50 grid place-items-center bg-black/55 p-3 sm:p-6" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div ref={panel} tabIndex={-1} role="dialog" aria-modal="true" aria-label={`Pratinjau ${f.name}`} className="anim-pop relative flex h-[min(88vh,860px)] w-[min(1120px,100%)] flex-col overflow-hidden rounded-2xl bg-surface text-ink shadow-float focus:outline-none">
+        <header className="flex shrink-0 items-center gap-3 border-b border-line px-4 py-2.5">
+          <div className="min-w-0 flex-1"><p className="truncate text-[14px] font-semibold" title={f.name}>{f.name}</p><p className="tnum text-[12px] text-muted">{formatBytes(f.size)} · {index + 1} dari {items.length}</p></div>
+          {onShare && <IconButton label="Bagikan" onClick={() => onShare(f)}><Share2 className="size-[18px]" /></IconButton>}
+          {canDownload && <a href={urls.download(f)} className="inline-flex h-9 items-center gap-2 rounded-lg bg-surface-2 px-3 text-[13px] font-medium hover:bg-line"><Download className="size-4" aria-hidden />Unduh</a>}
+          <IconButton label="Tutup" onClick={onClose}><X className="size-5" /></IconButton>
+        </header>
+        <div className="relative min-h-0 flex-1"><Viewer key={f.id} f={f} /><Nav dir={-1}><ChevronLeft className="size-5" /></Nav><Nav dir={1}><ChevronRight className="size-5" /></Nav></div>
+      </div>
+    </div>
+  );
+}

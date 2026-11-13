@@ -6,7 +6,7 @@ import { db, now } from "../db.ts";
 import { audit } from "../lib/audit.ts";
 import { AppError, badRequest, forbidden } from "../lib/errors.ts";
 import { sendFile, sendFolderZip, sendThumbnail, sendZip } from "../modules/delivery.ts";
-import { createFolder, listFolder, renameFile, toEntry } from "../modules/files.ts";
+import { createFolder, listFolderShared, renameFile, toEntry } from "../modules/files.ts";
 import { accessKeyValid, assertWithin, checkSharePassword, findShare, makeAccessKey, resolveShare, type ResolvedShare } from "../modules/shares.ts";
 import { trashFiles } from "../modules/trash.ts";
 import { cancelUpload, createUpload, getUpload, receiveChunk, retryUpload } from "../modules/uploads.ts";
@@ -47,13 +47,13 @@ export async function publicRoutes(app: FastifyInstance) {
     return ok(req, {});
   });
 
-  app.get("/share/:token/list", lim(600), async (req, reply) => {
+  app.get("/share/:token/list", lim(3000), async (req, reply) => {
     const r = gate(req);
     const q = z.object({ folderId: z.string().optional(), pageToken: z.string().optional(), limit: z.coerce.number().int().min(1).max(500).default(200) }).parse(req.query);
     if (!r.share.is_folder) throw badRequest("Tautan ini untuk satu file.");
     const folder = q.folderId && q.folderId !== "root" ? decodeId(q.folderId) : r.share.file_id;
     await assertWithin(r.share, r.p, folder);
-    const listing = await listFolder(r.ctx, r.storage.id, r.p, folder, q.pageToken ?? null, q.limit);
+    const listing = structuredClone(await listFolderShared(r.ctx, r.storage.id, r.p, folder, q.pageToken ?? null, q.limit));
     // Present paths relative to the shared folder and never expose the parent.
     const rootEnc = listing.folder.path.findIndex((c) => decodeId(c.id) === r.share.file_id);
     const isRoot = folder === r.share.file_id;
@@ -124,7 +124,7 @@ export async function publicRoutes(app: FastifyInstance) {
     return ok(req, {});
   });
 
-  app.post("/share/:token/uploads", lim(1200), async (req, reply) => {
+  app.post("/share/:token/uploads", lim(4000), async (req, reply) => {
     const r = gate(req, true);
     const b = z.object({ parentId: z.string().default("root"), name: z.string(), size: z.number().int().min(0), mimeType: z.string().nullish(), conflictPolicy: z.enum(["SKIP", "OVERWRITE", "RENAME", "FAIL"]).optional() }).parse(req.body);
     const parent = b.parentId === "root" ? r.share.file_id : decodeId(b.parentId);
@@ -133,8 +133,8 @@ export async function publicRoutes(app: FastifyInstance) {
     const up = await createUpload(r.ctx, { storageId: r.storage.id, parentId: encodeParent(parent), name: b.name, size: b.size, mimeType: b.mimeType, conflictPolicy: b.conflictPolicy === "SKIP" ? "SKIP" : "RENAME" }, r.share.id);
     return reply.status(201).send(ok(req, up));
   });
-  app.get("/share/:token/uploads/:id", lim(6000), async (req) => { const r = gate(req, true); return ok(req, getUpload(r.ctx, (req.params as any).id, r.share.id)); });
-  app.patch("/share/:token/uploads/:id", lim(6000), async (req, reply) => {
+  app.get("/share/:token/uploads/:id", lim(12000), async (req) => { const r = gate(req, true); return ok(req, getUpload(r.ctx, (req.params as any).id, r.share.id)); });
+  app.patch("/share/:token/uploads/:id", lim(12000), async (req, reply) => {
     const r = gate(req, true);
     const offset = Number(req.headers["upload-offset"]);
     if (!Number.isSafeInteger(offset) || offset < 0) throw badRequest("Header Upload-Offset wajib diisi.");
