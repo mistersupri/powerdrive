@@ -95,9 +95,9 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
   const webDist = path.resolve(import.meta.dirname ?? ".", "../../web/dist");
   const dist = fs.existsSync(webDist) ? webDist : path.resolve(process.cwd(), "apps/web/dist");
   if (fs.existsSync(path.join(dist, "index.html"))) {
-    await app.register(fastifyStatic, { root: dist, wildcard: false, setHeaders: (res: any, p: string) => {
-      if (p.includes(`${path.sep}assets${path.sep}`)) res.setHeader("cache-control", "public, max-age=31536000, immutable");
-      else res.setHeader("cache-control", "no-cache");
+    await app.register(fastifyStatic, { root: dist, wildcard: false, setHeaders: (res, p: string) => {
+      if (p.includes(`${path.sep}assets${path.sep}`)) res.header("cache-control", "public, max-age=31536000, immutable");
+      else res.header("cache-control", "no-cache");
     } });
     app.setNotFoundHandler((req, reply) => {
       if (req.url.startsWith("/api/")) return reply.status(404).send({ success: false, error: { code: "NOT_FOUND", message: "Endpoint tidak ditemukan." } });

@@ -75,7 +75,9 @@ export class LocalProvider implements StorageProvider {
   async account(): Promise<AccountInfo> {
     let quota: AccountInfo["quota"] = null;
     try { const s = await fsp.statfs(this.root); quota = { total: Number(s.blocks) * Number(s.bsize), used: (Number(s.blocks) - Number(s.bfree)) * Number(s.bsize) }; } catch { /* statfs unsupported */ }
-    return { id: this.root, email: null, displayName: this.displayName, quota };
+    // Quota is the whole disk, so every folder on the same disk shares one account id and is counted once.
+    const dev = await fsp.stat(this.root).then((st) => st.dev, () => 0);
+    return { id: `disk:${dev}`, email: null, displayName: this.displayName, quota };
   }
 
   async list(parentId: string, opts: { pageToken?: string | null; limit?: number } = {}): Promise<ListResult> {

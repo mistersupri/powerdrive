@@ -4,7 +4,7 @@ import { z } from "zod";
 import { db } from "../db.ts";
 import { ok, requireAuth } from "../app.ts";
 import { audit } from "../lib/audit.ts";
-import { badRequest, notFound } from "../lib/errors.ts";
+import { badRequest } from "../lib/errors.ts";
 import { sendFile, sendFolderZip } from "../modules/delivery.ts";
 import { createFolder, deleteFile, listFolder, renameFile, searchIndex, setStar, toEntry } from "../modules/files.ts";
 import { requireStorage } from "../modules/permissions.ts";
@@ -147,4 +147,3 @@ export async function fileRoutes(app: FastifyInstance) {
     return ok(req, searchIndex(ctx, { ...q, starred: q.starred === "true", recent: q.recent === "true" }));
   });
 }
-void notFound;

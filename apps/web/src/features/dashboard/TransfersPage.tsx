@@ -11,7 +11,7 @@ import { dateTime, formatEta, formatSpeed, percent } from "@/lib/format";
 import { PageHeader } from "@/features/layout/Shell";
 import { transferActions, transferStore, type JobView } from "@/features/transfers/store";
 import { Button } from "@/ui/Button";
-import { EmptyState, Progress, Skeleton, TransferStatusBadge, transferStatusInfo } from "@/ui/misc";
+import { EmptyState, Progress, Skeleton, TransferStatusBadge } from "@/ui/misc";
 
 const ACTIVE = ["QUEUED", "VALIDATING", "RUNNING", "RETRYING", "VERIFYING"];
 const TABS = [["all", "Semua"], ["active", "Aktif"], ["done", "Selesai"], ["failed", "Gagal"]] as const;
@@ -77,7 +77,6 @@ export default function TransfersPage() {
   const n = (f: (j: JobView) => boolean) => jobs.filter(f).length;
   const counts = { active: n((j) => j.status === "RUNNING" || j.status === "VALIDATING" || j.status === "VERIFYING" || j.status === "RETRYING"), queued: n((j) => j.status === "QUEUED"), done: n((j) => j.status === "COMPLETED" || j.status === "COPY_COMPLETED_SOURCE_RETAINED"), failed: n((j) => j.status === "FAILED") };
   const list = jobs.filter((j) => tab === "all" || (tab === "active" && (ACTIVE.includes(j.status) || j.status === "PAUSED")) || (tab === "done" && (j.status === "COMPLETED" || j.status === "COPY_COMPLETED_SOURCE_RETAINED")) || (tab === "failed" && (j.status === "FAILED" || j.status === "CANCELLED")));
-  void transferStatusInfo;
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <PageHeader title="Transfer" subtitle="Pantau pemindahan file antar penyimpanan." actions={<Link to="/dual"><Button variant="primary" size="sm" icon={<Columns2 className="size-4" />}>Transfer baru</Button></Link>} />

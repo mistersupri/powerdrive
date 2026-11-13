@@ -1,0 +1,30 @@
+# One container: web app + API + transfer worker + scheduler. State lives in ./data (SQLite + staging + caches).
+services:
+  superdrive:
+    build: .
+    image: superdrive:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATA_DIR: /data
+      LOCAL_ROOTS: /data/files
+    volumes:
+      - ./data:/data
+      # Expose extra server folders as storages, e.g.:
+      # - /mnt/nas:/data/files/nas
+    ports:
+      - "127.0.0.1:3000:3000"
+    stop_grace_period: 15s
+
+  # Optional HTTPS in front (automatic certificates). Enable with:  docker compose --profile tls up -d
+  caddy:
+    profiles: ["tls"]
+    image: caddy:2
+    restart: unless-stopped
+    command: caddy reverse-proxy --from ${DOMAIN:?set DOMAIN in .env} --to superdrive:3000
+    ports: ["80:80", "443:443"]
+    volumes: [caddy_data:/data]
+    depends_on: [superdrive]
+
+volumes:
+  caddy_data:

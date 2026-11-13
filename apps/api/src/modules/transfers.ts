@@ -7,7 +7,7 @@ import { db, now } from "../db.ts";
 import { audit, notify } from "../lib/audit.ts";
 import { newId } from "../lib/crypto.ts";
 import { AppError, badRequest, conflict, notFound } from "../lib/errors.ts";
-import { decodeId, isRetryable, ProviderError, ROOT, type RemoteFile, type StorageProvider } from "../providers/types.ts";
+import { decodeId, isRetryable, ProviderError, type RemoteFile, type StorageProvider } from "../providers/types.ts";
 import { indexItems, unindex, uniqueName } from "./files.ts";
 import { can, type AuthCtx } from "./permissions.ts";
 import { providerFor } from "./storages.ts";
@@ -482,4 +482,3 @@ async function processItem(job: any, item: any, src: StorageProvider, dst: Stora
   setItem("COMPLETED", { error_message: null });
 }
 
-export { ROOT };

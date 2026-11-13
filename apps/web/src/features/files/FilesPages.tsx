@@ -156,11 +156,9 @@ export function ResultsPage({ mode }: { mode: "search" | "recent" | "starred" })
     enabled: mode !== "search" || q.length > 0,
   });
   const entries = res.data?.items ?? [];
-  const [prevIdx, setPrev] = useState<number | null>(null);
   const first = entries.find((e) => selection.selected.has(e.id)) ?? entries[0];
   const storage = storages.data?.find((s) => s.id === first?.storageId);
   const a = useFileActions({ storage, folderId: "root", folderName: "", entries, selection, onOpenFolder: (id) => nav(`/s/${first?.storageId}?f=${id}`) });
-  void prevIdx; void setPrev;
   const title = mode === "search" ? `Hasil untuk “${q}”` : mode === "recent" ? "Terbaru" : "Berbintang";
   const types = [["", "Semua"], ["image", "Gambar"], ["video", "Video"], ["pdf", "PDF"], ["document", "Dokumen"], ["archive", "Arsip"], ["folder", "Folder"]];
   const openEntry = (e: FileEntry) => { if (e.isFolder) nav(`/s/${e.storageId}?f=${e.id}`); else a.open(e); };

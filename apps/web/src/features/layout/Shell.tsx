@@ -1,7 +1,6 @@
-import type { DashboardDto, NotificationDto, StorageConnectionDto } from "@superdrive/shared";
-import { PROVIDER_LABEL } from "@superdrive/shared";
+import type { NotificationDto, StorageConnectionDto } from "@superdrive/shared";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Activity, ArrowRightLeft, Bell, Check, ChevronsUpDown, Clock, Columns2, FolderOpen, HardDrive, LayoutDashboard, LogOut, Menu as MenuIcon, Moon, Plus, Search, Settings, Star, Sun, Users, X } from "lucide-react";
+import { Activity, ArrowRightLeft, Bell, Check, ChevronsUpDown, Clock, Columns2, FolderOpen, HardDrive, LayoutDashboard, LogOut, Menu as MenuIcon, Moon, Search, Settings, Star, Sun, Users, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { NavLink, Navigate, Outlet, useLocation, useNavigate } from "react-router";
 import { Toaster } from "sonner";
@@ -196,5 +195,3 @@ export function AppShell() {
     </ShellCtx.Provider>
   );
 }
-void PROVIDER_LABEL; void Plus;
-export type { DashboardDto };

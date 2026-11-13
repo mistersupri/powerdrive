@@ -5,9 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch --env-file-if-exists=../../.env src/server.ts",
-    "build": "esbuild src/server.ts --bundle --platform=node --format=esm --target=node22 --packages=external --sourcemap --outfile=dist/server.mjs",
+    "build": "node build.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test --test-concurrency=1 \"src/**/*.test.ts\""
+    "test": "node --import tsx --test --test-concurrency=1 \"src/**/*.test.ts\"",
+    "start": "node --disable-warning=ExperimentalWarning dist/server.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1168.0",

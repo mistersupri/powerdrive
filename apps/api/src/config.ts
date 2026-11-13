@@ -15,7 +15,6 @@ export const config = {
   dbFile: env.DATABASE_FILE ?? path.join(dataDir, "superdrive.db"),
   cacheDir: path.join(dataDir, "cache"),
   stagingDir: path.join(dataDir, "staging"),
-  sessionSecret: env.SESSION_SECRET ?? "dev-only-session-secret-change-me",
   sessionTtlDays: num(env.SESSION_TTL_DAYS, 14),
   /** `v1:<base64 32 bytes>,v2:<...>` — first entry is used for new writes. */
   masterKeys: env.ENCRYPTION_MASTER_KEY ?? "",

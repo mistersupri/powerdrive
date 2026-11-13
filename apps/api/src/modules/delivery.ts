@@ -2,7 +2,7 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 import { ZipArchive } from "archiver";
 import path from "node:path";
 import { PassThrough } from "node:stream";
-import { ProviderError, ROOT, type RemoteFile, type StorageProvider } from "../providers/types.ts";
+import { ROOT, type RemoteFile, type StorageProvider } from "../providers/types.ts";
 import { mapProviderError } from "./storages.ts";
 
 /** Types that are safe to render inline from our own origin. Everything else is downloaded, never rendered. */
@@ -91,4 +91,3 @@ export async function sendFolderZip(req: FastifyRequest, reply: FastifyReply, p:
   reply.header("cache-control", "no-store");
   return reply.send(out);
 }
-void ProviderError;

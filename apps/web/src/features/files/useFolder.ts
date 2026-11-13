@@ -16,7 +16,7 @@ export function useFolder(storageId: string, folderId: string) {
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (p) => p.nextPageToken ?? undefined,
     // Keep showing the previous folder's data until the new one is ready? No: show skeletons, folders are cached anyway.
-    staleTime: 20_000,
+    staleTime: 20_000, enabled: !!storageId,
   });
   useEffect(() => { if (q.hasNextPage && !q.isFetchingNextPage) void q.fetchNextPage(); }, [q.hasNextPage, q.isFetchingNextPage, q.fetchNextPage]);
   const entries = useMemo(() => q.data?.pages.flatMap((p) => p.items) ?? [], [q.data]);

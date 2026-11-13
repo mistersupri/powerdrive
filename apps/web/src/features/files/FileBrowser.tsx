@@ -208,20 +208,22 @@ const FileTile = memo(function FileTile({ e, sel, cursor, props, onMenu }: { e: 
 });
 
 const COLS = "grid-cols-[28px_minmax(0,1fr)_88px_120px_32px] md:grid-cols-[28px_minmax(0,1fr)_100px_88px_128px_32px]";
+const COLS_COMPACT = "grid-cols-[28px_minmax(0,1fr)_72px_28px]";
 function ListHeader({ showStorage, compact }: { showStorage: boolean; compact?: boolean }) {
-  return <div className={cn("grid items-center gap-3 border-b border-line px-3 text-[12px] font-semibold text-muted", COLS, compact && "!grid-cols-[28px_minmax(0,1fr)_72px_32px]")} data-bg="1"><span /><span>Nama</span><span className="hidden md:block">{showStorage ? "Penyimpanan" : "Jenis"}</span><span className={cn("text-right", compact && "hidden")}>Ukuran</span><span className={cn("hidden md:block", compact && "!hidden")}>Diubah</span><span /></div>;
+  if (compact) return <div className={cn("grid h-9 items-center gap-3 border-b border-line px-3 text-[12px] font-semibold text-muted", COLS_COMPACT)} data-bg="1"><span /><span>Nama</span><span className="text-right">Ukuran</span><span /></div>;
+  return <div className={cn("grid h-9 items-center gap-3 border-b border-line px-3 text-[12px] font-semibold text-muted", COLS)} data-bg="1"><span /><span>Nama</span><span className="hidden md:block">{showStorage ? "Penyimpanan" : "Jenis"}</span><span className="text-right">Ukuran</span><span className="hidden md:block">Diubah</span><span /></div>;
 }
 const ListRow = memo(function ListRow({ e, sel, drop, cursor, props, storageName, compact, onMenu }: { e: FileEntry; i: number; sel: boolean; drop: boolean; cursor: boolean; props: any; storageName?: string; compact?: boolean; onMenu(x: number, y: number): void }) {
   const kind = kindOf(e);
+  const menuBtn = <button aria-label={`Menu untuk ${e.name}`} className="grid size-7 place-items-center rounded-md text-muted opacity-0 group-hover:opacity-100 hover:bg-surface focus:opacity-100 pointer-coarse:opacity-100" onClick={(ev) => { ev.stopPropagation(); const r = ev.currentTarget.getBoundingClientRect(); onMenu(r.right - 200, r.bottom); }}><MoreVertical className="size-4" /></button>;
   return (
-    <div {...props} className={cn("group grid h-[52px] items-center gap-3 border-b border-line px-3 text-[13px] select-none", COLS, compact && "!grid-cols-[28px_minmax(0,1fr)_72px_32px]", sel ? "bg-primary-soft" : "hover:bg-surface-2", cursor && !sel && "bg-surface-2", drop && "bg-primary-soft ring-2 ring-primary ring-inset")}>
+    <div {...props} className={cn("group grid h-[52px] items-center gap-3 border-b border-line px-3 text-[13px] select-none", compact ? COLS_COMPACT : COLS, sel ? "bg-primary-soft" : "hover:bg-surface-2", cursor && !sel && "bg-surface-2", drop && "bg-primary-soft ring-2 ring-primary ring-inset")}>
       <span className="relative"><FileThumb file={e} size={128} className="size-7 rounded-md" iconClass="size-4" />{sel && <span className="absolute -top-1 -left-1 grid size-3.5 place-items-center rounded-full bg-primary text-white"><Check className="size-2.5" strokeWidth={3.5} /></span>}</span>
       <span className="flex min-w-0 items-center gap-2"><span className="truncate font-medium" title={e.name}>{e.name}</span>{e.starred && <Star className="size-3.5 shrink-0 fill-warn-ink text-warn-ink" aria-label="Berbintang" />}</span>
-      <span className="hidden truncate text-muted md:block">{storageName ?? (e.isFolder ? "Folder" : (e.name.split(".").pop() || kind).toUpperCase())}</span>
-      <span className={cn("tnum text-right text-muted", compact && "hidden")}>{e.isFolder ? "—" : formatBytes(e.size)}</span>
-      {compact && <span className="tnum text-right text-muted">{e.isFolder ? "—" : formatBytes(e.size)}</span>}
-      <span className={cn("tnum hidden text-muted md:block", compact && "!hidden")}>{shortDate(e.modifiedAt)}</span>
-      <button aria-label={`Menu untuk ${e.name}`} className="grid size-7 place-items-center rounded-md text-muted opacity-0 group-hover:opacity-100 hover:bg-surface focus:opacity-100 pointer-coarse:opacity-100" onClick={(ev) => { ev.stopPropagation(); const r = ev.currentTarget.getBoundingClientRect(); onMenu(r.right - 200, r.bottom); }}><MoreVertical className="size-4" /></button>
+      {!compact && <span className="hidden truncate text-muted md:block">{storageName ?? (e.isFolder ? "Folder" : (e.name.split(".").pop() || kind).toUpperCase())}</span>}
+      <span className="tnum text-right whitespace-nowrap text-muted">{e.isFolder ? "—" : formatBytes(e.size)}</span>
+      {!compact && <span className="tnum hidden text-muted md:block">{shortDate(e.modifiedAt)}</span>}
+      {menuBtn}
     </div>
   );
 });

@@ -23,7 +23,12 @@ export async function miscRoutes(app: FastifyInstance) {
     const data: DashboardDto = {
       storages: list.length, providers: new Set(list.map((s) => s.provider)).size,
       // Only storages that report a quota count; unknown is not zero.
-      knownCapacity: list.reduce((n, s) => n + (s.quota?.total ?? 0), 0), knownUsage: list.reduce((n, s) => n + (s.quota?.used ?? 0), 0),
+      ...(() => {
+        // The same account (or disk) connected twice must not be counted twice.
+        const seen = new Set<string>(); let cap = 0; let used = 0;
+        rows.forEach((r, i) => { const k = `${r.provider}:${r.account_id ?? r.id}`; if (seen.has(k)) return; seen.add(k); cap += list[i]!.quota?.total ?? 0; used += list[i]!.quota?.used ?? 0; });
+        return { knownCapacity: cap, knownUsage: used };
+      })(),
       transfers: { active: t.active ?? 0, completed: t.completed ?? 0, failed: t.failed ?? 0 }, recentActivity: activity, storageList: list,
     };
     return ok(req, data);

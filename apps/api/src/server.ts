@@ -7,7 +7,6 @@ import { recoverUploads } from "./modules/uploads.ts";
 import { currentKeyVersion } from "./lib/crypto.ts";
 
 async function main() {
-  if (config.isProd && config.sessionSecret === "dev-only-session-secret-change-me") throw new Error("SESSION_SECRET wajib diubah di production.");
   currentKeyVersion(); // fail fast on a bad master key
   openDb();
   const app = await buildApp();

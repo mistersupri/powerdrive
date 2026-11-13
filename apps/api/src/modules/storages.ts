@@ -161,4 +161,3 @@ export function deleteConnection(ctx: AuthCtx, storageId: string) {
   audit({ workspaceId: ctx.workspaceId, userId: ctx.userId, action: "storage.disconnect", resourceType: "storage", resourceId: storageId, metadata: { provider: row.provider, name: row.name }, ip: ctx.ip });
 }
 
-export type { OAuthSlug };
