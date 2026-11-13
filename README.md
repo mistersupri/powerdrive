@@ -16,7 +16,7 @@ pnpm dev            # API :3000 + web :5173 (buka http://localhost:5173)
 Akun pertama yang mendaftar menjadi administrator. Tanpa konfigurasi apa pun Anda bisa langsung menghubungkan **Folder server** (data di `./data/files`) dan mencoba semua fitur.
 
 ```bash
-pnpm test           # 29 tes API (otentikasi, isolasi workspace, unggah, transfer, izin, keamanan)
+pnpm test           # 37 tes API (otentikasi, isolasi workspace, unggah, transfer, izin, keamanan, kontrak adapter cloud dengan fetch tiruan)
 pnpm typecheck
 ```
 
@@ -40,7 +40,7 @@ Daftarkan redirect URI OAuth: `${APP_URL}/api/v1/storages/{google-drive|onedrive
 | Unggah resumable per potongan (file & folder), unduh dengan Range, unduh folder sebagai ZIP | ✅ diuji |
 | Thumbnail cepat (lihat [PERFORMANCE](docs/PERFORMANCE.md)) | ✅ diukur |
 | Transfer salin/pindah antar penyimpanan: file, folder bertingkat, bulk, kebijakan nama bentrok, jeda/lanjut/batal/ulang, SSE, pemulihan setelah restart, pindah aman (sumber dihapus setelah tujuan terverifikasi) | ✅ diuji (antar folder server) |
-| Penyimpanan: **Folder server**, **S3-compatible**, Google Drive, OneDrive, Dropbox (OAuth + PKCE, banyak akun, token terenkripsi) | Folder server ✅ diuji. **Cloud & S3: ditulis sesuai dokumentasi API resmi, belum diuji ke layanan sungguhan** (tidak ada kredensial di lingkungan pengembangan) |
+| Penyimpanan: **Folder server**, **S3-compatible**, Google Drive, OneDrive, Dropbox (OAuth + PKCE, banyak akun, token terenkripsi) | Folder server ✅ diuji. **Cloud & S3: ditulis sesuai dokumentasi API resmi; Google/OneDrive/Dropbox diuji terhadap respons tiruan (paging, unggah per potongan, Range, error), S3 dan semuanya belum diuji ke layanan sungguhan** (tidak ada kredensial di lingkungan pengembangan) |
 | Audit log, notifikasi, dashboard (kapasitas yang tidak dilaporkan tampil "—", bukan 0), tema terang/gelap, responsif | ✅ |
 
 ## Belum ada (sengaja ditunda)
