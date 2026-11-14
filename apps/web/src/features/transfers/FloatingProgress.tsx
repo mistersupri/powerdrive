@@ -1,5 +1,5 @@
 import { ArrowRight, CheckCircle2, ChevronDown, ChevronUp, FileUp, Pause, Play, RotateCcw, X, XCircle } from "lucide-react";
-import { useState } from "react";
+import { memo, useState } from "react";
 import { Link } from "react-router";
 import { cn } from "@/lib/cn";
 import { formatBytes, formatEta, formatSpeed, percent } from "@/lib/format";
@@ -10,7 +10,7 @@ import { transferActions, transferStore, type JobView } from "./store";
 
 const ACTIVE = ["QUEUED", "VALIDATING", "RUNNING", "RETRYING", "VERIFYING"];
 
-function UploadRow({ t }: { t: UploadTask }) {
+export const UploadRow = memo(function UploadRow({ t }: { t: UploadTask }) {
   const running = t.status === "uploading" || t.status === "processing" || t.status === "queued";
   const pct = t.status === "processing" ? percent(t.pushed, t.size) : percent(t.sent, t.size);
   const eta = t.speed && t.status === "uploading" ? (t.size - t.sent) / t.speed : null;
@@ -34,7 +34,11 @@ function UploadRow({ t }: { t: UploadTask }) {
       {running && <Progress value={pct} className="h-1" />}
     </li>
   );
-}
+});
+
+const UPLOAD_ORDER: Record<string, number> = { uploading: 0, processing: 1, error: 2, queued: 3, done: 4, skipped: 4, cancelled: 5 };
+/** In-flight files first, so they are visible no matter how many are waiting. */
+export const sortUploads = (ts: UploadTask[]) => [...ts].sort((a, b) => (UPLOAD_ORDER[a.status] ?? 9) - (UPLOAD_ORDER[b.status] ?? 9));
 
 function JobRow({ j }: { j: JobView }) {
   const active = ACTIVE.includes(j.status);
@@ -70,7 +74,7 @@ export function FloatingProgress() {
   const jobs = transferStore.use((s) => s.jobs);
   const [min, setMin] = useState(false); const [dismissed, setDismissed] = useState(0);
   const shownJobs = jobs.filter((j) => ACTIVE.includes(j.status) || j.status === "PAUSED" || Date.now() - new Date(j.completedAt ?? j.createdAt).getTime() < 60_000).slice(0, 8);
-  const shownUploads = uploads.slice(0, 12);
+  const shownUploads = sortUploads(uploads);
   const running = shownJobs.filter((j) => ACTIVE.includes(j.status)).length + uploads.filter((t) => ["uploading", "processing", "queued"].includes(t.status)).length;
   const done = shownJobs.filter((j) => j.status === "COMPLETED").length + uploads.filter((t) => t.status === "done").length;
   const total = shownJobs.length + shownUploads.length;
