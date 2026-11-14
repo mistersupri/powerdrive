@@ -214,6 +214,9 @@ const MIGRATIONS: string[] = [
     started_at TEXT, finished_at TEXT, folders_scanned INTEGER NOT NULL DEFAULT 0, files_indexed INTEGER NOT NULL DEFAULT 0, error TEXT
   );
   `,
+  /* 4 */ `
+  ALTER TABLE share_links ADD COLUMN title TEXT;
+  `,
 ];
 
 function migrate(d: Database) {

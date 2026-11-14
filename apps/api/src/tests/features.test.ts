@@ -243,3 +243,60 @@ describe("tree, details and search location", () => {
     assert.equal((await t.call("viv", "POST", `/storages/${sid}/reindex`)).status, 403);
   });
 });
+
+describe("share links: titles, changeable permission, visitors", () => {
+  let dir = ""; let a: any; let b: any; let atok = "";
+  const pub = (m: string, tok: string, url: string, payload?: any) => t.call("", m, `/public/share/${tok}${url}`, payload);
+  const tokOf = (x: any) => x.url.split("/share/")[1] as string;
+  before(async () => {
+    dir = (await t.call("ana", "POST", "/files/folders", { storageId: sid, name: "Untuk-Banyak-Orang" })).data.id;
+    await mk("isi.txt", "isi", dir);
+    a = (await t.call("ana", "POST", "/shares", { storageId: sid, fileId: dir, role: "VIEWER", newLink: true, title: "  Pak   Budi (vendor) " })).data;
+    b = (await t.call("ana", "POST", "/shares", { storageId: sid, fileId: dir, role: "VIEWER", newLink: true, title: "Tim audit" })).data; atok = tokOf(a);
+  });
+  it("makes several independent links per item, each with a tidy title for the recipient", async () => {
+    assert.notEqual(a.id, b.id); assert.notEqual(tokOf(a), tokOf(b));
+    assert.equal(a.title, "Pak Budi (vendor)", "whitespace is collapsed and trimmed");
+    const all = (await t.call("ana", "GET", `/shares?storageId=${sid}&fileId=${dir}`)).data; assert.deepEqual(all.map((x: any) => x.title), ["Pak Budi (vendor)", "Tim audit"]);
+    assert.equal((await t.call("ana", "GET", "/shares/all?q=budi")).data.total, 1, "the shares page can search by title");
+    assert.equal((await pub("GET", atok, "")).data.title, undefined, "the title is for the owner, never shown to visitors");
+    assert.equal((await t.call("ana", "PATCH", `/shares/${a.id}`, { title: "Pak Budi, revisi 2" })).data.title, "Pak Budi, revisi 2");
+    assert.equal((await t.call("ana", "PATCH", `/shares/${a.id}`, { title: "   " })).data.title, null, "blank clears the title");
+    await t.call("ana", "PATCH", `/shares/${a.id}`, { title: "Pak Budi" });
+  });
+  it("the permission can be changed after the link was already used, and takes effect immediately", async () => {
+    assert.equal((await pub("GET", atok, "/list")).status, 200, "link already in use");
+    assert.equal((await pub("POST", atok, "/folders", { name: "belum-boleh" })).status, 403, "viewer cannot write");
+    const up = await t.call("ana", "PATCH", `/shares/${a.id}`, { role: "EDITOR", maxUploadMb: 5 }); assert.equal(up.data.role, "EDITOR");
+    assert.equal(tokOf(up.data), atok, "same link, same URL");
+    assert.equal((await pub("POST", atok, "/folders", { name: "boleh-sekarang" })).status, 200);
+    const u = await pub("POST", atok, "/uploads", { name: "sedang-jalan.txt", size: 4 }); assert.equal(u.status, 201);
+    const down = await t.call("ana", "PATCH", `/shares/${a.id}`, { role: "VIEWER" }); assert.equal(down.data.role, "VIEWER"); assert.equal(down.data.maxUploadBytes, null, "quota is dropped with the editor role");
+    const chunk = await t.call("", "PATCH", `/public/share/${atok}/uploads/${u.data.id}`, Buffer.from("data"), { "upload-offset": "0", "content-type": "application/octet-stream" });
+    assert.equal(chunk.status, 403, "an upload in flight stops the moment the link becomes viewer-only");
+    assert.equal((await pub("GET", atok, "/list")).status, 200, "reading still works");
+    const { db } = await import("../db.ts");
+    const rows = db.all<any>("SELECT metadata FROM audit_logs WHERE action = 'share.role' AND resource_id = ? ORDER BY created_at", a.id);
+    assert.deepEqual(rows.map((r) => JSON.parse(r.metadata).to), ["EDITOR", "VIEWER"], "every permission change is audited");
+  });
+  it("editor permission is only possible for folders", async () => {
+    const f = (await list()).find((i: any) => i.name === "secret.txt") ?? (await list()).find((i: any) => !i.isFolder);
+    const link = (await t.call("ana", "POST", "/shares", { storageId: sid, fileId: f.id, role: "VIEWER", newLink: true, title: "file tunggal" })).data;
+    assert.equal((await t.call("ana", "PATCH", `/shares/${link.id}`, { role: "EDITOR" })).status, 400);
+    assert.equal((await t.call("ana", "POST", "/shares", { storageId: sid, fileId: f.id, role: "EDITOR", newLink: true })).status, 400);
+  });
+  it("a visitor of a link cannot create, list, change or revoke links for what was shared", async () => {
+    assert.equal((await t.call("", "POST", "/shares", { storageId: sid, fileId: dir, role: "VIEWER", newLink: true })).status, 401, "no session, no links");
+    assert.equal((await t.call("", "PATCH", `/shares/${a.id}`, { role: "EDITOR" })).status, 401);
+    assert.equal((await t.call("", "DELETE", `/shares/${a.id}`)).status, 401);
+    assert.equal((await t.call("", "GET", `/shares?storageId=${sid}&fileId=${dir}`)).status, 401);
+    assert.equal((await t.call("", "GET", "/shares/all")).status, 401);
+    // The pseudo-context used for visitors is refused by the module itself, even if some future route forgot to check.
+    const { createShare, updateShare, revokeShare } = await import("../modules/shares.ts");
+    const ctx = { userId: "x", userName: "Tautan berbagi", isSuperAdmin: false, workspaceId: "w", role: "MEMBER" as const, ip: "1.1.1.1", viaShare: true };
+    await assert.rejects(() => createShare(ctx, {} as any, { storageId: sid, fileId: dir, role: "VIEWER" }), /Pengunjung tautan/);
+    await assert.rejects(() => updateShare(ctx, a.id, { role: "EDITOR" }), /Pengunjung tautan/);
+    assert.throws(() => revokeShare(ctx, a.id), /Pengunjung tautan/);
+    assert.equal((await pub("POST", atok, "/shares", { role: "EDITOR" })).status, 404, "no sharing endpoint exists under a public token");
+  });
+});

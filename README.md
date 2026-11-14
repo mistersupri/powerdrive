@@ -58,7 +58,7 @@ Setiap penyimpanan yang terhubung (termasuk Google Drive, OneDrive, SMB, SFTP…
 
 ## Berbagi lewat tautan
 
-Klik kanan file/folder → **Bagikan…**. Setiap item bisa punya dua tautan: **penonton** (lihat, putar, unduh) dan **editor** (khusus folder: unggah, folder baru, ganti nama, hapus ke Sampah; tidak pernah menimpa file yang sudah ada). Opsi: kata sandi, masa berlaku, kuota unggah. Semua tautan aktif ada di **Tautan berbagi**.
+Klik kanan file/folder → **Bagikan…**. Satu item bisa punya banyak tautan (maks. 25), masing-masing dengan **judul** untuk mengingat penerimanya (mis. "Pak Budi", "Tim audit") sehingga bisa dimatikan sendiri-sendiri. Izin tiap tautan, **penonton** (lihat, putar, unduh) atau **editor** (khusus folder: unggah, folder baru, ganti nama, hapus ke Sampah; tidak pernah menimpa file yang sudah ada), **bisa diubah kapan saja**, juga setelah tautan dipakai: URL tetap sama dan perubahan langsung berlaku, termasuk menghentikan unggahan yang sedang berjalan. Pengunjung tautan tidak bisa membuat, mengubah, atau mematikan tautan; itu ditolak di server. Opsi lain: kata sandi, masa berlaku, kuota unggah. Semua tautan aktif ada di **Tautan berbagi** (bisa dicari berdasarkan judul).
 
 Keamanan: token acak 256-bit (hanya hash yang dipakai untuk mencari; token terenkripsi agar bisa disalin lagi oleh pemilik), setiap permintaan memastikan item ada di dalam folder yang dibagikan (percobaan keluar folder → 403, diuji), pembatas laju per IP, batas unggahan aktif per IP dan kuota staging global, dan tautan yang tidak valid/kedaluwarsa/dicabut selalu menjawab sama (404) agar tidak bisa ditebak. Siapa pun yang memegang tautan bisa memakainya: bagikan seperlunya.
 

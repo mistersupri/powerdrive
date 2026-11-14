@@ -131,7 +131,7 @@ export interface TrashItemDto {
 }
 
 export interface ShareLinkDto {
-  id: string; storageId: string; storageName: string; fileId: string; name: string; isFolder: boolean; role: "VIEWER" | "EDITOR";
+  id: string; /** Free text for the owner: who this link was made for. Never shown to visitors. */ title: string | null; storageId: string; storageName: string; fileId: string; name: string; isFolder: boolean; role: "VIEWER" | "EDITOR";
   url: string; hasPassword: boolean; expiresAt: string | null; maxUploadBytes: number | null; uploadedBytes: number;
   accessCount: number; lastAccessAt: string | null; createdAt: string; createdByName: string | null; revokedAt: string | null; expired: boolean;
 }
