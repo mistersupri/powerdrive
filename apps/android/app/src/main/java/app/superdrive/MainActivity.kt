@@ -59,6 +59,7 @@ class MainActivity : AppCompatActivity() {
     private var customView: View? = null
     private var customCallback: WebChromeClient.CustomViewCallback? = null
     private var pendingDownload: DownloadRequest? = null
+    private lateinit var updater: Updater
 
     private data class DownloadRequest(val url: String, val userAgent: String?, val contentDisposition: String?, val mimeType: String?)
 
@@ -92,6 +93,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.retry).setOnClickListener { retry() }
         findViewById<Button>(R.id.changeServer).setOnClickListener { changeServer() }
 
+        updater = Updater(this)
         configureWebView()
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
@@ -105,6 +107,7 @@ class MainActivity : AppCompatActivity() {
         })
 
         if (savedInstanceState != null) web.restoreState(savedInstanceState) else web.loadUrl(server)
+        if (savedInstanceState == null) updater.check(manual = false)
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -162,6 +165,15 @@ class MainActivity : AppCompatActivity() {
     private inner class Bridge {
         @JavascriptInterface
         fun isApp(): Boolean = true
+
+        @JavascriptInterface
+        fun appVersion(): String = BuildConfig.VERSION_NAME
+
+        /** The "Periksa pembaruan" button in the web app's settings. */
+        @JavascriptInterface
+        fun checkForUpdate() {
+            runOnUiThread { updater.check(manual = true) }
+        }
 
         @JavascriptInterface
         fun themeChanged() {

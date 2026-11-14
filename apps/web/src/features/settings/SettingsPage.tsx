@@ -12,6 +12,19 @@ import { Field, Input } from "@/ui/Field";
 import { Card } from "@/ui/misc";
 import { MfaCard } from "./Mfa";
 
+type AndroidBridge = { appVersion?(): string; checkForUpdate?(): void };
+/** Only inside the Android app: shows the installed version and checks for a newer one. */
+function AndroidAppCard() {
+  const bridge = (window as unknown as { SuperDriveAndroid?: AndroidBridge }).SuperDriveAndroid;
+  if (!bridge?.checkForUpdate) return null;
+  return (
+    <Card className="flex flex-wrap items-center gap-3 p-6">
+      <div className="min-w-0 flex-1"><h2 className="text-[15px] font-semibold">Aplikasi Android</h2><p className="text-[13px] text-muted">Versi {bridge.appVersion?.() ?? "—"}</p></div>
+      <Button onClick={() => bridge.checkForUpdate?.()}>Periksa pembaruan</Button>
+    </Card>
+  );
+}
+
 export default function SettingsPage() {
   const { user, workspace, isAdmin } = useWorkspace(); const { theme } = useTheme(); const qc = useQueryClient();
   const [cur, setCur] = useState(""); const [next, setNext] = useState(""); const [busy, setBusy] = useState(false);
@@ -28,6 +41,7 @@ export default function SettingsPage() {
               {([["light", Sun, "Terang"], ["dark", Moon, "Gelap"]] as const).map(([v, I, l]) => (<button key={v} role="radio" aria-checked={theme === v} onClick={() => setTheme(v)} className={cn("flex flex-col items-center gap-2 rounded-xl border p-4 text-[13px] font-medium transition-colors", theme === v ? "border-primary bg-primary-soft text-primary-ink" : "border-line hover:bg-surface-2")}><I className="size-5" aria-hidden />{l}</button>))}
               <button role="radio" aria-checked="false" onClick={() => { try { localStorage.removeItem("sd-theme"); } catch { /* ignore */ } setTheme(matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"); try { localStorage.removeItem("sd-theme"); } catch { /* ignore */ } }} className="flex flex-col items-center gap-2 rounded-xl border border-line p-4 text-[13px] font-medium hover:bg-surface-2"><Monitor className="size-5" aria-hidden />Ikuti sistem</button>
             </div></Card>
+          <AndroidAppCard />
           <MfaCard />
           <Card className="p-6"><h2 className="mb-3 text-[15px] font-semibold">Ubah kata sandi</h2>
             <form className="space-y-4" onSubmit={async (e) => { e.preventDefault(); setBusy(true); try { await api("/auth/change-password", { body: { currentPassword: cur, newPassword: next } }); toast.success("Kata sandi diubah. Sesi di perangkat lain dikeluarkan."); setCur(""); setNext(""); } catch (er) { toast.error((er as Error).message); } finally { setBusy(false); } }}>

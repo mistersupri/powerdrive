@@ -17,4 +17,15 @@
     <string name="download_denied">Izin penyimpanan dibutuhkan untuk menyimpan unduhan.</string>
     <string name="ok">OK</string>
     <string name="cancel">Batal</string>
+    <string name="update_title">Pembaruan tersedia</string>
+    <string name="update_message">SuperDrive %1$s tersedia (terpasang %2$s).</string>
+    <string name="update_now">Perbarui</string>
+    <string name="update_later">Nanti</string>
+    <string name="update_downloading">Mengunduh pembaruan…</string>
+    <string name="update_latest">Anda sudah memakai versi terbaru (%1$s).</string>
+    <string name="update_check_failed">Tidak dapat memeriksa pembaruan. Coba lagi nanti.</string>
+    <string name="update_download_failed">Pengunduhan pembaruan gagal. Coba lagi.</string>
+    <string name="update_corrupt">Berkas pembaruan rusak (checksum tidak cocok). Coba lagi.</string>
+    <string name="update_permission">Izinkan SuperDrive memasang aplikasi pada layar berikut, lalu kembali dan ketuk Perbarui lagi.</string>
+    <string name="update_install_failed">Pemasangan gagal: %1$s</string>
 </resources>
