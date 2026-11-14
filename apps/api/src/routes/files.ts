@@ -1,3 +1,4 @@
+import { issueTicket, readTicket } from "../modules/tickets.ts";
 import { listMedia } from "../modules/files.ts";
 import { markSeen } from "../modules/activity.ts";
 import { addComment, addTag, deleteComment, listActivity, listComments, listTags, removeTag, workspaceTags } from "../modules/activity.ts";
@@ -9,7 +10,7 @@ import { z } from "zod";
 import { db } from "../db.ts";
 import { ok, requireAuth } from "../app.ts";
 import { audit } from "../lib/audit.ts";
-import { badRequest } from "../lib/errors.ts";
+import { badRequest, notFound } from "../lib/errors.ts";
 import { sendFile, sendFolderZip, sendThumbnail, sendZip } from "../modules/delivery.ts";
 import { createFolder, deleteFile, listFolder, renameFile, searchIndex, setStar, toEntry } from "../modules/files.ts";
 import { requireStorage } from "../modules/permissions.ts";
@@ -134,14 +135,26 @@ export async function fileRoutes(app: FastifyInstance) {
     return sendFile(req, reply, p, storageId, f, inline);
   };
   // Several files/folders in one ZIP. Submitted as a form so the browser downloads it natively.
-  app.post("/files/zip", async (req, reply) => {
-    const b = z.object({ storageId: z.string(), id: z.union([z.string(), z.array(z.string())]) }).parse(req.body);
-    const ids = (Array.isArray(b.id) ? b.id : [b.id]).slice(0, 2000);
-    const { ctx, p } = open(req, "DOWNLOAD", b.storageId);
+  const zipOf = async (req: any, reply: any, storageId: string, ids: string[]) => {
+    const { ctx, p } = open(req, "DOWNLOAD", storageId);
     const roots: RemoteFile[] = [];
-    for (const id of ids) { try { roots.push(await p.stat(decodeId(id))); } catch (e) { mapProviderError(e, b.storageId); } }
-    audit({ workspaceId: ctx.workspaceId, userId: ctx.userId, action: "file.download", resourceType: "file", metadata: { storageId: b.storageId, items: roots.length, zip: true }, ip: ctx.ip });
+    for (const id of ids) { try { roots.push(await p.stat(decodeId(id))); } catch (e) { mapProviderError(e, storageId); } }
+    audit({ workspaceId: ctx.workspaceId, userId: ctx.userId, action: "file.download", resourceType: "file", metadata: { storageId, items: roots.length, zip: true }, ip: ctx.ip });
     return sendZip(req, reply, p, roots, `SuperDrive-${roots.length}-item.zip`);
+  };
+  const zipBody = z.object({ storageId: z.string(), id: z.union([z.string(), z.array(z.string())]) });
+  app.post("/files/zip", async (req, reply) => {
+    const b = zipBody.parse(req.body);
+    return zipOf(req, reply, b.storageId, (Array.isArray(b.id) ? b.id : [b.id]).slice(0, 2000));
+  });
+  // The same ZIP as a plain GET, for clients that cannot submit a form (Android app). The POST hands out a ticket.
+  app.post("/files/zip-ticket", async (req) => {
+    const b = zipBody.parse(req.body); const { ctx } = open(req, "DOWNLOAD", b.storageId);
+    return ok(req, { path: `/api/v1/files/zip/${issueTicket(ctx.userId, (Array.isArray(b.id) ? b.id : [b.id]).slice(0, 2000), b.storageId)}` });
+  });
+  app.get("/files/zip/:ticket", async (req, reply) => {
+    const ctx = requireAuth(req); const t = readTicket((req.params as any).ticket, ctx.userId); if (!t?.storageId) throw notFound("Tautan unduhan sudah kedaluwarsa. Coba unduh lagi.");
+    return zipOf(req, reply, t.storageId, t.ids);
   });
   app.get("/files/:storageId/:fileId/download", deliver(false));
   app.get("/files/:storageId/:fileId/preview", deliver(true));

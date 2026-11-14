@@ -6,6 +6,8 @@ export function setTheme(t: Theme) {
   document.documentElement.classList.toggle("dark", t === "dark");
   try { localStorage.setItem("sd-theme", t); } catch { /* ignore */ }
   window.dispatchEvent(new Event("sd-theme"));
+  // The Android app tints its system bars to match.
+  try { (window as unknown as { SuperDriveAndroid?: { themeChanged?(): void } }).SuperDriveAndroid?.themeChanged?.(); } catch { /* not in the app */ }
 }
 export function useTheme() {
   const [t, setT] = useState<Theme>(read);

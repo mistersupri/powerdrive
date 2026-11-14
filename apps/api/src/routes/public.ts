@@ -1,3 +1,4 @@
+import { issueTicket, readTicket } from "../modules/tickets.ts";
 import { getSettings } from "../modules/settings.ts";
 import { logActivity } from "../modules/activity.ts";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -7,7 +8,7 @@ import { COOKIE_PATH_PREFIX, ok } from "./publicShared.ts";
 import { requireAuth } from "../app.ts";
 import { db, now } from "../db.ts";
 import { audit } from "../lib/audit.ts";
-import { AppError, badRequest, forbidden } from "../lib/errors.ts";
+import { AppError, badRequest, forbidden, notFound } from "../lib/errors.ts";
 import { sendFile, sendFolderZip, sendThumbnail, sendZip } from "../modules/delivery.ts";
 import { createFolder, listFolderShared, renameFile, toEntry } from "../modules/files.ts";
 import { accessKeyValid, assertWithin, checkSharePassword, findShare, isBundle, makeAccessKey, resolveDirectShare, resolveShare, shareItems, type ResolvedShare } from "../modules/shares.ts";
@@ -113,15 +114,23 @@ const makeShareRoutes = (direct: boolean) => async function shareRoutes(app: Fas
     const q = z.object({ s: z.coerce.number().int().min(32).max(2048).default(256), v: z.string().optional() }).parse(req.query);
     return sendThumbnail(req, reply, r.storage.id, r.p, f.id, q.s, q.v);
   });
-  app.post("/share/:token/zip", lim(30), async (req, reply) => {
-    const r = gate(req);
-    const b = z.object({ id: z.union([z.string(), z.array(z.string())]) }).parse(req.body);
+  const shareZip = async (req: FastifyRequest, reply: FastifyReply, r: ResolvedShare, ids: string[]) => {
     const roots: RemoteFile[] = [];
-    for (const id of (Array.isArray(b.id) ? b.id : [b.id]).slice(0, 2000)) {
+    for (const id of ids) {
       if (id === "root") { if (isBundle(r.share)) for (const it of shareItems(r.share.id)) roots.push(await r.p.stat(it.file_id)); else roots.push(await r.p.stat(r.share.file_id)); continue; }
       const raw = decodeId(id); await assertWithin(r.share, r.p, raw); roots.push(await r.p.stat(raw));
     }
     return sendZip(req, reply, r.p, roots, `${isBundle(r.share) ? "dibagikan" : r.share.name}.zip`);
+  };
+  const idsOf = (body: unknown) => { const b = z.object({ id: z.union([z.string(), z.array(z.string())]) }).parse(body); return (Array.isArray(b.id) ? b.id : [b.id]).slice(0, 2000); };
+  app.post("/share/:token/zip", lim(30), async (req, reply) => shareZip(req, reply, gate(req), idsOf(req.body)));
+  // Ticket + GET variant for clients that cannot post a form (Android app); bound to this one share.
+  app.post("/share/:token/zip-ticket", lim(60), async (req) => {
+    const r = gate(req); return ok(req, { path: `/api/v1${direct ? "/shared" : "/public"}/share/${(req.params as any).token}/zip/${issueTicket(r.share.id, idsOf(req.body))}` });
+  });
+  app.get("/share/:token/zip/:ticket", lim(60), async (req, reply) => {
+    const r = gate(req); const t = readTicket((req.params as any).ticket, r.share.id); if (!t) throw notFound("Tautan unduhan sudah kedaluwarsa. Coba unduh lagi.");
+    return shareZip(req, reply, r, t.ids);
   });
 
   /* ---- editor ---- */

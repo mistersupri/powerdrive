@@ -450,3 +450,20 @@ describe("media gallery", () => {
     assert.equal((await t.call("", "GET", "/media")).status, 401);
   });
 });
+
+describe("zip tickets (plain-GET ZIP downloads for the Android app)", () => {
+  it("a ticket turns a POST-only ZIP into a GET, bound to who asked", async () => {
+    const dir = (await t.call("ana", "POST", "/files/folders", { storageId: sid, name: "Tiket" })).data.id; await mk("satu.txt", "isi satu", dir); await mk("dua.txt", "isi dua", dir);
+    const ids = (await t.call("ana", "GET", `/files?storageId=${sid}&folderId=${dir}`)).data.items.map((i: any) => i.id);
+    const tk = await t.call("ana", "POST", "/files/zip-ticket", { storageId: sid, id: ids }); assert.equal(tk.status, 200, JSON.stringify(tk.body)); assert.match(tk.data.path, /^\/api\/v1\/files\/zip\/[A-Za-z0-9_-]{20,}$/);
+    const viaCall = await t.call("ana", "GET", tk.data.path.replace("/api/v1", "")); assert.equal(viaCall.res.rawPayload.subarray(0, 2).toString(), "PK", "one plain GET returns the ZIP");
+    assert.equal((await t.call("viv", "GET", tk.data.path.replace("/api/v1", ""))).status, 404, "someone else cannot use it");
+    assert.equal((await t.call("", "GET", tk.data.path.replace("/api/v1", ""))).status, 401, "nor can an anonymous caller");
+    assert.equal((await t.call("ana", "POST", "/files/zip-ticket", { storageId: "nope", id: ids })).status >= 400, true);
+    const link = (await t.call("ana", "POST", "/shares", { storageId: sid, fileId: dir, role: "VIEWER", newLink: true })).data; const tok = link.url.split("/share/")[1];
+    const st = (await t.call("", "POST", `/public/share/${tok}/zip-ticket`, { id: "root" })).data; assert.ok(st.path.startsWith(`/api/v1/public/share/${tok}/zip/`));
+    assert.equal((await t.call("", "GET", st.path.replace("/api/v1", ""))).res.rawPayload.subarray(0, 2).toString(), "PK");
+    const other = (await t.call("ana", "POST", "/shares", { storageId: sid, fileId: dir, role: "VIEWER", newLink: true })).data.url.split("/share/")[1];
+    assert.equal((await t.call("", "GET", st.path.replace(tok, other).replace("/api/v1", ""))).status, 404, "a ticket is bound to its own share");
+  });
+});

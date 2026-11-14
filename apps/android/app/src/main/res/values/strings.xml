@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SuperDrive</string>
+    <string name="setup_title">Hubungkan ke server</string>
+    <string name="setup_subtitle">Masukkan alamat SuperDrive Anda, misalnya drive.contoh.id</string>
+    <string name="setup_hint">Alamat server</string>
+    <string name="setup_connect">Hubungkan</string>
+    <string name="setup_http_warning">Alamat ini tidak memakai HTTPS. Kata sandi dan file Anda dikirim tanpa enkripsi; gunakan hanya di jaringan yang Anda percaya.</string>
+    <string name="err_invalid">Alamat tidak valid. Contoh: https://drive.contoh.id</string>
+    <string name="err_unreachable">Server tidak dapat dijangkau. Periksa alamat dan koneksi internet.</string>
+    <string name="err_not_superdrive">Alamat ini bukan server SuperDrive.</string>
+    <string name="err_tls">Sertifikat HTTPS server tidak dipercaya.</string>
+    <string name="error_title">Tidak dapat membuka SuperDrive</string>
+    <string name="error_retry">Coba lagi</string>
+    <string name="error_change_server">Ubah server</string>
+    <string name="download_started">Mengunduh %1$s</string>
+    <string name="download_denied">Izin penyimpanan dibutuhkan untuk menyimpan unduhan.</string>
+    <string name="ok">OK</string>
+    <string name="cancel">Batal</string>
+</resources>
