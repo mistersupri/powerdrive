@@ -42,18 +42,18 @@ export default function DashboardPage() {
     <div className="flex min-h-0 flex-1 flex-col">
       <PageHeader title="Beranda" subtitle={user ? `Selamat datang kembali, ${user.name.split(" ")[0]}` : undefined} />
       <div className="scroll-thin flex-1 space-y-6 overflow-y-auto p-4 sm:p-8">
-        {q.isLoading || !d ? <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{Array.from({ length: 4 }, (_, i) => <Skeleton key={i} className="h-[92px] rounded-xl" />)}</div> : (
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {q.isLoading || !d ? <div className="grid grid-cols-[minmax(0,1fr)] gap-4 sm:grid-cols-2 xl:grid-cols-4">{Array.from({ length: 4 }, (_, i) => <Skeleton key={i} className="h-[92px] rounded-xl" />)}</div> : (
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <Stat icon={HardDrive} tone="bg-primary-soft text-primary-ink" label="Penyimpanan terhubung" value={String(d.storages)} />
             <Stat icon={Cable} tone="bg-ok-soft text-ok-ink" label="Penyedia" value={String(d.providers)} hint={d.storages ? `${d.storages} akun` : undefined} />
             <Stat icon={Database} tone="bg-warn-soft text-warn-ink" label="Terpakai (yang diketahui)" value={d.knownCapacity ? formatBytes(d.knownUsage) : d.knownUsage ? formatBytes(d.knownUsage) : "–"} hint={d.knownCapacity ? `dari ${formatBytes(d.knownCapacity)}` : "Penyedia tidak melaporkan kapasitas"} />
             <Stat icon={ArrowRightLeft} tone="bg-violet-soft text-violet-ink" label="Transfer aktif" value={String(active || d.transfers.active)} hint={`${d.transfers.completed} selesai · ${d.transfers.failed} gagal`} />
           </div>)}
-        <div className="grid gap-6 xl:grid-cols-[1fr_400px]">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-6 xl:grid-cols-[minmax(0,1fr)_400px]">
           <Card className="p-5">
             <div className="mb-4 flex items-center justify-between"><h2 className="text-[15px] font-semibold">Penyimpanan</h2><Link to="/storage" className="text-[13px] font-medium text-primary-ink hover:underline">Kelola</Link></div>
             {!d ? <Skeleton className="h-40" /> : d.storageList.length === 0 ? <EmptyState icon={HardDrive} title="Belum ada penyimpanan" action={<Link to="/storage"><Button variant="primary" icon={<Plus className="size-4" />}>Hubungkan penyimpanan</Button></Link>}>Hubungkan akun cloud atau folder server untuk memulai.</EmptyState>
-              : <div className="grid gap-3 lg:grid-cols-2">{d.storageList.map((s) => <StorageTile key={s.id} s={s} />)}</div>}
+              : <div className="grid grid-cols-[minmax(0,1fr)] gap-3 lg:grid-cols-2">{d.storageList.map((s) => <StorageTile key={s.id} s={s} />)}</div>}
           </Card>
           <Card className="p-5">
             <h2 className="mb-3 text-[15px] font-semibold">Aktivitas terbaru</h2>

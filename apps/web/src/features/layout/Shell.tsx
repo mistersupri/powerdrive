@@ -104,6 +104,30 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
+/** The handful of places people go to all day, one thumb away. Everything else lives behind "Menu". */
+function BottomNav({ onMore, menuOpen }: { onMore(): void; menuOpen: boolean }) {
+  const loc = useLocation(); const active = transferStore.use((s) => s.jobs.filter((j) => ["QUEUED", "VALIDATING", "RUNNING", "RETRYING", "VERIFYING"].includes(j.status)).length);
+  const items: { to: string; label: string; icon: typeof Search; on: boolean; badge?: number }[] = [
+    { to: "/", label: "Beranda", icon: LayoutDashboard, on: loc.pathname === "/" },
+    { to: "/files", label: "File", icon: FolderOpen, on: loc.pathname.startsWith("/files") || loc.pathname.startsWith("/s/") || loc.pathname.startsWith("/recent") || loc.pathname.startsWith("/starred") || loc.pathname.startsWith("/trash") },
+    { to: "/media", label: "Media", icon: Images, on: loc.pathname.startsWith("/media") },
+    { to: "/shared", label: "Berbagi", icon: Users, on: loc.pathname.startsWith("/shared") || loc.pathname.startsWith("/shares") },
+    { to: "/transfers", label: "Transfer", icon: ArrowRightLeft, on: loc.pathname.startsWith("/transfers") || loc.pathname.startsWith("/dual"), badge: active },
+  ];
+  const cell = "relative flex min-h-14 flex-col items-center justify-center gap-0.5 px-1 text-[11px] font-medium transition-colors focus-visible:bg-surface-2 focus-visible:outline-none";
+  return (
+    <nav aria-label="Navigasi bawah" className="grid shrink-0 grid-cols-6 border-t border-line bg-surface pb-[env(safe-area-inset-bottom)] lg:hidden">
+      {items.map((it) => (
+        <NavLink key={it.to} to={it.to} aria-current={it.on ? "page" : undefined} className={cn(cell, it.on ? "text-primary-ink" : "text-muted active:bg-surface-2")}>
+          {it.on && <span className="absolute top-0 h-0.5 w-8 rounded-b bg-primary" aria-hidden />}
+          <span className="relative"><it.icon className="size-[22px]" aria-hidden />{!!it.badge && <span className="tnum absolute -top-1.5 -right-2.5 grid min-w-[16px] place-items-center rounded-full bg-primary px-1 text-[10px] leading-4 font-semibold text-white" aria-label={`${it.badge} berjalan`}>{it.badge}</span>}</span>
+          <span className="max-w-full truncate">{it.label}</span>
+        </NavLink>))}
+      <button type="button" onClick={onMore} aria-haspopup="dialog" aria-expanded={menuOpen} className={cn(cell, menuOpen ? "text-primary-ink" : "text-muted active:bg-surface-2")}><MenuIcon className="size-[22px]" aria-hidden /><span>Menu</span></button>
+    </nav>
+  );
+}
+
 /** Shown instead of the app while the administrator requires two-step verification and this account has none yet. */
 function MfaGate() {
   return (
@@ -210,9 +234,12 @@ export function AppShell() {
             <div className="anim-fade absolute inset-0 bg-black/40" onClick={() => setDrawer(false)} />
             <aside className="anim-slide-up absolute inset-y-0 left-0 w-72 max-w-[85vw] bg-surface shadow-float"><IconButton label="Tutup menu" className="absolute top-4 right-3 z-10" onClick={() => setDrawer(false)}><X className="size-5" /></IconButton><Sidebar onNavigate={() => setDrawer(false)} /></aside>
           </div>)}
-        <div className="flex min-w-0 flex-1 flex-col">{mfaGate ? <MfaGate /> : <Outlet />}</div>
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="flex min-h-0 flex-1 flex-col">{mfaGate ? <MfaGate /> : <Outlet />}</div>
+          {!mfaGate && <BottomNav onMore={() => setDrawer(true)} menuOpen={drawer} />}
+        </div>
         <FloatingProgress />
-        <Toaster position="bottom-left" toastOptions={{ classNames: { toast: "!rounded-xl !border-line !bg-surface !text-ink !shadow-float" } }} />
+        <Toaster position="bottom-left" mobileOffset={{ bottom: 76 }} toastOptions={{ classNames: { toast: "!rounded-xl !border-line !bg-surface !text-ink !shadow-float" } }} />
       </div>
     </ShellCtx.Provider>
   );
