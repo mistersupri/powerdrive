@@ -1,6 +1,6 @@
 import type { NotificationDto, StorageConnectionDto } from "@superdrive/shared";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Activity, ArrowRightLeft, Bell, Check, ChevronRight, ChevronsUpDown, Clock, Columns2, FolderOpen, HardDrive, LayoutDashboard, Link2, LogOut, Menu as MenuIcon, Moon, Search, Settings, Star, Sun, Trash2, Users, X } from "lucide-react";
+import { Activity, ArrowRightLeft, Bell, Check, ChevronRight, ChevronsUpDown, Clock, Columns2, FolderOpen, Images, HardDrive, LayoutDashboard, Link2, LogOut, Menu as MenuIcon, Moon, Search, Settings, Star, Sun, Trash2, Users, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { NavLink, Navigate, Outlet, useLocation, useNavigate } from "react-router";
 import { Toaster } from "sonner";
@@ -72,7 +72,9 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         <NavItem to="/files" icon={FolderOpen} trailing={home && <button type="button" aria-label={treeOpen ? "Ciutkan pohon folder" : "Buka pohon folder"} aria-expanded={treeOpen} className="grid size-6 place-items-center rounded-md text-muted hover:bg-line hover:text-ink" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setTreeOpen(!treeOpen); }}><ChevronRight className={cn("size-4 transition-transform", treeOpen && "rotate-90")} /></button>}>Semua file</NavItem>
         {home && treeOpen && <SidebarTree storageId={home.id} />}
         <NavItem to="/recent" icon={Clock}>Terbaru</NavItem>
+        <NavItem to="/media" icon={Images}>Media</NavItem>
         <NavItem to="/starred" icon={Star}>Berbintang</NavItem>
+        <NavItem to="/shared" icon={Users}>Dibagikan ke saya</NavItem>
         <NavItem to="/shares" icon={Link2}>Tautan berbagi</NavItem>
         <NavItem to="/trash" icon={Trash2}>Sampah</NavItem>
         <Section>Penyimpanan</Section>

@@ -429,3 +429,20 @@ describe("share bundles and direct shares", () => {
     assert.ok(!(await t.call("viv", "GET", "/shared-with-me")).data.some((x: any) => x.id === made[0].id));
   });
 });
+
+describe("media gallery", () => {
+  it("lists photos and videos newest first with stable paging, filters by kind, and respects workspaces", async () => {
+    const dir = (await t.call("ana", "POST", "/files/folders", { storageId: sid, name: "Galeri" })).data.id; const abs = path.join(t.root, "s", "Galeri");
+    const names = ["p1.jpg", "p2.png", "v1.mp4", "p3.webp", "v2.mov", "catatan.txt"]; const base = Date.now() - 100_000;
+    names.forEach((n, i) => { const f = path.join(abs, n); fs.writeFileSync(f, "x"); fs.utimesSync(f, new Date(base + i * 1000), new Date(base + i * 1000)); });
+    await t.call("ana", "GET", `/files?storageId=${sid}&folderId=${dir}`);
+    const all: string[] = []; let cur = ""; let pages = 0;
+    do { const r = (await t.call("ana", "GET", `/media?kind=all&limit=2${cur ? `&cursor=${encodeURIComponent(cur)}` : ""}`)).data; pages++; for (const i of r.items) if (i.parentId === dir) all.push(i.name); cur = r.nextCursor ?? ""; } while (cur && pages < 200);
+    assert.deepEqual(all, ["v2.mov", "p3.webp", "v1.mp4", "p2.png", "p1.jpg"], "newest first, no duplicates or gaps across pages, text files excluded");
+    const imgs = (await t.call("ana", "GET", "/media?kind=image&limit=300")).data; assert.ok(imgs.items.every((i: any) => i.mimeType.startsWith("image/")));
+    const vids = (await t.call("ana", "GET", "/media?kind=video&limit=300")).data; assert.ok(vids.items.every((i: any) => i.mimeType.startsWith("video/")) && vids.items.some((i: any) => i.name === "v1.mp4"));
+    assert.ok(imgs.counts.image >= 3 && vids.counts.video >= 2);
+    assert.equal((await t.call("ben", "GET", "/media")).data.items.some((i: any) => i.parentId === dir), false, "another workspace sees none of it");
+    assert.equal((await t.call("", "GET", "/media")).status, 401);
+  });
+});

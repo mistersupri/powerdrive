@@ -52,7 +52,7 @@ export function StorageTile({ s }: { s: StorageConnectionDto }) {
 
 /** /search, /recent, /starred — results come from the local metadata index. */
 /** Tells people whether global search already covers every connected storage. */
-function IndexBanner() {
+export function IndexBanner() {
   const qc = useQueryClient(); const storages = useStorages().data ?? [];
   const busy = storages.filter((s) => s.index?.status === "RUNNING"); const partial = storages.filter((s) => s.index?.status === "PARTIAL" || s.index?.status === "FAILED");
   useEffect(() => { if (!busy.length) return; const t = setInterval(() => void qc.invalidateQueries({ queryKey: ["storages"] }), 4000); return () => clearInterval(t); }, [busy.length, qc]);

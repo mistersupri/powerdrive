@@ -10,8 +10,9 @@ export const appUrls: FileUrls = {
   download: (f) => downloadUrl(f.storageId, f.id),
   preview: (f) => previewUrl(f.storageId, f.id),
 };
-export const shareUrls = (token: string): FileUrls => {
-  const base = `/api/v1/public/share/${token}/files`;
+/** `root` is the API path of the share, e.g. "/public/share/<token>" or "/shared/share/<id>" (direct shares to a member). */
+export const shareUrls = (root: string): FileUrls => {
+  const base = `/api/v1${root}/files`;
   return {
     thumb: (f, size = 256) => `${base}/${f.id}/thumbnail?s=${size}${f.version ? `&v=${encodeURIComponent(f.version)}` : ""}`,
     download: (f) => `${base}/${f.id}/download`,
@@ -20,7 +21,7 @@ export const shareUrls = (token: string): FileUrls => {
 };
 const Ctx = createContext<FileUrls>(appUrls);
 export const useFileUrls = () => useContext(Ctx);
-export function FileUrlsProvider({ token, children }: { token: string; children: ReactNode }) {
-  const v = useMemo(() => shareUrls(token), [token]);
+export function FileUrlsProvider({ root, children }: { root: string; children: ReactNode }) {
+  const v = useMemo(() => shareUrls(root), [root]);
   return <Ctx.Provider value={v}>{children}</Ctx.Provider>;
 }

@@ -34,7 +34,8 @@ async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 const folderCache = new Map<string, Promise<string>>();
-const prefix = (token?: string) => (token ? `/public/share/${token}` : "");
+/** A share is addressed by its token (public link) or by a full API path such as "/shared/share/<id>" (direct share to a member). */
+const prefix = (share?: string) => (share ? (share.startsWith("/") ? share : `/public/share/${share}`) : "");
 async function ensureFolder(storageId: string, parentId: string, name: string, token?: string): Promise<string> {
   const key = `${token ?? storageId}/${parentId}/${name}`;
   let p = folderCache.get(key);

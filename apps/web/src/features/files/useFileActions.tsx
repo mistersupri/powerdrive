@@ -26,7 +26,7 @@ export function useFileActions({ storage, folderId, folderName, location, onDeta
   const qc = useQueryClient();
   const perms = useMemo(() => new Set<Permission>(storage?.permissions ?? []), [storage]);
   const can = (p: Permission) => perms.has(p);
-  const [shareTarget, setShareTarget] = useState<FileEntry | null>(null);
+  const [shareTarget, setShareTarget] = useState<FileEntry[]>([]);
   const [dlg, setDlg] = useState<null | { t: "folder" } | { t: "rename"; e: FileEntry } | { t: "delete"; list: FileEntry[] } | { t: "transfer"; mode: "COPY" | "MOVE"; list: FileEntry[] }>(null);
   const [preview, setPreview] = useState<number | null>(null);
   const fileInput = useRef<HTMLInputElement>(null); const dirInput = useRef<HTMLInputElement>(null);
@@ -80,7 +80,7 @@ export function useFileActions({ storage, folderId, folderName, location, onDeta
       { label: "Pindahkan ke…", icon: <FolderInput />, hidden: !can("MOVE"), onSelect: () => setDlg({ t: "transfer", mode: "MOVE", list }) },
       { label: "Ganti nama", icon: <Pencil />, shortcut: "F2", hidden: multi || !can("RENAME"), onSelect: () => setDlg({ t: "rename", e }) },
       { label: "Detail", icon: <Info />, hidden: multi || !onDetails, onSelect: () => onDetails?.(e) },
-      { label: "Bagikan…", icon: <Share2 />, hidden: multi || !can("SHARE"), onSelect: () => setShareTarget(e) },
+      { label: "Bagikan…", icon: <Share2 />, hidden: !can("SHARE"), onSelect: () => setShareTarget(list) },
       { label: e.starred ? "Hapus bintang" : "Beri bintang", icon: <Star />, hidden: multi, onSelect: () => { void star(e); } },
       { label: "Hapus", icon: <Trash2 />, danger: true, divider: true, hidden: !can("DELETE"), shortcut: "Del", onSelect: () => setDlg({ t: "delete", list }) },
     ];
@@ -109,14 +109,14 @@ export function useFileActions({ storage, folderId, folderName, location, onDeta
       }} />
     <TransferDialog open={dlg?.t === "transfer"} mode={dlg?.t === "transfer" ? dlg.mode : "COPY"} entries={dlg?.t === "transfer" ? dlg.list : []} fromStorageId={storageId} initialStorageId={storageId} initialFolderId={folderId} onClose={() => setDlg(null)}
       onConfirm={async (dest, policy) => { if (dlg?.t !== "transfer") return; await startTransfer(dlg.mode, storageId, dlg.list.map((e) => e.id), dest, policy); selection.clear(); }} />
-    {preview !== null && <Preview location={location} storageName={storage?.isDefault ? "Semua file" : storage?.name} items={previewList} index={preview} onIndex={setPreview} onClose={() => setPreview(null)} onShare={can("SHARE") ? (f) => { setPreview(null); setShareTarget(f); } : undefined} canDownload={can("DOWNLOAD")} />}
-    <ShareDialog open={!!shareTarget} storageId={storageId} file={shareTarget} onClose={() => setShareTarget(null)} />
+    {preview !== null && <Preview location={location} storageName={storage?.isDefault ? "Semua file" : storage?.name} items={previewList} index={preview} onIndex={setPreview} onClose={() => setPreview(null)} onShare={can("SHARE") ? (f) => { setPreview(null); setShareTarget([f]); } : undefined} canDownload={can("DOWNLOAD")} />}
+    <ShareDialog open={shareTarget.length > 0} storageId={storageId} files={shareTarget} onClose={() => setShareTarget([])} />
   </>);
 
   return {
     can, dialogs, menuFor, open, upload, keyAction, dropItems, star, refresh, selectedEntries,
     pickFiles: () => fileInput.current?.click(), pickFolder: () => dirInput.current?.click(),
-    newFolder: () => setDlg({ t: "folder" }), share: (e: FileEntry) => setShareTarget(e),
+    newFolder: () => setDlg({ t: "folder" }), share: (e: FileEntry | FileEntry[]) => setShareTarget(Array.isArray(e) ? e : [e]),
     transferSelected: (mode: "COPY" | "MOVE") => selectedEntries.length && setDlg({ t: "transfer", mode, list: selectedEntries }),
     deleteSelected: () => selectedEntries.length && setDlg({ t: "delete", list: selectedEntries }),
     downloadSelected: () => selectedEntries.length && triggerDownload(storageId, selectedEntries.map((e) => e.id), selectedEntries.length === 1 ? selectedEntries[0]!.name : undefined),

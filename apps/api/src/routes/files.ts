@@ -1,3 +1,4 @@
+import { listMedia } from "../modules/files.ts";
 import { addComment, addTag, deleteComment, listActivity, listComments, listTags, removeTag, workspaceTags } from "../modules/activity.ts";
 import { fileMetadata } from "../modules/metadata.ts";
 import { logActivity } from "../modules/activity.ts";
@@ -165,6 +166,12 @@ export async function fileRoutes(app: FastifyInstance) {
   app.delete("/uploads/:id", async (req) => { cancelUpload(requireAuth(req), (req.params as any).id); return ok(req, {}); });
 
   /* ---- search / recent / starred ---- */
+  // Photos and videos across storages (the "Media" gallery).
+  app.get("/media", async (req) => {
+    const ctx = requireAuth(req);
+    const q = z.object({ kind: z.enum(["all", "image", "video"]).optional(), storageId: z.string().optional(), cursor: z.string().max(600).optional(), limit: z.coerce.number().int().optional() }).parse(req.query);
+    return ok(req, listMedia(ctx, q));
+  });
   app.get("/search", async (req) => {
     const ctx = requireAuth(req);
     const q = z.object({
