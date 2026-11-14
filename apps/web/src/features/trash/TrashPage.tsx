@@ -79,7 +79,7 @@ export default function TrashPage() {
       <div className="scroll-thin flex-1 overflow-y-auto p-4 sm:p-8">
         {q.isLoading ? <Skeleton className="h-64" /> : !items.length ? <EmptyState icon={Trash2} title={qtext || storageId ? "Tidak ada yang cocok" : "Sampah kosong"}>{qtext || storageId ? "Ubah pencarian atau filter." : "File yang Anda hapus akan muncul di sini dan bisa dipulihkan."}</EmptyState> : (
           <Card className="mx-auto max-w-6xl overflow-hidden">
-            <table className="w-full text-left text-[13px]"><thead><tr className="border-b border-line bg-surface-2/60 text-[12px] text-muted">
+            <div className="overflow-x-auto"><table className="w-full min-w-[34rem] text-left text-[13px]"><thead><tr className="border-b border-line bg-surface-2/60 text-[12px] text-muted">
               <th className="w-10 px-4 py-2.5"><input type="checkbox" aria-label="Pilih semua" className="size-4 accent-[var(--primary)]" checked={all} onChange={() => setSel(all ? new Set() : new Set(items.map((i) => i.id)))} /></th>
               <th className="w-[38%] px-2 py-2.5 font-semibold">Nama</th><th className="hidden px-4 py-2.5 font-semibold md:table-cell">Lokasi asal</th><th className="hidden px-4 py-2.5 font-semibold lg:table-cell">Penyimpanan</th><th className="px-4 py-2.5 text-right font-semibold">Ukuran</th><th className="hidden px-4 py-2.5 font-semibold sm:table-cell">Dihapus</th><th className="w-24" /></tr></thead>
               <tbody className="divide-y divide-line">{items.map((i) => (
@@ -89,10 +89,10 @@ export default function TrashPage() {
                   <td className="hidden max-w-48 truncate px-4 py-2.5 text-muted md:table-cell" title={i.originalPath}>{i.originalPath}</td><td className="hidden truncate px-4 py-2.5 text-muted lg:table-cell">{i.storageName}</td>
                   <td className="tnum px-4 py-2.5 text-right text-muted">{i.isFolder ? "—" : formatBytes(i.size)}</td>
                   <td className="hidden px-4 py-2.5 text-muted sm:table-cell" title={dateTime(i.trashedAt)}>{timeAgo(i.trashedAt)}{i.trashedBy ? ` · ${i.trashedBy}` : ""}</td>
-                  <td className="px-2 py-2.5 text-right"><Button size="sm" variant="ghost" icon={<RotateCcw className="size-3.5" />} aria-label={`Pulihkan ${i.name}`} onClick={() => restore.mutate([i.id])}>Pulihkan</Button></td></tr>
-                {i.isFolder && expanded.has(i.id) && <ChildRows item={i} folderId="root" depth={0} sel={csel} toggle={childToggle} act={onChildAct} />}</Fragment>))}</tbody></table>
+                  <td className="px-2 py-2.5 text-right"><Button size="sm" variant="ghost" icon={<RotateCcw className="size-3.5" />} aria-label={`Pulihkan ${i.name}`} onClick={() => restore.mutate([i.id])}><span className="hidden sm:inline">Pulihkan</span></Button></td></tr>
+                {i.isFolder && expanded.has(i.id) && <ChildRows item={i} folderId="root" depth={0} sel={csel} toggle={childToggle} act={onChildAct} />}</Fragment>))}</tbody></table></div>
             <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line px-4 py-2.5 text-[12px] text-muted"><span className="tnum">{q.data!.total} item</span>
-              <div className="flex items-center gap-2"><label className="flex items-center gap-1.5">Per halaman<Select aria-label="Per halaman" className="h-7 w-16 text-[12px]" value={limit} onChange={(e) => setLimit(Number(e.target.value))}>{[10, 25, 50, 100].map((n) => <option key={n}>{n}</option>)}</Select></label>
+              <div className="flex items-center gap-2"><label className="flex items-center gap-1.5">Per halaman<Select aria-label="Per halaman" className="h-8 w-[76px] pr-6 pl-2 text-[12px]" value={limit} onChange={(e) => setLimit(Number(e.target.value))}>{[10, 25, 50, 100].map((n) => <option key={n}>{n}</option>)}</Select></label>
                 <Button size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>Sebelumnya</Button><span className="tnum">{page} / {pages}</span><Button size="sm" disabled={page >= pages} onClick={() => setPage(page + 1)}>Berikutnya</Button></div></div>
           </Card>)}
       </div>

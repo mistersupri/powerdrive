@@ -187,7 +187,7 @@ export default function StorageAdminPage() {
       <div className="scroll-thin flex-1 overflow-y-auto p-4 sm:p-8">
         {storages.isLoading ? <Skeleton className="h-40" /> : !storages.data?.length
           ? <EmptyState icon={HardDrive} title="Belum ada penyimpanan terhubung" action={isAdmin ? <Button variant="primary" icon={<Plus className="size-4" />} onClick={() => setAdd(true)}>Tambah penyimpanan</Button> : undefined}>{isAdmin ? "Hubungkan akun cloud atau folder server untuk mulai." : "Minta admin workspace menghubungkan penyimpanan."}</EmptyState>
-          : <div className="mx-auto grid max-w-4xl gap-4">{storages.data.map((s) => <StorageRow key={s.id} s={s} onPerms={() => setPerms(s)} />)}</div>}
+          : <div className="mx-auto grid max-w-4xl grid-cols-[minmax(0,1fr)] gap-4">{storages.data.map((s) => <StorageRow key={s.id} s={s} onPerms={() => setPerms(s)} />)}</div>}
       </div>
       <AddStorageDialog open={add} onClose={() => setAdd(false)} />
       <PermissionsDialog s={perms} onClose={() => setPerms(null)} />

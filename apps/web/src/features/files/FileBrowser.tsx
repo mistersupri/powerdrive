@@ -10,7 +10,9 @@ import { Skeleton } from "@/ui/misc";
 import { DRAG_MIME, collectDropped, hasFiles, setActiveDrag, activeDrag } from "./dnd";
 import { FileThumb } from "./FileThumb";
 import { setDragGhost } from "./dragGhost";
+import { previewKind } from "@/lib/fileType";
 import { prefetchFolder } from "./useFolder";
+import { preloadPdf } from "@/features/preview/Preview";
 import type { UploadInput } from "@/features/uploads/manager";
 
 export interface BrowserProps {
@@ -111,7 +113,7 @@ export function FileBrowser(p: BrowserProps) {
     },
     onDoubleClick: () => p.onOpen(e),
     onContextMenu: (ev: React.MouseEvent) => { ev.preventDefault(); ev.stopPropagation(); if (!p.selected.has(e.id)) p.onSelect(e, { shift: false, additive: false }); p.onContext(e, ev.clientX, ev.clientY); },
-    onPointerEnter: e.isFolder ? () => prefetchFolder(e.storageId, e.id) : undefined,
+    onPointerEnter: e.isFolder ? () => prefetchFolder(e.storageId, e.id) : previewKind(e) === "pdf" ? () => void preloadPdf() : undefined,
     ...(e.isFolder ? dropHandlers(e) : {}),
   });
 
@@ -129,7 +131,7 @@ export function FileBrowser(p: BrowserProps) {
     }
     const fCols = Math.max(1, Math.floor((width + GAP) / (p.compact ? 200 : 236 + GAP)));
     const cols = Math.max(2, Math.floor((width + GAP) / ((p.compact ? 132 : 176) + GAP)));
-    const tileW = (width - GAP * (cols - 1)) / cols; const tileH = Math.round(tileW * 0.74) + 54;
+    const tileW = (width - GAP * (cols - 1)) / cols; const tileH = Math.round(tileW * 0.75) + 64;
     if (folders.length) {
       out.push({ key: "lbl-f", h: 30, node: () => <SectionLabel>Folder · {folders.length}</SectionLabel> });
       for (let i = 0; i < folders.length; i += fCols) {

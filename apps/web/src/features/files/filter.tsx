@@ -78,7 +78,7 @@ export function FilterButton({ value, onChange, showName = true }: { value: Filt
         Filter{n > 0 && <span className="tnum ml-0.5 grid size-[18px] place-items-center rounded-full bg-primary text-[11px] font-semibold text-white">{n}</span>}
       </Button>
       {open && (
-        <div role="dialog" aria-label="Filter lanjutan" className="anim-pop absolute left-0 z-40 mt-2 w-[min(380px,calc(100vw-2rem))] rounded-xl border border-line bg-surface p-4 shadow-float">
+        <div role="dialog" aria-label="Filter lanjutan" className="anim-pop absolute left-0 z-40 mt-2 w-[min(380px,calc(100vw-2rem))] max-sm:fixed max-sm:inset-x-3 max-sm:bottom-3 max-sm:mt-0 max-sm:max-h-[80dvh] max-sm:w-auto max-sm:overflow-y-auto rounded-xl border border-line bg-surface p-4 shadow-float">
           <div className="mb-3 flex items-center justify-between"><h3 className="text-[14px] font-semibold">Filter lanjutan</h3>
             <button className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[12px] text-muted hover:bg-surface-2 hover:text-ink disabled:opacity-40" disabled={!n} onClick={() => onChange(emptyFilter)}><RotateCcw className="size-3" />Reset</button></div>
           <div className="space-y-4">

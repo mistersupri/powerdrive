@@ -105,7 +105,7 @@ export function StoragePage({ forcedStorageId }: { forcedStorageId?: string }) {
       </nav>
       <div className="flex min-h-0 flex-1">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">{body}</div>
-        {showInfo && detailEntry && storage?.status === "CONNECTED" && <DetailsPanel key={detailEntry.id} entry={detailEntry} storageName={title} location={detailWhere} onClose={() => setShowInfo(false)} className="hidden w-72 shrink-0 border-l border-line lg:flex" />}
+        {showInfo && detailEntry && storage?.status === "CONNECTED" && <DetailsPanel key={detailEntry.id} entry={detailEntry} storageName={title} location={detailWhere} onClose={() => setShowInfo(false)} className="fixed inset-x-0 bottom-0 z-40 max-h-[75dvh] rounded-t-2xl border-t border-line shadow-float lg:static lg:z-auto lg:max-h-none lg:w-72 lg:shrink-0 lg:rounded-none lg:border-t-0 lg:border-l lg:shadow-none" />}
       </div>
       {menu.element}{uploadMenu.element}{a.dialogs}
     </div>

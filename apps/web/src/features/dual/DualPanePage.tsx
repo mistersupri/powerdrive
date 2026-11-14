@@ -29,6 +29,11 @@ function Pane({ label, storageId, setStorageId, folderId, setFolderId, selection
     <section aria-label={label} className="flex min-h-0 min-w-0 flex-1 flex-col rounded-xl border border-line bg-surface shadow-card">
       <header className="space-y-2 border-b border-line p-3">
         <div className="flex items-center gap-2"><span className="text-[11px] font-semibold tracking-wider text-muted uppercase">{label}</span><Select aria-label={`Penyimpanan ${label}`} className="h-8 flex-1 text-[13px]" value={storageId} onChange={(e) => { setStorageId(e.target.value); setFolderId("root"); selection.clear(); }}>{storages.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select><IconButton label={`Folder baru di panel ${label}`} disabled={!storageId} onClick={() => setMk(true)}><FolderPlus className="size-4" /></IconButton></div>
+        <div className="flex items-center gap-1.5 text-[12px]">
+          <Button size="sm" variant="ghost" disabled={!shown.length} onClick={() => selection.selectAll(shown)}>Pilih semua</Button>
+          <Button size="sm" variant="ghost" disabled={!selection.selected.size} onClick={selection.clear}>Batal pilih</Button>
+          <span className="tnum ml-auto text-muted">{selection.selected.size ? `${selection.selected.size} dipilih` : `${shown.length} item`}</span>
+        </div>
         <nav aria-label="Lokasi" className="flex items-center gap-0.5 overflow-x-auto text-[12px] scroll-thin">
           <button onClick={() => setFolderId("root")} className={cn("rounded px-1.5 py-0.5 whitespace-nowrap hover:bg-surface-2", !path.length && "font-semibold")}>Akar</button>
           {path.map((c, i) => <span key={c.id} className="flex items-center"><ChevronRight className="size-3 text-faint" aria-hidden /><button onClick={() => setFolderId(c.id)} className={cn("rounded px-1.5 py-0.5 whitespace-nowrap hover:bg-surface-2", i === path.length - 1 && "font-semibold")}>{c.name}</button></span>)}

@@ -126,7 +126,7 @@ export function PageHeader({ title, subtitle, actions, onMenu }: { title: string
         <h1 className="truncate text-[20px] leading-tight font-bold">{title}</h1>
         {subtitle && <p className="truncate text-[13px] text-muted">{subtitle}</p>}
       </div>
-      {actions && <div className="flex items-center gap-2">{actions}</div>}
+      {actions && <div className="order-last flex w-full flex-wrap items-center gap-2 sm:order-none sm:w-auto">{actions}</div>}
       <div className="flex items-center gap-2"><GlobalSearch /><Notifications /><AccountMenu /></div>
     </header>
   );

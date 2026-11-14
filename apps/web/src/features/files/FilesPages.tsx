@@ -16,7 +16,7 @@ import { useFileActions } from "./useFileActions";
 import { sortEntries, useFolder, type SortKey, type SortState } from "./useFolder";
 import { applyFilter, emptyFilter, FilterButton, FilterChips, filterToQuery } from "./filter";
 import { usePersistentState } from "@/lib/usePersistentState";
-import { startTransfer } from "./transferApi";
+import { startTransfer, triggerDownload } from "./transferApi";
 import { toast } from "sonner";
 
 export { SortViewControls } from "./controls";
@@ -98,7 +98,7 @@ export function ResultsPage({ mode }: { mode: "search" | "recent" | "starred" })
         onSelect={(e, m) => selection.click(e.id, entries, m)} onSetSelection={(ids) => selection.setSelected(new Set(ids))} onOpen={openEntry}
         onContext={(e, x, y) => e && menu.open(x, y, [
           { label: e.isFolder ? "Buka" : "Pratinjau", onSelect: () => openEntry(e) }, { label: "Buka lokasi file", onSelect: () => nav(`/s/${e.storageId}${e.parentId && e.parentId !== "root" ? `?f=${e.parentId}` : ""}`) },
-          { label: e.isFolder ? "Unduh sebagai ZIP" : "Unduh", onSelect: () => { const l = document.createElement("a"); l.href = `/api/v1/files/${e.storageId}/${e.id}/download`; l.click(); } },
+          { label: e.isFolder ? "Unduh sebagai ZIP" : "Unduh", onSelect: () => triggerDownload(e.storageId, [e.id], e.name) },
           { label: e.starred ? "Hapus bintang" : "Beri bintang", onSelect: () => { void a.star(e).then(() => res.refetch()); } },
         ])}
         onKeyAction={(k) => { if (k === "selectAll") selection.selectAll(entries); if (k === "clear") selection.clear(); }} onDropItems={() => {}} onDropFiles={() => {}} />

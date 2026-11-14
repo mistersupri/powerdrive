@@ -1,3 +1,4 @@
+import { startDownload } from "@/lib/download";
 import type { FileEntry, FileListing, PublicShareDto } from "@superdrive/shared";
 import { formatBytes } from "@superdrive/shared";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -56,12 +57,12 @@ function Content({ token, meta }: { token: string; meta: PublicShareDto }) {
   const previewList = useMemo(() => shown.filter((e) => previewable(e)), [shown]);
   const refresh = useCallback(() => qc.invalidateQueries({ queryKey: ["files", "share", token] }), [qc, token]);
   const go = (id: string) => { selection.clear(); setFolderId(id); };
-  const open = (e: FileEntry) => { if (e.isFolder) return go(e.id); const i = previewList.findIndex((x) => x.id === e.id); if (i >= 0) setPreview(i); else window.location.href = `/api/v1/public/share/${token}/files/${e.id}/download`; };
+  const open = (e: FileEntry) => { if (e.isFolder) return go(e.id); const i = previewList.findIndex((x) => x.id === e.id); if (i >= 0) setPreview(i); else startDownload(`/api/v1/public/share/${token}/files/${e.id}/download`, e.name); };
   const upload = (files: UploadInput[]) => { if (editor && files.length) enqueueUploads(files, { storageId: "share", storageName: meta.name, parentId: folderId, folderLabel: meta.name, shareToken: token }); };
   const download = (ids: string[]) => {
-    if (ids.length === 1) { const a = document.createElement("a"); a.href = `/api/v1/public/share/${token}/files/${ids[0]}/download`; a.click(); return; }
-    const f = document.createElement("form"); f.method = "POST"; f.action = `/api/v1/public/share/${token}/zip`; f.style.display = "none";
-    ids.forEach((id) => { const i = document.createElement("input"); i.type = "hidden"; i.name = "id"; i.value = id; f.appendChild(i); }); document.body.appendChild(f); f.submit(); f.remove();
+    const one = ids.length === 1 ? shown.find((e) => e.id === ids[0]) : undefined;
+    if (ids.length === 1) return startDownload(`/api/v1/public/share/${token}/files/${ids[0]}/download`, one?.name ?? meta.name);
+    startDownload({ action: `/api/v1/public/share/${token}/zip`, fields: ids.map((id) => ["id", id] as [string, string]) }, ids[0] === "root" ? `${meta.name} (ZIP)` : `${ids.length} item (ZIP)`);
   };
   const sel = shown.filter((e) => selection.selected.has(e.id));
   const act = async (fn: () => Promise<unknown>, ok?: string) => { try { await fn(); if (ok) toast.success(ok); await refresh(); } catch (e) { toast.error((e as Error).message); } };

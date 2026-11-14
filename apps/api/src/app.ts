@@ -66,6 +66,13 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
     try { const p = new URLSearchParams(body as string); const o: Record<string, string | string[]> = {}; for (const k of new Set(p.keys())) { const v = p.getAll(k); o[k] = v.length > 1 ? v : v[0]!; } done(null, o); } catch (e) { done(e as Error); }
   });
 
+  // Lets the page know a download has actually started streaming (see web/src/lib/download.ts). Not HttpOnly on purpose.
+  app.addHook("onSend", async (req, reply, payload) => {
+    const t = (req.query as Record<string, unknown> | undefined)?.dlt;
+    if (typeof t === "string" && /^[A-Za-z0-9]{8,40}$/.test(t) && reply.statusCode < 400) reply.header("set-cookie", `sd_dl=${t}; Path=/; Max-Age=120; SameSite=Lax`);
+    return payload;
+  });
+
   app.addHook("onRequest", async (req, reply) => {
     reply.header("x-content-type-options", "nosniff");
     reply.header("referrer-policy", "same-origin");

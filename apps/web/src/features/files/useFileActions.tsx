@@ -37,7 +37,7 @@ export function useFileActions({ storage, folderId, folderName, location, entrie
   const open = useCallback((e: FileEntry) => {
     if (e.isFolder) return onOpenFolder(e.id);
     const i = previewList.findIndex((x) => x.id === e.id);
-    if (i >= 0) setPreview(i); else triggerDownload(e.storageId, [e.id]);
+    if (i >= 0) setPreview(i); else triggerDownload(e.storageId, [e.id], e.name);
   }, [onOpenFolder, previewList]);
 
   const upload = useCallback((inputs: UploadInput[], targetFolderId = folderId, label = folderName) => {
@@ -72,7 +72,7 @@ export function useFileActions({ storage, folderId, folderName, location, entrie
     const multi = list.length > 1;
     return [
       { label: e.isFolder ? "Buka" : "Pratinjau", icon: e.isFolder ? <FolderOpen /> : <Eye />, hidden: multi, onSelect: () => open(e) },
-      { label: e.isFolder ? "Unduh sebagai ZIP" : "Unduh", icon: <Download />, hidden: !can("DOWNLOAD"), onSelect: () => triggerDownload(e.storageId, list.map((x) => x.id)) },
+      { label: e.isFolder ? "Unduh sebagai ZIP" : "Unduh", icon: <Download />, hidden: !can("DOWNLOAD"), onSelect: () => triggerDownload(e.storageId, list.map((x) => x.id), list.length === 1 ? list[0]!.name : undefined) },
       { label: "Salin ke…", icon: <Copy />, hidden: !can("COPY"), divider: true, onSelect: () => setDlg({ t: "transfer", mode: "COPY", list }) },
       { label: "Pindahkan ke…", icon: <FolderInput />, hidden: !can("MOVE"), onSelect: () => setDlg({ t: "transfer", mode: "MOVE", list }) },
       { label: "Ganti nama", icon: <Pencil />, shortcut: "F2", hidden: multi || !can("RENAME"), onSelect: () => setDlg({ t: "rename", e }) },
@@ -115,6 +115,6 @@ export function useFileActions({ storage, folderId, folderName, location, entrie
     newFolder: () => setDlg({ t: "folder" }), share: (e: FileEntry) => setShareTarget(e),
     transferSelected: (mode: "COPY" | "MOVE") => selectedEntries.length && setDlg({ t: "transfer", mode, list: selectedEntries }),
     deleteSelected: () => selectedEntries.length && setDlg({ t: "delete", list: selectedEntries }),
-    downloadSelected: () => selectedEntries.length && triggerDownload(storageId, selectedEntries.map((e) => e.id)),
+    downloadSelected: () => selectedEntries.length && triggerDownload(storageId, selectedEntries.map((e) => e.id), selectedEntries.length === 1 ? selectedEntries[0]!.name : undefined),
   };
 }

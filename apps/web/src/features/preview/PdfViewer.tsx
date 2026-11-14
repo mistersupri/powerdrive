@@ -17,8 +17,8 @@ export default function PdfViewer({ f }: { f: FileEntry }) {
   useEffect(() => {
     let dead = false; let task: { destroy(): Promise<void> } | null = null; setDoc(null); setErr(null);
     (async () => {
-      const pdfjs = await import("pdfjs-dist");
-      pdfjs.GlobalWorkerOptions.workerSrc = (await import("pdfjs-dist/build/pdf.worker.min.mjs?url")).default;
+      const [pdfjs, worker] = await Promise.all([import("pdfjs-dist"), import("pdfjs-dist/build/pdf.worker.min.mjs?url")]);
+      pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
       const t = pdfjs.getDocument({ url, withCredentials: true, rangeChunkSize: 512 * 1024 }); task = t;
       const d = await t.promise; if (!dead) setDoc(d);
     })().catch((e) => !dead && setErr(e?.name === "PasswordException" ? "PDF ini dilindungi kata sandi." : "Tidak dapat membuka PDF ini."));
