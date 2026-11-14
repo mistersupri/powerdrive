@@ -31,9 +31,9 @@ export function DetailsPanel({ entry, storageName, location, onClose, className,
         <dl className="divide-y divide-line">
           <Row k="Jenis">{KIND_LABEL[kind] ?? "File"}{entry.mimeType && !entry.isFolder ? <span className="block text-[12px] text-muted">{entry.mimeType}</span> : null}</Row>
           {entry.isFolder ? (
-            <Row k="Isi">{st.isLoading ? "Menghitung…" : st.data ? `${st.data.files.toLocaleString("id-ID")} file, ${st.data.folders.toLocaleString("id-ID")} folder${st.data.truncated ? " (perkiraan)" : ""}` : "—"}</Row>
+            <Row k="Isi">{st.isLoading ? "Menghitung…" : st.data ? `${st.data.files.toLocaleString("id-ID")} file, ${st.data.folders.toLocaleString("id-ID")} folder${st.data.truncated ? " (perkiraan)" : ""}` : "–"}</Row>
           ) : null}
-          <Row k="Ukuran">{entry.isFolder ? (st.data ? `${formatBytes(st.data.bytes)}${st.data.truncated ? "+" : ""}` : st.isLoading ? "Menghitung…" : "—") : `${formatBytes(entry.size)}${entry.size ? ` (${entry.size.toLocaleString("id-ID")} byte)` : ""}`}</Row>
+          <Row k="Ukuran">{entry.isFolder ? (st.data ? `${formatBytes(st.data.bytes)}${st.data.truncated ? "+" : ""}` : st.isLoading ? "Menghitung…" : "–") : `${formatBytes(entry.size)}${entry.size ? ` (${entry.size.toLocaleString("id-ID")} byte)` : ""}`}</Row>
           {storageName && <Row k="Penyimpanan">{storageName}</Row>}
           {where !== undefined && <Row k="Lokasi"><span className="font-mono text-[12px]">{where || "/"}</span></Row>}
           {entry.modifiedAt && <Row k="Diubah">{dateTime(entry.modifiedAt)}</Row>}

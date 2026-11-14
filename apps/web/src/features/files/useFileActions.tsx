@@ -15,7 +15,7 @@ import { type Selection } from "./selection";
 
 export { startTransfer, triggerDownload };
 interface Args {
-  storage: StorageConnectionDto | undefined; folderId: string; folderName: string; /** Path of the current folder, shown in the details panel. */ location?: string; entries: FileEntry[]; /** Everything in the folder, before filtering — used to recognise no-op drops. */ allEntries?: FileEntry[]; selection: Selection;
+  storage: StorageConnectionDto | undefined; folderId: string; folderName: string; /** Path of the current folder, shown in the details panel. */ location?: string; entries: FileEntry[]; /** Everything in the folder, before filtering – used to recognise no-op drops. */ allEntries?: FileEntry[]; selection: Selection;
   onOpenFolder(id: string): void;
   /** Show the details panel for this item (null = the current folder). */
   onDetails?(e: FileEntry | null): void;

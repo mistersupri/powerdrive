@@ -255,7 +255,7 @@ export function FileBrowser(p: BrowserProps) {
 const SectionLabel = ({ children }: { children: ReactNode }) => <h3 className="pt-3 pb-1.5 text-[12px] font-semibold tracking-wide text-muted uppercase" data-bg="1">{children}</h3>;
 
 const Check1 = ({ on }: { on: boolean }) => (
-  <span data-check="1" className={cn("grid size-[22px] place-items-center rounded-md border transition-colors", on ? "border-primary bg-primary text-white" : "border-line-strong bg-surface/90 text-transparent hover:border-primary")}>
+  <span data-check="1" className={cn("relative grid size-[22px] place-items-center rounded-md border transition-colors after:absolute after:-inset-2.5 after:content-['']", on ? "border-primary bg-primary text-white" : "border-line-strong bg-surface/90 text-transparent hover:border-primary")}>
     <Check className="size-3.5" strokeWidth={3} aria-hidden />
   </span>
 );
@@ -270,7 +270,7 @@ const FolderChip = memo(function FolderChip({ e, sel, drop, props, where, onMenu
       <span className={cn("grid size-9 shrink-0 place-items-center rounded-lg", KIND_TONE.folder)}><Icon className="size-[18px]" fill="currentColor" fillOpacity={0.15} aria-hidden /></span>
       <span className="min-w-0 flex-1"><span className="block truncate text-[13px] font-medium" title={e.name}>{e.name}</span>{where && <span className="block truncate text-[11px] text-muted" title={where}>{where}</span>}</span>
       {e.starred && <Star className="size-3.5 shrink-0 fill-warn-ink text-warn-ink" aria-label="Berbintang" />}
-      <button aria-label={`Menu untuk ${e.name}`} className="grid size-7 place-items-center rounded-md text-muted opacity-0 group-hover:opacity-100 hover:bg-surface focus:opacity-100 pointer-coarse:opacity-100" onClick={(ev) => { ev.stopPropagation(); const r = ev.currentTarget.getBoundingClientRect(); onMenu(r.right - 200, r.bottom); }}><MoreVertical className="size-4" /></button>
+      <button aria-label={`Menu untuk ${e.name}`} className="relative grid size-7 place-items-center rounded-md text-muted opacity-0 group-hover:opacity-100 hover:bg-surface focus:opacity-100 pointer-coarse:opacity-100 after:absolute after:-inset-2 after:content-['']" onClick={(ev) => { ev.stopPropagation(); const r = ev.currentTarget.getBoundingClientRect(); onMenu(r.right - 200, r.bottom); }}><MoreVertical className="size-4" /></button>
     </div>
   );
 });
@@ -281,7 +281,7 @@ const FileTile = memo(function FileTile({ e, sel, cursor, props, where, onMenu }
     <div {...props} className={cn("group relative flex flex-col overflow-hidden rounded-xl border bg-surface transition-colors select-none", sel ? "border-primary ring-2 ring-primary/40" : "border-line hover:border-line-strong", cursor && !sel && "ring-2 ring-primary/20")}>
       <FileThumb file={e} size={256} className="aspect-[4/3] w-full bg-surface-2" />
       <span className={cn("absolute top-2 left-2 transition-opacity", sel ? "opacity-100" : "opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100")}><Check1 on={sel} /></span>
-      <button aria-label={`Menu untuk ${e.name}`} className="absolute top-2 right-2 grid size-7 place-items-center rounded-md bg-surface/90 text-muted opacity-0 shadow-card group-hover:opacity-100 hover:text-ink focus:opacity-100 pointer-coarse:opacity-100" onClick={(ev) => { ev.stopPropagation(); const r = ev.currentTarget.getBoundingClientRect(); onMenu(r.right - 200, r.bottom); }}><MoreVertical className="size-4" /></button>
+      <button aria-label={`Menu untuk ${e.name}`} className="absolute top-2 right-2 grid size-7 place-items-center rounded-md bg-surface/90 after:absolute after:-inset-2 after:content-[''] text-muted opacity-0 shadow-card group-hover:opacity-100 hover:text-ink focus:opacity-100 pointer-coarse:opacity-100" onClick={(ev) => { ev.stopPropagation(); const r = ev.currentTarget.getBoundingClientRect(); onMenu(r.right - 200, r.bottom); }}><MoreVertical className="size-4" /></button>
       <div className="flex min-w-0 items-center gap-2 px-3 py-2.5">
         <Icon className="size-4 shrink-0 text-muted" aria-hidden />
         <div className="min-w-0 flex-1"><div className="line-clamp-2 text-[13px] leading-[1.25] font-medium break-all sm:line-clamp-1" title={e.name}>{e.name}</div><div className="tnum line-clamp-2 text-[11px] break-all text-muted sm:line-clamp-1" title={where}>{where ?? `${formatBytes(e.size)} · ${shortDate(e.modifiedAt)}`}</div></div>
@@ -300,13 +300,13 @@ function ListHeader({ showStorage, compact }: { showStorage: boolean; compact?: 
 }
 const ListRow = memo(function ListRow({ e, sel, drop, cursor, props, storageName, compact, onMenu }: { e: FileEntry; i: number; sel: boolean; drop: boolean; cursor: boolean; props: any; storageName?: string; compact?: boolean; onMenu(x: number, y: number): void }) {
   const kind = kindOf(e);
-  const menuBtn = <button aria-label={`Menu untuk ${e.name}`} className="grid size-7 place-items-center rounded-md text-muted opacity-0 group-hover:opacity-100 hover:bg-surface focus:opacity-100 pointer-coarse:opacity-100" onClick={(ev) => { ev.stopPropagation(); const r = ev.currentTarget.getBoundingClientRect(); onMenu(r.right - 200, r.bottom); }}><MoreVertical className="size-4" /></button>;
+  const menuBtn = <button aria-label={`Menu untuk ${e.name}`} className="relative grid size-7 place-items-center rounded-md text-muted opacity-0 group-hover:opacity-100 hover:bg-surface focus:opacity-100 pointer-coarse:opacity-100 after:absolute after:-inset-2 after:content-['']" onClick={(ev) => { ev.stopPropagation(); const r = ev.currentTarget.getBoundingClientRect(); onMenu(r.right - 200, r.bottom); }}><MoreVertical className="size-4" /></button>;
   return (
     <div {...props} className={cn("group grid h-[52px] items-center gap-3 border-b border-line px-3 text-[13px] select-none", compact ? COLS_COMPACT : storageName ? COLS_WIDE : COLS, sel ? "bg-primary-soft" : "hover:bg-surface-2", cursor && !sel && "bg-surface-2", drop && "bg-primary-soft ring-2 ring-primary ring-inset")}>
       <span className="relative"><FileThumb file={e} size={128} className="size-7 rounded-md" iconClass="size-4" />{sel && <span className="absolute -top-1 -left-1 grid size-3.5 place-items-center rounded-full bg-primary text-white"><Check className="size-2.5" strokeWidth={3.5} /></span>}</span>
       <span className="flex min-w-0 flex-col justify-center"><span className="flex min-w-0 items-center gap-2"><span className={cn("truncate font-medium")} title={e.name}>{e.name}</span>{e.starred && <Star className="size-3.5 shrink-0 fill-warn-ink text-warn-ink" aria-label="Berbintang" />}</span>{!compact && <span className="line-clamp-1 text-[11px] text-muted md:hidden" title={storageName}>{storageName ?? shortDate(e.modifiedAt)}</span>}</span>
       {!compact && <span className="hidden truncate text-muted md:block" title={storageName}>{storageName ?? (e.isFolder ? "Folder" : (e.name.split(".").pop() || kind).toUpperCase())}</span>}
-      <span className="tnum text-right whitespace-nowrap text-muted">{e.isFolder ? "—" : formatBytes(e.size)}</span>
+      <span className="tnum text-right whitespace-nowrap text-muted">{e.isFolder ? "–" : formatBytes(e.size)}</span>
       {!compact && <span className="tnum hidden text-muted md:block">{shortDate(e.modifiedAt)}</span>}
       {menuBtn}
     </div>

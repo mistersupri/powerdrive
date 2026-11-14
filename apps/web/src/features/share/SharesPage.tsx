@@ -25,7 +25,7 @@ export default function SharesPage() {
               <li key={l.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
                 <span className={`grid size-9 place-items-center rounded-lg ${l.role === "EDITOR" ? "bg-warn-soft text-warn-ink" : "bg-primary-soft text-primary-ink"}`}>{l.role === "EDITOR" ? <Pencil className="size-4" /> : <Eye className="size-4" />}</span>
                 <div className="min-w-0 flex-1 basis-[calc(100%-3.5rem)] sm:basis-0"><p className="text-[14px] font-medium break-words sm:truncate" title={l.name}>{l.name}</p>
-                  <p className="tnum text-[12px] text-muted sm:truncate">{l.storageName} · {l.createdByName ?? "—"} · {l.accessCount}× dibuka · {l.expiresAt ? `sampai ${dateTime(l.expiresAt)}` : "tanpa batas"}</p></div>
+                  <p className="tnum text-[12px] text-muted sm:truncate">{l.storageName} · {l.createdByName ?? "–"} · {l.accessCount}× dibuka · {l.expiresAt ? `sampai ${dateTime(l.expiresAt)}` : "tanpa batas"}</p></div>
                 <Badge tone={l.role === "EDITOR" ? "warn" : "primary"}>{l.role === "EDITOR" ? "Editor" : "Penonton"}</Badge>{l.hasPassword && <Badge>Sandi</Badge>}{l.expired && <Badge tone="danger">Kedaluwarsa</Badge>}
                 <Button size="sm" icon={copied === l.id ? <Check className="size-3.5" /> : <Copy className="size-3.5" />} onClick={async () => { await navigator.clipboard.writeText(l.url); setCopied(l.id); setTimeout(() => setCopied(""), 1500); }}>Salin</Button>
                 <Button size="sm" variant="ghost" className="text-danger-ink hover:bg-danger-soft" aria-label={`Matikan tautan ${l.name}`} icon={<Trash2 className="size-3.5" />} onClick={() => revoke.mutate(l.id)}><span className="hidden sm:inline">Matikan</span></Button>

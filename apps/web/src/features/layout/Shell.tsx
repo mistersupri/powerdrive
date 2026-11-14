@@ -27,7 +27,7 @@ export function useStorages() {
   return useQuery({ queryKey: ["storages"], queryFn: () => api<StorageConnectionDto[]>("/storages"), staleTime: 15_000 });
 }
 
-const item = "group relative flex h-9 items-center gap-3 rounded-lg px-3 text-[13px] font-medium text-muted transition-colors hover:bg-surface-2 hover:text-ink";
+const item = "group relative flex h-9 items-center pointer-coarse:h-11 gap-3 rounded-lg px-3 text-[13px] font-medium text-muted transition-colors hover:bg-surface-2 hover:text-ink";
 const active = "bg-primary-soft text-primary-ink hover:bg-primary-soft";
 
 function NavItem({ to, icon: Icon, children, badge, end, trailing }: { trailing?: ReactNode; to: string; icon: typeof Search; children: ReactNode; badge?: number; end?: boolean }) {
@@ -76,7 +76,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         <NavItem to="/trash" icon={Trash2}>Sampah</NavItem>
         <Section>Penyimpanan</Section>
         {storages.filter((s) => !s.isDefault).map((s) => (
-          <NavLink key={s.id} to={`/s/${s.id}`} className={({ isActive }) => cn(item, "h-8", isActive && active)}
+          <NavLink key={s.id} to={`/s/${s.id}`} className={({ isActive }) => cn(item, "h-8 pointer-coarse:h-11", isActive && active)}
             onDragOver={(e) => { if (e.dataTransfer.types.includes(DRAG_MIME)) { e.preventDefault(); e.currentTarget.classList.add("ring-2", "ring-primary"); } }}
             onDragLeave={(e) => e.currentTarget.classList.remove("ring-2", "ring-primary")}
             onDrop={(e) => { e.currentTarget.classList.remove("ring-2", "ring-primary"); const raw = e.dataTransfer.getData(DRAG_MIME); if (!raw) return; e.preventDefault(); const p = JSON.parse(raw); void startTransfer(e.altKey ? "COPY" : "MOVE", p.storageId, p.ids, { storageId: s.id, folderId: "root", folderName: s.name }).catch((er) => toast.error((er as Error).message)); }}>
@@ -133,19 +133,32 @@ export function PageHeader({ title, subtitle, actions, onMenu }: { title: string
 }
 
 function GlobalSearch() {
-  const nav = useNavigate(); const ref = useRef<HTMLInputElement>(null); const [q, setQ] = useState("");
+  const nav = useNavigate(); const ref = useRef<HTMLInputElement>(null); const mref = useRef<HTMLInputElement>(null); const [q, setQ] = useState(""); const [sheet, setSheet] = useState(false);
   useEffect(() => {
-    const k = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); ref.current?.focus(); } };
+    const k = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); if (matchMedia("(min-width: 768px)").matches) ref.current?.focus(); else setSheet(true); } };
     addEventListener("keydown", k); return () => removeEventListener("keydown", k);
   }, []);
-  return (
-    <form role="search" onSubmit={(e) => { e.preventDefault(); if (q.trim()) nav(`/search?q=${encodeURIComponent(q.trim())}`); }}
+  useEffect(() => { if (sheet) mref.current?.focus(); }, [sheet]);
+  const go = (e: React.FormEvent) => { e.preventDefault(); if (q.trim()) { setSheet(false); nav(`/search?q=${encodeURIComponent(q.trim())}`); } };
+  return (<>
+    <form role="search" onSubmit={go}
       className="hidden h-9 w-56 items-center gap-2 rounded-lg bg-surface-2 px-3 focus-within:ring-2 focus-within:ring-primary/30 md:flex">
       <Search className="size-4 text-faint" aria-hidden />
       <input ref={ref} value={q} onChange={(e) => setQ(e.target.value)} aria-label="Cari file" placeholder="Cari file…" className="min-w-0 flex-1 bg-transparent text-[13px] placeholder:text-muted focus:outline-none" />
       <kbd className="text-[11px] text-faint">⌘K</kbd>
     </form>
-  );
+    <IconButton label="Cari file" className="md:hidden" onClick={() => setSheet(true)}><Search className="size-[18px]" /></IconButton>
+    {sheet && (
+      <div className="fixed inset-0 z-[70] bg-black/40 md:hidden" onMouseDown={(e) => { if (e.target === e.currentTarget) setSheet(false); }}>
+        <form role="search" onSubmit={go} onKeyDown={(e) => { if (e.key === "Escape") setSheet(false); }} className="anim-pop flex items-center gap-2 border-b border-line bg-surface p-3 shadow-float">
+          <Search className="ml-1 size-5 shrink-0 text-muted" aria-hidden />
+          <input ref={mref} type="search" enterKeyHint="search" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Cari file" placeholder="Cari nama file di semua penyimpanan" className="h-11 min-w-0 flex-1 bg-transparent text-[16px] placeholder:text-muted focus:outline-none" />
+          <button type="submit" className="h-11 rounded-lg bg-primary px-4 text-[14px] font-medium text-white">Cari</button>
+          <IconButton label="Tutup pencarian" onClick={() => setSheet(false)}><X className="size-5" /></IconButton>
+        </form>
+      </div>
+    )}
+  </>);
 }
 
 function Notifications() {
@@ -165,9 +178,9 @@ function Notifications() {
         {unread > 0 && <span className="absolute top-1.5 right-1.5 size-2 rounded-full bg-danger ring-2 ring-surface-2" aria-hidden />}
       </IconButton>
       {open && (
-        <div className="anim-pop absolute right-0 z-50 mt-2 w-[min(360px,calc(100vw-2rem))] rounded-xl border border-line bg-surface shadow-float">
+        <div role="dialog" aria-label="Notifikasi" className="anim-pop z-50 rounded-xl border border-line bg-surface shadow-float max-sm:fixed max-sm:inset-x-3 max-sm:top-[4.75rem] sm:absolute sm:right-0 sm:mt-2 sm:w-[360px]">
           <div className="border-b border-line px-4 py-3 text-[14px] font-semibold">Notifikasi</div>
-          <ul className="scroll-thin max-h-[420px] divide-y divide-line overflow-y-auto">
+          <ul className="scroll-thin max-h-[min(420px,calc(100dvh-10rem))] divide-y divide-line overflow-y-auto">
             {q.data?.items.length ? q.data.items.map((n) => (
               <li key={n.id} className="px-4 py-3"><p className="text-[13px] font-medium">{n.title}</p><p className="text-[12px] text-muted">{n.message}</p><p className="mt-0.5 text-[11px] text-faint">{timeAgo(n.createdAt)}</p></li>
             )) : <li className="px-4 py-10 text-center text-[13px] text-muted">Belum ada notifikasi.</li>}

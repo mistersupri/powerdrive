@@ -34,14 +34,21 @@ function Node({ c, id, name, depth, root }: { c: Ctx; id: string; name: string; 
   const active = c.current === id; const over = c.over === id;
   return (
     <li role="none">
-      <div role="treeitem" aria-expanded={empty ? undefined : open} aria-selected={active} aria-level={depth + 1} tabIndex={-1} data-tree-id={id}
-        className={cn("group flex h-8 cursor-default items-center rounded-lg pr-2 text-[13px] transition-colors select-none", active ? "bg-primary-soft font-medium text-primary-ink" : "hover:bg-surface-2", over && "bg-primary-soft ring-2 ring-primary")}
+      <div role="treeitem" aria-expanded={empty ? undefined : open} aria-selected={active} aria-level={depth + 1} tabIndex={active || (root && !c.current) ? 0 : -1} data-tree-id={id}
+        onKeyDown={(e) => {
+          const items = [...(e.currentTarget.closest("[role=tree]")?.querySelectorAll<HTMLElement>("[role=treeitem]") ?? [])]; const i = items.indexOf(e.currentTarget);
+          if (e.key === "ArrowDown") { e.preventDefault(); items[i + 1]?.focus(); } else if (e.key === "ArrowUp") { e.preventDefault(); items[i - 1]?.focus(); }
+          else if (e.key === "ArrowRight") { e.preventDefault(); if (!open && !empty) c.toggle(id, true); else items[i + 1]?.focus(); }
+          else if (e.key === "ArrowLeft") { e.preventDefault(); if (open) c.toggle(id, false); }
+          else if (e.key === "Enter" || e.key === " ") { e.preventDefault(); c.go(id); }
+        }}
+        className={cn("group flex h-8 cursor-default items-center pointer-coarse:h-11 rounded-lg focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none pr-2 text-[13px] transition-colors select-none", active ? "bg-primary-soft font-medium text-primary-ink" : "hover:bg-surface-2", over && "bg-primary-soft ring-2 ring-primary")}
         style={{ paddingLeft: 4 + depth * 14 }}
         onClick={() => c.go(id)}
         onDragOver={(e) => { if (!e.dataTransfer.types.includes(DRAG_MIME) || activeDrag?.ids.includes(id)) return; e.preventDefault(); e.stopPropagation(); c.setOver(id); if (!open && !empty && !hover.current) hover.current = setTimeout(() => c.toggle(id, true), 700); }}
         onDragLeave={() => { clearTimeout(hover.current); hover.current = undefined; if (c.over === id) c.setOver(""); }}
         onDrop={(e) => { clearTimeout(hover.current); hover.current = undefined; c.setOver(""); const raw = e.dataTransfer.getData(DRAG_MIME); if (!raw) return; e.preventDefault(); e.stopPropagation(); c.drop(id, JSON.parse(raw), e.altKey); }}>
-        <button aria-label={open ? "Ciutkan" : "Buka"} tabIndex={-1} className={cn("grid size-5 shrink-0 place-items-center rounded text-muted hover:bg-line", empty && "invisible")} onClick={(e) => { e.stopPropagation(); c.toggle(id); }}>
+        <button aria-label={open ? "Ciutkan" : "Buka"} tabIndex={-1} className={cn("grid size-5 shrink-0 place-items-center rounded text-muted hover:bg-line pointer-coarse:size-9", empty && "invisible")} onClick={(e) => { e.stopPropagation(); c.toggle(id); }}>
           {open && q.isFetching && !q.data ? <Loader2 className="size-3.5 animate-spin" /> : <ChevronRight className={cn("size-3.5 transition-transform", open && "rotate-90")} />}
         </button>
         {root ? <HardDrive className="mr-1.5 size-4 shrink-0 text-primary-ink" aria-hidden /> : open || active ? <FolderOpen className="mr-1.5 size-4 shrink-0 text-primary-ink" aria-hidden /> : <Folder className="mr-1.5 size-4 shrink-0 text-primary-ink" aria-hidden />}

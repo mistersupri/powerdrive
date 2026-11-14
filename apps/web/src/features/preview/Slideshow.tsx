@@ -28,7 +28,7 @@ export function Slideshow({ items, start, onClose }: { items: FileEntry[]; start
   useEffect(() => { root.current?.focus(); void root.current?.requestFullscreen?.().catch(() => {}); }, []);
   if (!f) return null;
   const bar = "absolute inset-x-0 flex items-center gap-2 px-4 py-3 text-white transition-opacity duration-300 " + (chrome ? "opacity-100" : "pointer-events-none opacity-0");
-  const btn = "grid size-10 place-items-center rounded-full bg-white/10 hover:bg-white/25 focus-visible:outline-2 focus-visible:outline-white";
+  const btn = "grid size-11 place-items-center rounded-full bg-white/10 hover:bg-white/25 focus-visible:outline-2 focus-visible:outline-white";
   return (
     <div ref={root} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Tayangan slide" className="fixed inset-0 z-[60] bg-black focus:outline-none" style={{ cursor: chrome ? "default" : "none" }}>
       <img key={f.id} src={urls.preview(f)} alt={f.name} className="anim-fade absolute inset-0 size-full object-contain" draggable={false} />

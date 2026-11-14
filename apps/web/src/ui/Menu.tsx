@@ -33,7 +33,7 @@ export function Menu({ x, y, items, onClose }: { x: number; y: number; items: Me
   }, [onClose]);
 
   return createPortal(
-    <div ref={ref} role="menu" style={pos} className="anim-pop fixed z-[60] min-w-52 rounded-xl border border-line bg-surface p-1 shadow-float">
+    <div ref={ref} role="menu" style={pos} className="anim-pop fixed z-[60] max-h-[calc(100dvh-1rem)] min-w-52 max-w-[calc(100vw-1rem)] overflow-y-auto rounded-xl border border-line bg-surface p-1 shadow-float">
       {visible.map((it, i) => (
         <div key={i}>
           {it.divider && <div className="my-1 h-px bg-line" />}

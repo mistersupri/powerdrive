@@ -17,7 +17,7 @@ export const Button = forwardRef<HTMLButtonElement, Props>(({ variant = "seconda
     ref={ref} type="button" disabled={disabled || loading} aria-busy={loading || undefined}
     className={cn(
       "inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg font-medium whitespace-nowrap transition-[background-color,transform,filter] duration-150 active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100",
-      size === "sm" ? "h-8 px-3 text-[13px]" : "h-9 px-4 text-[13px]", V[variant], className,
+      size === "sm" ? "h-8 px-3 text-[13px] pointer-coarse:h-11" : "h-9 px-4 text-[13px] pointer-coarse:h-11", V[variant], className,
     )}
     {...p}
   >

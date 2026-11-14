@@ -1,7 +1,7 @@
 import { forwardRef, useId, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from "react";
 import { cn } from "@/lib/cn";
 
-const control = "h-10 w-full rounded-lg border border-line-strong bg-surface px-3 text-[14px] text-ink placeholder:text-faint transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/25 disabled:bg-surface-2 disabled:opacity-70";
+const control = "h-10 w-full rounded-lg border border-line-strong bg-surface px-3 text-[16px] pointer-coarse:h-11 sm:text-[14px] text-ink placeholder:text-faint transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/25 disabled:bg-surface-2 disabled:opacity-70";
 
 interface FieldProps { label: string; hint?: string; error?: string; children: (id: string) => ReactNode }
 export function Field({ label, hint, error, children }: FieldProps) {

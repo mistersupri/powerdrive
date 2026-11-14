@@ -46,7 +46,7 @@ export default function DashboardPage() {
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <Stat icon={HardDrive} tone="bg-primary-soft text-primary-ink" label="Penyimpanan terhubung" value={String(d.storages)} />
             <Stat icon={Cable} tone="bg-ok-soft text-ok-ink" label="Penyedia" value={String(d.providers)} hint={d.storages ? `${d.storages} akun` : undefined} />
-            <Stat icon={Database} tone="bg-warn-soft text-warn-ink" label="Terpakai (yang diketahui)" value={d.knownCapacity ? formatBytes(d.knownUsage) : d.knownUsage ? formatBytes(d.knownUsage) : "—"} hint={d.knownCapacity ? `dari ${formatBytes(d.knownCapacity)}` : "Penyedia tidak melaporkan kapasitas"} />
+            <Stat icon={Database} tone="bg-warn-soft text-warn-ink" label="Terpakai (yang diketahui)" value={d.knownCapacity ? formatBytes(d.knownUsage) : d.knownUsage ? formatBytes(d.knownUsage) : "–"} hint={d.knownCapacity ? `dari ${formatBytes(d.knownCapacity)}` : "Penyedia tidak melaporkan kapasitas"} />
             <Stat icon={ArrowRightLeft} tone="bg-violet-soft text-violet-ink" label="Transfer aktif" value={String(active || d.transfers.active)} hint={`${d.transfers.completed} selesai · ${d.transfers.failed} gagal`} />
           </div>)}
         <div className="grid gap-6 xl:grid-cols-[1fr_400px]">

@@ -15,7 +15,7 @@ export function SortViewControls({ sort, setSort, view, setView }: { sort: SortS
       </button>
       <div className="flex rounded-lg bg-surface-2 p-0.5" role="group" aria-label="Tampilan">
         {([["grid", Grid2x2, "Tampilan kisi"], ["list", List, "Tampilan daftar"]] as const).map(([v, I, l]) => (
-          <button key={v} aria-label={l} title={l} aria-pressed={view === v} onClick={() => setView(v)} className={cn("grid size-8 place-items-center rounded-md text-muted transition-colors", view === v && "bg-surface text-ink shadow-card")}><I className="size-4" /></button>
+          <button key={v} aria-label={l} title={l} aria-pressed={view === v} onClick={() => setView(v)} className={cn("grid size-8 place-items-center rounded-md text-muted transition-colors pointer-coarse:size-10", view === v && "bg-surface text-ink shadow-card")}><I className="size-4" /></button>
         ))}
       </div>
       {menu.element}
