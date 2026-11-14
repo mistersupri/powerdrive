@@ -10,19 +10,20 @@ const V: Record<Variant, string> = {
   ghost: "text-muted hover:bg-surface-2 hover:text-ink",
   danger: "bg-danger text-white hover:brightness-110",
 };
-interface Props extends ButtonHTMLAttributes<HTMLButtonElement> { variant?: Variant; size?: "sm" | "md"; loading?: boolean; icon?: ReactNode }
+interface Props extends ButtonHTMLAttributes<HTMLButtonElement> { variant?: Variant; size?: "sm" | "md"; loading?: boolean; icon?: ReactNode; /** On phones show only the icon (the label stays for screen readers and as a tooltip). */ iconOnlyMobile?: boolean }
 
-export const Button = forwardRef<HTMLButtonElement, Props>(({ variant = "secondary", size = "md", loading, icon, className, children, disabled, ...p }, ref) => (
+export const Button = forwardRef<HTMLButtonElement, Props>(({ variant = "secondary", size = "md", loading, icon, iconOnlyMobile, className, children, disabled, ...p }, ref) => (
   <button
     ref={ref} type="button" disabled={disabled || loading} aria-busy={loading || undefined}
     className={cn(
       "inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg font-medium whitespace-nowrap transition-[background-color,transform,filter] duration-150 active:scale-[0.97] disabled:opacity-50 disabled:active:scale-100",
-      size === "sm" ? "h-8 px-3 text-[13px] pointer-coarse:h-11" : "h-9 px-4 text-[13px] pointer-coarse:h-11", V[variant], className,
+      size === "sm" ? "h-8 px-3 text-[13px] pointer-coarse:h-11" : "h-9 px-4 text-[13px] pointer-coarse:h-11", V[variant], iconOnlyMobile && "max-sm:w-9 max-sm:px-0 max-sm:pointer-coarse:w-11", className,
     )}
+    title={p.title ?? (iconOnlyMobile && typeof children === "string" ? children : undefined)}
     {...p}
   >
     {loading ? <Loader2 className="size-4 animate-spin" aria-hidden /> : icon}
-    {children}
+    {iconOnlyMobile ? <span className="max-sm:sr-only">{children}</span> : children}
   </button>
 ));
 

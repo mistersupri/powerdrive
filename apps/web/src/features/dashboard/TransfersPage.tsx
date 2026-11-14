@@ -86,7 +86,7 @@ export default function TransfersPage() {
   const qs = (extra = "") => `status=${f.status}${q ? `&q=${encodeURIComponent(q)}` : ""}${f.type ? `&type=${f.type}` : ""}${f.storageId ? `&storageId=${f.storageId}` : ""}${f.from ? `&from=${new Date(`${f.from}T00:00:00`).toISOString()}` : ""}${f.to ? `&to=${new Date(`${f.to}T23:59:59`).toISOString()}` : ""}${extra}`;
   const res = useQuery({ queryKey: ["transfers", f.status, q, f.type, f.storageId, f.from, f.to, page, limit], queryFn: () => api<Paged<TransferJobDto>>(`/transfers?${qs(`&page=${page}&limit=${limit}`)}`), placeholderData: (p) => p, staleTime: 3000 });
   const count = (status: string) => useQuery({ queryKey: ["transfers-count", status], queryFn: () => api<Paged<TransferJobDto>>(`/transfers?status=${status}&limit=1`).then((r) => r.total), staleTime: 5000 }).data ?? 0; // eslint-disable-line react-hooks/rules-of-hooks
-  const nActive = count("active"), nDone = count("done"), nFailed = count("failed");
+  const nActive = count("active"), nDone = count("done"), nFailed = count("failed"), nAll = count("all");
 
   // Keep the list fresh as jobs change state (progress itself comes from the live stream below).
   const signature = useMemo(() => live.map((j) => `${j.id}:${j.status}`).join("|"), [live]);
@@ -99,19 +99,24 @@ export default function TransfersPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <PageHeader title="Transfer" subtitle="Pantau pemindahan file antar penyimpanan." actions={<Link to="/dual"><Button variant="primary" size="sm" icon={<Columns2 className="size-4" />}>Transfer baru</Button></Link>} />
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-line bg-surface px-4 py-3 sm:px-8">
+      <PageHeader title="Transfer" subtitle="Pantau pemindahan file antar penyimpanan." actions={<Link to="/dual"><Button variant="primary" size="sm" iconOnlyMobile icon={<Columns2 className="size-4" />}>Transfer baru</Button></Link>} />
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-line bg-surface px-4 py-3 max-sm:hidden sm:px-8">
         {([["Aktif", nActive, "bg-primary"], ["Selesai", nDone, "bg-ok-ink"], ["Gagal/batal", nFailed, "bg-danger"]] as const).map(([l, v, c]) => (
           <div key={l} className="flex items-center gap-1.5 text-[12px]"><span className={cn("size-2 rounded-full", c)} aria-hidden /><span className="text-muted">{l}</span><span className="tnum text-[13px] font-semibold">{v}</span></div>))}
         <span className="flex-1" />
         <div className="flex rounded-lg bg-surface-2 p-0.5" role="tablist">{TABS.map(([k, l]) => <button key={k} role="tab" aria-selected={f.status === k} onClick={() => setF({ ...f, status: k })} className={cn("rounded-md px-3.5 py-1.5 text-[12px] font-medium text-muted transition-colors", f.status === k && "bg-surface text-ink shadow-card")}>{l}</button>)}</div>
       </div>
       <div className="border-b border-line bg-surface px-4 py-2.5 sm:px-8">
+        {/* Phones: the status as chips with counts, like the media gallery. */}
+        <div role="group" aria-label="Status transfer" className="mb-2 flex items-center gap-1 overflow-x-auto sm:hidden">
+          {([["all", "Semua", nAll], ["active", "Aktif", nActive], ["done", "Selesai", nDone], ["failed", "Gagal", nFailed]] as const).map(([k, l, n]) => (
+            <button key={k} type="button" aria-pressed={f.status === k} onClick={() => setF({ ...f, status: k })} className={cn("h-9 shrink-0 rounded-full px-3.5 text-[13px] font-medium pointer-coarse:h-11", f.status === k ? "bg-primary-soft text-primary-ink" : "text-muted hover:bg-surface-2")}>{l}<span className="tnum ml-1.5 text-[12px] opacity-70">{n}</span></button>))}
+        </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative min-w-0 flex-1 basis-0 sm:flex-none sm:basis-auto"><Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-faint" aria-hidden /><Input aria-label="Cari transfer" className="h-9 w-full pl-8 text-[13px] sm:h-8 sm:w-52" placeholder="Cari nama" value={f.q} onChange={(e) => setF({ ...f, q: e.target.value })} /></div>
           {/* On phones the filters stay folded away; the badge says how many are active. */}
-          <Button size="sm" className="sm:hidden" aria-expanded={showFilters} aria-controls="transfer-filters" icon={<SlidersHorizontal className="size-4" />} onClick={() => setShowFilters((v) => !v)}>
-            Filter{activeN > 0 && <span className="tnum ml-0.5 grid size-[18px] place-items-center rounded-full bg-primary text-[11px] font-semibold text-white">{activeN}</span>}
+          <Button size="sm" iconOnlyMobile className="relative sm:hidden" variant={showFilters || activeN ? "soft" : "secondary"} aria-expanded={showFilters} aria-controls="transfer-filters" aria-label={activeN ? `Filter, ${activeN} aktif` : "Filter"} title="Filter" icon={<SlidersHorizontal className="size-4" />} onClick={() => setShowFilters((v) => !v)}>
+            Filter{activeN > 0 && <span className="tnum absolute -top-1.5 -right-1.5 grid size-[18px] place-items-center rounded-full bg-primary text-[11px] font-semibold text-white">{activeN}</span>}
           </Button>
           <div id="transfer-filters" className={cn("w-full grid-cols-2 gap-2 sm:contents", showFilters ? "grid" : "hidden")}>
             <label className="text-[12px] text-muted sm:contents"><span className="sm:sr-only">Jenis</span><Select aria-label="Jenis" className="h-9 w-full text-[13px] sm:h-8 sm:w-32" value={f.type} onChange={(e) => setF({ ...f, type: e.target.value })}><option value="">Semua jenis</option><option value="COPY">Salin</option><option value="MOVE">Pindah</option></Select></label>
@@ -119,14 +124,14 @@ export default function TransfersPage() {
             <label className="text-[12px] text-muted sm:contents"><span className="sm:sr-only">Dari tanggal</span><Input type="date" aria-label="Dari tanggal" className="h-9 w-full text-[13px] sm:h-8 sm:w-36" value={f.from} onChange={(e) => setF({ ...f, from: e.target.value })} /></label>
             <span className="hidden text-muted sm:inline" aria-hidden>–</span>
             <label className="text-[12px] text-muted sm:contents"><span className="sm:sr-only">Sampai tanggal</span><Input type="date" aria-label="Sampai tanggal" className="h-9 w-full text-[13px] sm:h-8 sm:w-36" value={f.to} onChange={(e) => setF({ ...f, to: e.target.value })} /></label>
-            <Button size="sm" variant="ghost" disabled={!dirty} icon={<FilterX className="size-4" />} onClick={() => setF(EMPTY)}>Reset filter</Button>
+            <Button size="sm" variant="ghost" disabled={!dirty} icon={<FilterX className="size-4" />} onClick={() => setF(EMPTY)}>Reset</Button>
             <span className="hidden flex-1 sm:block" />
             <label className="text-[12px] text-muted sm:contents"><span className="sm:sr-only">Bersihkan riwayat</span><Select aria-label="Bersihkan riwayat" className="h-9 w-full text-[13px] sm:h-8 sm:w-44" value="" onChange={(e) => { if (e.target.value) setClear(e.target.value as "finished" | "done" | "failed"); }}><option value="">Bersihkan riwayat…</option><option value="done">Yang selesai</option><option value="failed">Yang gagal / dibatalkan</option><option value="finished">Semua yang sudah berakhir</option></Select></label>
           </div>
         </div>
       </div>
       <div className="scroll-thin flex-1 overflow-y-auto p-4 sm:p-8">
-        {res.isLoading ? <Skeleton className="mx-auto h-48 max-w-4xl" /> : items.length === 0 ? <EmptyState icon={Columns2} title={dirty ? "Tidak ada transfer yang cocok" : "Belum ada transfer"} action={dirty ? <Button onClick={() => setF(EMPTY)}>Reset filter</Button> : <Link to="/dual"><Button variant="primary">Buka salin dua panel</Button></Link>}>{dirty ? "Ubah atau reset filter." : "Pilih file di file manager lalu pilih Salin atau Pindahkan, atau gunakan tampilan dua panel."}</EmptyState>
+        {res.isLoading ? <Skeleton className="mx-auto h-48 max-w-4xl" /> : items.length === 0 ? <EmptyState icon={Columns2} title={dirty ? "Tidak ada transfer yang cocok" : "Belum ada transfer"} action={dirty ? <Button onClick={() => setF(EMPTY)}>Reset filter</Button> : <Link to="/dual"><Button variant="primary">Salin dua panel</Button></Link>}>{dirty ? "Ubah atau reset filter." : "Pilih file di file manager lalu pilih Salin atau Pindahkan, atau gunakan tampilan dua panel."}</EmptyState>
           : <ul className="mx-auto max-w-4xl space-y-3">{items.map((j) => <JobCard key={j.id} j={j} />)}</ul>}
       </div>
       <Pagination className="border-t border-line bg-surface px-4 py-2.5 sm:px-8" page={page} pages={pages} total={res.data?.total ?? 0} noun="transfer" note={res.isFetching ? " · memperbarui…" : ""} onPage={setPage} limit={limit} limits={[10, 20, 50, 100]} onLimit={setLimit} />

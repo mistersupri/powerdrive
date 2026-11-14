@@ -69,7 +69,7 @@ export default function TrashPage() {
   const toggle = (id: string) => setSel((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <PageHeader title="Sampah" subtitle="Item yang dihapus disimpan 30 hari sebelum dihapus permanen." actions={isAdmin && (q.data?.total ?? 0) > 0 ? <Button size="sm" variant="danger" icon={<Trash2 className="size-4" />} onClick={() => setConfirm("empty")}>Kosongkan sampah</Button> : undefined} />
+      <PageHeader title="Sampah" subtitle="Item yang dihapus disimpan 30 hari sebelum dihapus permanen." actions={isAdmin && (q.data?.total ?? 0) > 0 ? <Button size="sm" variant="danger" iconOnlyMobile icon={<Trash2 className="size-4" />} onClick={() => setConfirm("empty")}>Kosongkan sampah</Button> : undefined} />
       <div className="flex flex-wrap items-center gap-2 border-b border-line bg-surface px-4 py-2.5 sm:px-8">
         <div className="relative"><Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-faint" aria-hidden /><Input aria-label="Cari di sampah" className="h-8 w-56 pl-8 text-[13px]" placeholder="Cari nama" value={text} onChange={(e) => setText(e.target.value)} /></div>
         <Select aria-label="Penyimpanan" className="h-8 w-44 text-[13px]" value={storageId} onChange={(e) => setStorageId(e.target.value)}><option value="">Semua penyimpanan</option>{storages.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select>

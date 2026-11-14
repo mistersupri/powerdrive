@@ -183,7 +183,7 @@ export default function StorageAdminPage() {
   }, [sp, setSp, qc]);
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <PageHeader title="Penyimpanan" subtitle="Akun cloud dan penyimpanan eksternal yang terhubung ke workspace ini." actions={isAdmin ? <Button variant="primary" size="sm" icon={<Plus className="size-4" />} onClick={() => setAdd(true)}>Tambah penyimpanan</Button> : undefined} />
+      <PageHeader title="Penyimpanan" subtitle="Akun cloud dan penyimpanan eksternal yang terhubung ke workspace ini." actions={isAdmin ? <Button variant="primary" size="sm" iconOnlyMobile icon={<Plus className="size-4" />} onClick={() => setAdd(true)}>Tambah penyimpanan</Button> : undefined} />
       <div className="scroll-thin flex-1 overflow-y-auto p-4 sm:p-8">
         {storages.isLoading ? <Skeleton className="h-40" /> : !storages.data?.length
           ? <EmptyState icon={HardDrive} title="Belum ada penyimpanan terhubung" action={isAdmin ? <Button variant="primary" icon={<Plus className="size-4" />} onClick={() => setAdd(true)}>Tambah penyimpanan</Button> : undefined}>{isAdmin ? "Hubungkan akun cloud atau folder server untuk mulai." : "Minta admin workspace menghubungkan penyimpanan."}</EmptyState>

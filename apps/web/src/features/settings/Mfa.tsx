@@ -38,7 +38,7 @@ export function MfaCard({ forced = false }: { forced?: boolean }) {
         <div className="space-y-3 rounded-xl border border-warn-ink/40 bg-warn-soft p-4" role="status">
           <p className="text-[13px] font-semibold text-warn-ink">Simpan kode pemulihan ini sekarang. Ini satu-satunya kali ditampilkan.</p>
           <ul className="tnum grid grid-cols-2 gap-x-6 gap-y-1 font-mono text-[13px]" aria-label="Kode pemulihan">{codes.map((c) => <li key={c}>{c}</li>)}</ul>
-          <div className="flex flex-wrap gap-2"><Button size="sm" icon={<Copy className="size-3.5" />} onClick={copy}>Salin</Button><Button size="sm" icon={<Download className="size-3.5" />} onClick={save}>Unduh .txt</Button><Button size="sm" variant="primary" onClick={() => setCodes(null)}>Sudah saya simpan</Button></div>
+          <div className="flex flex-wrap gap-2"><Button size="sm" icon={<Copy className="size-3.5" />} onClick={copy}>Salin</Button><Button size="sm" icon={<Download className="size-3.5" />} onClick={save}>Unduh .txt</Button><Button size="sm" variant="primary" onClick={() => setCodes(null)}>Selesai</Button></div>
         </div>
       ) : setup ? (
         <form className="grid gap-4 sm:grid-cols-[180px_1fr]" onSubmit={(e) => { e.preventDefault(); if (code.trim()) enable.mutate(); }}>
@@ -55,8 +55,8 @@ export function MfaCard({ forced = false }: { forced?: boolean }) {
             <Field label="Kata sandi untuk konfirmasi">{(id) => <Input id={id} type="password" autoComplete="current-password" autoFocus value={pw} onChange={(e) => setPw(e.target.value)} />}</Field>
             <Button type="submit" variant="danger" loading={disable.isPending} disabled={!pw}>Matikan</Button><Button type="button" variant="ghost" onClick={() => setOff(false)}>Batal</Button>
           </form>
-        ) : <div><Button size="sm" onClick={() => setOff(true)} disabled={st.data.required} title={st.data.required ? "Diwajibkan administrator" : undefined}>Matikan verifikasi dua langkah</Button></div>
-      ) : <div><Button variant="primary" loading={start.isPending} onClick={() => start.mutate()}>Aktifkan verifikasi dua langkah</Button></div>}
+        ) : <div><Button size="sm" onClick={() => setOff(true)} disabled={st.data.required} title={st.data.required ? "Diwajibkan administrator" : undefined}>Matikan</Button></div>
+      ) : <div><Button variant="primary" loading={start.isPending} onClick={() => start.mutate()}>Aktifkan</Button></div>}
     </Card>
   );
 }

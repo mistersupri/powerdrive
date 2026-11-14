@@ -29,7 +29,7 @@ export function MembersPage() {
   const roles: WorkspaceRole[] = role === "OWNER" ? ["OWNER", "ADMIN", "MEMBER", "VIEWER"] : ["ADMIN", "MEMBER", "VIEWER"];
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <PageHeader title="Anggota" subtitle="Siapa saja yang bisa masuk ke workspace ini." actions={isAdmin ? <Button variant="primary" size="sm" icon={<UserPlus className="size-4" />} onClick={() => { setInv(true); setLink(""); setEmail(""); }}>Undang</Button> : undefined} />
+      <PageHeader title="Anggota" subtitle="Siapa saja yang bisa masuk ke workspace ini." actions={isAdmin ? <Button variant="primary" size="sm" iconOnlyMobile icon={<UserPlus className="size-4" />} onClick={() => { setInv(true); setLink(""); setEmail(""); }}>Undang</Button> : undefined} />
       <div className="scroll-thin flex-1 space-y-6 overflow-y-auto p-4 sm:p-8">
         <Card className="mx-auto max-w-4xl divide-y divide-line">
           {q.isLoading ? <Skeleton className="m-4 h-32" /> : q.data?.members.map((m) => (
@@ -74,7 +74,7 @@ export function ActivityPage() {
             <ul className="divide-y divide-line sm:hidden">{q.data.items.map((l) => <li key={l.id} className="px-4 py-3 text-[13px]"><p className="break-words">{actionText(l)}</p><p className="tnum mt-0.5 text-[12px] text-muted">{l.userName ?? "Sistem"} · {dateTime(l.createdAt)}{l.ipAddress ? ` · ${l.ipAddress}` : ""}</p></li>)}</ul>
             <table className="hidden w-full text-left text-[13px] sm:table"><thead><tr className="border-b border-line bg-surface-2/60 text-[12px] text-muted"><th className="px-4 py-2.5 font-semibold">Waktu</th><th className="px-4 py-2.5 font-semibold">Pengguna</th><th className="px-4 py-2.5 font-semibold">Aktivitas</th><th className="hidden px-4 py-2.5 font-semibold md:table-cell">Alamat IP</th></tr></thead>
               <tbody className="divide-y divide-line">{q.data.items.map((l) => <tr key={l.id}><td className="tnum px-4 py-2.5 whitespace-nowrap text-muted">{dateTime(l.createdAt)}</td><td className="px-4 py-2.5">{l.userName ?? "Sistem"}</td><td className="max-w-md truncate px-4 py-2.5" title={actionText(l)}>{actionText(l)}</td><td className="tnum hidden px-4 py-2.5 text-muted md:table-cell">{l.ipAddress ?? "–"}</td></tr>)}</tbody></table>
-            <Pagination className="border-t border-line px-4 py-2.5" page={page} pages={pages} total={q.data.total} noun="catatan" onPage={setPage} />
+            <Pagination className="border-t border-line px-4 py-2.5" page={page} pages={pages} total={q.data.total} noun="catatan" pageSize={40} onPage={setPage} />
           </Card>)}
       </div>
     </div>

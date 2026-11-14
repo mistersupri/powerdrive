@@ -160,9 +160,9 @@ export function PageHeader({ title, subtitle, actions, onMenu }: { title: string
       <IconButton label="Buka menu" className="lg:hidden" onClick={onMenu ?? ctx.openMenu}><MenuIcon className="size-5" /></IconButton>
       <div className="min-w-0 flex-1">
         <h1 className="text-[20px] leading-tight font-bold break-words sm:truncate">{title}</h1>
-        {subtitle && <p className="text-[13px] leading-snug text-muted sm:truncate">{subtitle}</p>}
+        {subtitle && <p className="text-[13px] leading-snug text-muted max-sm:hidden sm:truncate">{subtitle}</p>}
       </div>
-      {actions && <div className="order-last flex w-full flex-wrap items-center gap-2 sm:order-none sm:w-auto">{actions}</div>}
+      {actions && <div className="flex items-center gap-2">{actions}</div>}
       <div className="flex items-center gap-2"><GlobalSearch /><Notifications /><AccountMenu /></div>
     </header>
   );

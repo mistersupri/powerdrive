@@ -136,7 +136,7 @@ export function DetailsPanel({ entry, storageName, location, onClose, className,
             onKeyDown={(e) => { const i = tabs.findIndex(([x]) => x === tab); if (e.key === "ArrowRight") setTab(tabs[(i + 1) % tabs.length]![0]); else if (e.key === "ArrowLeft") setTab(tabs[(i + tabs.length - 1) % tabs.length]![0]); }}
             className={cn("relative h-10 rounded-t-lg px-3 text-[13px] font-medium whitespace-nowrap pointer-coarse:h-11", tab === k ? "text-primary-ink after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded after:bg-primary" : "text-muted hover:text-ink")}>{l}</button>)}
         </div>)}
-      <div id={`${idp}-p`} role="tabpanel" aria-labelledby={`${idp}-${tab}`} className="scroll-thin min-h-0 flex-1 overflow-y-auto p-4">
+      <div id={`${idp}-p`} role="tabpanel" aria-labelledby={`${idp}-${tab}`} className="scroll-thin min-h-0 flex-1 overflow-y-auto p-4 pb-28">
         {tab === "detail" || !extras ? (<>
           <div className="mb-4 grid aspect-[4/3] place-items-center overflow-hidden rounded-xl bg-surface-2">
             {entry.isFolder ? <span className={cn("grid size-16 place-items-center rounded-2xl", KIND_TONE.folder)}><Icon className="size-8" aria-hidden /></span> : <FileThumb file={entry} size={256} className="size-full" />}

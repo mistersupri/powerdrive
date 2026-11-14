@@ -55,7 +55,7 @@ export function StoragePage({ forcedStorageId }: { forcedStorageId?: string }) {
 
   const body = (() => {
     if (missing) return <EmptyState icon={HardDrive} title="Penyimpanan tidak ditemukan" action={<Button onClick={() => nav("/")}>Kembali ke beranda</Button>}>Penyimpanan ini mungkin sudah diputus atau Anda tidak punya akses.</EmptyState>;
-    if (storage && storage.status !== "CONNECTED") return <EmptyState icon={HardDrive} title={storage.status === "DISABLED" ? "Penyimpanan dinonaktifkan" : "Penyimpanan perlu dihubungkan ulang"} action={<Button variant="primary" onClick={() => nav("/storage")}>Buka pengaturan penyimpanan</Button>}>{storage.lastError ?? "Koneksi ke penyimpanan ini tidak aktif."}</EmptyState>;
+    if (storage && storage.status !== "CONNECTED") return <EmptyState icon={HardDrive} title={storage.status === "DISABLED" ? "Penyimpanan dinonaktifkan" : "Penyimpanan perlu dihubungkan ulang"} action={<Button variant="primary" onClick={() => nav("/storage")}>Pengaturan</Button>}>{storage.lastError ?? "Koneksi ke penyimpanan ini tidak aktif."}</EmptyState>;
     if (f.error) return <EmptyState icon={FolderOpen} title="Folder tidak dapat dimuat" action={<Button onClick={() => f.refetch()}>Coba lagi</Button>}>{f.error instanceof ApiError ? f.error.message : "Terjadi kesalahan."}</EmptyState>;
     const filtered = f.entries.length > 0 && shown.length === 0;
     return (
@@ -75,8 +75,8 @@ export function StoragePage({ forcedStorageId }: { forcedStorageId?: string }) {
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-line bg-surface px-4 py-2 sm:px-8">
         {sel.length === 0 ? (<>
           {a.can("UPLOAD") && <>
-            <Button variant="primary" size="sm" icon={<Upload className="size-4" />} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); uploadMenu.open(r.left, r.bottom + 4, [{ label: "Unggah file", icon: <Upload />, onSelect: a.pickFiles }, { label: "Unggah folder", icon: <FolderInput />, onSelect: a.pickFolder }]); }}>Unggah</Button>
-            <Button size="sm" icon={<FolderPlus className="size-4" />} onClick={a.newFolder}>Folder baru</Button>
+            <Button variant="primary" size="sm" iconOnlyMobile aria-haspopup="menu" icon={<Upload className="size-4" />} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); uploadMenu.open(r.left, r.bottom + 4, [{ label: "Unggah file", icon: <Upload />, onSelect: a.pickFiles }, { label: "Unggah folder", icon: <FolderInput />, onSelect: a.pickFolder }]); }}>Unggah</Button>
+            <Button size="sm" iconOnlyMobile icon={<FolderPlus className="size-4" />} onClick={a.newFolder}>Folder baru</Button>
           </>}
           <FilterButton value={filter} onChange={setFilter} />
         </>) : (<>

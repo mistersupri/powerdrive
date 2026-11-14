@@ -92,7 +92,7 @@ export default function AdminSettingsPage() {
               <div className="min-w-0 flex-1 text-[13px]"><p className="font-medium">Ikon aplikasi</p><p className="text-muted">PNG, JPG, atau WebP, minimal 128 × 128 piksel. Dipotong menjadi persegi otomatis.</p></div>
               <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp,image/x-icon" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) icon.mutate(f); e.target.value = ""; }} />
               <Button size="sm" type="button" icon={<ImageUp className="size-4" />} loading={icon.isPending} onClick={() => fileRef.current?.click()}>Unggah ikon</Button>
-              {o.brand.iconVersion > 0 && <Button size="sm" type="button" variant="ghost" icon={<RotateCcw className="size-4" />} onClick={() => icon.mutate(null)}>Kembalikan bawaan</Button>}
+              {o.brand.iconVersion > 0 && <Button size="sm" type="button" variant="ghost" icon={<RotateCcw className="size-4" />} onClick={() => icon.mutate(null)}>Reset ke bawaan</Button>}
             </div>
           </Section>
 
@@ -118,7 +118,7 @@ export default function AdminSettingsPage() {
           </Section>
 
           <Section id="ret" title="Retensi data" description="Berapa lama data disimpan sebelum dibersihkan otomatis (sekali sehari)." saving={save.isPending} dirty={dirty("retention")} onSave={() => run("retention")}
-            extra={<Button type="button" size="sm" variant="ghost" loading={sweep.isPending} onClick={() => sweep.mutate()}>Jalankan pembersihan sekarang</Button>}>
+            extra={<Button type="button" size="sm" variant="ghost" loading={sweep.isPending} onClick={() => sweep.mutate()}>Bersihkan sekarang</Button>}>
             <div className="grid gap-4 sm:grid-cols-3">
               <Num label="Sampah" hint="Berlaku untuk item yang dihapus setelah ini." unit="hari" min={1} value={d.retention.trashDays} onChange={(v) => upd("retention", { trashDays: v })} />
               <Num label="Log audit dan aktivitas file" hint="0 = simpan selamanya." unit="hari" value={d.retention.auditDays} onChange={(v) => upd("retention", { auditDays: v })} />
