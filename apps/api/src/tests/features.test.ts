@@ -467,3 +467,14 @@ describe("zip tickets (plain-GET ZIP downloads for the Android app)", () => {
     assert.equal((await t.call("", "GET", st.path.replace(tok, other).replace("/api/v1", ""))).status, 404, "a ticket is bound to its own share");
   });
 });
+
+describe("files with long names", () => {
+  it("can be acted on even when the encoded id is longer than 100 characters", async () => {
+    const name = `${"panjang-".repeat(20)}.txt`;
+    const f = await mk(name, "isi");
+    assert.ok(f.id.length > 100);
+    assert.equal((await t.call("ana", "POST", `/files/${sid}/${f.id}/star`, { starred: true })).status, 200);
+    assert.equal((await t.call("ana", "DELETE", `/files/${sid}/${f.id}`)).status, 200);
+    assert.ok(!(await list()).some((e: any) => e.id === f.id));
+  });
+});

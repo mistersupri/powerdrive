@@ -55,6 +55,8 @@ export function ok<T>(req: FastifyRequest, data: T) { return { success: true as 
 export async function buildApp(opts: { logger?: boolean } = {}): Promise<FastifyInstance> {
   const app = Fastify({
     logger: opts.logger === false ? false : { level: config.isProd ? "info" : "warn", redact: ["req.headers.cookie", "req.headers.authorization"] },
+    // File ids are the encoded path, so a long name or a deep folder easily passes the default 100-character limit for a URL parameter.
+    maxParamLength: 2048,
     trustProxy: true, bodyLimit: 2 * 1024 * 1024, genReqId: () => Math.random().toString(36).slice(2, 10),
     // Long downloads/uploads must not be cut by the default 5s keep-alive / request timeout.
     requestTimeout: 0, connectionTimeout: 0, keepAliveTimeout: 65_000,
