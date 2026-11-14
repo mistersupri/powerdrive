@@ -251,7 +251,7 @@ class MainActivity : AppCompatActivity() {
             fullscreenHost.addView(view, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
             fullscreenHost.visibility = View.VISIBLE
             web.visibility = View.INVISIBLE
-            setImmersive(true)
+            setFullscreenBars(true)
         }
 
         override fun onHideCustomView() {
@@ -266,10 +266,10 @@ class MainActivity : AppCompatActivity() {
         customCallback?.onCustomViewHidden()
         customView = null
         customCallback = null
-        setImmersive(false)
+        setFullscreenBars(false)
     }
 
-    private fun setImmersive(on: Boolean) {
+    private fun setFullscreenBars(on: Boolean) {
         val controller = WindowInsetsControllerCompat(window, window.decorView)
         if (on) {
             controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
