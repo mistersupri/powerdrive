@@ -1,6 +1,6 @@
 import type { NotificationDto, StorageConnectionDto } from "@superdrive/shared";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Activity, ArrowRightLeft, Bell, Check, ChevronsUpDown, Clock, Columns2, FolderOpen, HardDrive, LayoutDashboard, Link2, LogOut, Menu as MenuIcon, Moon, Search, Settings, Star, Sun, Trash2, Users, X } from "lucide-react";
+import { Activity, ArrowRightLeft, Bell, Check, ChevronRight, ChevronsUpDown, Clock, Columns2, FolderOpen, HardDrive, LayoutDashboard, Link2, LogOut, Menu as MenuIcon, Moon, Search, Settings, Star, Sun, Trash2, Users, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { NavLink, Navigate, Outlet, useLocation, useNavigate } from "react-router";
 import { Toaster } from "sonner";
@@ -19,6 +19,7 @@ import { startTransfer } from "@/features/files/transferApi";
 import { DRAG_MIME } from "@/features/files/dnd";
 import { toast } from "sonner";
 import { useTheme } from "./theme";
+import { usePersistentState } from "@/lib/usePersistentState";
 import { FolderTree } from "@/features/files/FolderTree";
 import { useFolder } from "@/features/files/useFolder";
 
@@ -29,13 +30,14 @@ export function useStorages() {
 const item = "group relative flex h-9 items-center gap-3 rounded-lg px-3 text-[13px] font-medium text-muted transition-colors hover:bg-surface-2 hover:text-ink";
 const active = "bg-primary-soft text-primary-ink hover:bg-primary-soft";
 
-function NavItem({ to, icon: Icon, children, badge, end }: { to: string; icon: typeof Search; children: ReactNode; badge?: number; end?: boolean }) {
+function NavItem({ to, icon: Icon, children, badge, end, trailing }: { trailing?: ReactNode; to: string; icon: typeof Search; children: ReactNode; badge?: number; end?: boolean }) {
   return (
     <NavLink to={to} end={end} className={({ isActive }) => cn(item, isActive && active)}>
       {({ isActive }) => (<>
         {isActive && <span className="absolute top-2 bottom-2 left-0 w-[3px] rounded-r bg-primary" aria-hidden />}
         <Icon className="size-[18px] shrink-0" aria-hidden />
         <span className="flex-1 truncate">{children}</span>
+        {trailing}
         {!!badge && <span className="tnum rounded-full bg-primary px-1.5 text-[11px] leading-[18px] font-semibold text-white">{badge}</span>}
       </>)}
     </NavLink>
@@ -57,7 +59,7 @@ function SidebarTree({ storageId }: { storageId: string }) {
 
 function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const storages = useStorages().data ?? [];
-  const { isAdmin } = useWorkspace(); const home = storages.find((s) => s.isDefault && s.status === "CONNECTED");
+  const { isAdmin } = useWorkspace(); const [treeOpen, setTreeOpen] = usePersistentState<boolean>("sd-sidebar-tree", true); const home = storages.find((s) => s.isDefault && s.status === "CONNECTED");
   const activeCount = transferStore.use((s) => s.jobs.filter((j) => ["QUEUED", "VALIDATING", "RUNNING", "RETRYING", "VERIFYING"].includes(j.status)).length);
   return (
     <nav aria-label="Navigasi utama" className="flex h-full flex-col" onClick={(e) => { if ((e.target as HTMLElement).closest("a")) onNavigate?.(); }}>
@@ -66,8 +68,8 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       <div className="scroll-thin min-h-0 flex-1 overflow-y-auto px-3 pb-4">
         <NavItem to="/" end icon={LayoutDashboard}>Beranda</NavItem>
         <Section>Berkas</Section>
-        <NavItem to="/files" icon={FolderOpen}>Semua file</NavItem>
-        {home && <SidebarTree storageId={home.id} />}
+        <NavItem to="/files" icon={FolderOpen} trailing={home && <button type="button" aria-label={treeOpen ? "Ciutkan pohon folder" : "Buka pohon folder"} aria-expanded={treeOpen} className="grid size-6 place-items-center rounded-md text-muted hover:bg-line hover:text-ink" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setTreeOpen(!treeOpen); }}><ChevronRight className={cn("size-4 transition-transform", treeOpen && "rotate-90")} /></button>}>Semua file</NavItem>
+        {home && treeOpen && <SidebarTree storageId={home.id} />}
         <NavItem to="/recent" icon={Clock}>Terbaru</NavItem>
         <NavItem to="/starred" icon={Star}>Berbintang</NavItem>
         <NavItem to="/shares" icon={Link2}>Tautan berbagi</NavItem>
