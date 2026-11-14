@@ -2,7 +2,7 @@ import { ALL_PERMISSIONS, type Permission, type WorkspaceRole } from "@superdriv
 import { db } from "../db.ts";
 import { forbidden, notFound } from "../lib/errors.ts";
 
-export interface AuthCtx { userId: string; userName: string; isSuperAdmin: boolean; workspaceId: string; role: WorkspaceRole; ip: string; /** Set on the pseudo-context of an anonymous share-link visitor: never allowed to manage links. */ viaShare?: boolean }
+export interface AuthCtx { userId: string; userName: string; isSuperAdmin: boolean; workspaceId: string; role: WorkspaceRole; ip: string; /** Set on the pseudo-context of an anonymous share-link visitor: never allowed to manage links. */ viaShare?: boolean; /** Who to credit in activity logs instead of "a link visitor" (a member opening something shared directly with them). */ actorOverride?: string }
 
 const DEFAULTS: Record<WorkspaceRole, Permission[]> = {
   OWNER: ALL_PERMISSIONS, ADMIN: ALL_PERMISSIONS,

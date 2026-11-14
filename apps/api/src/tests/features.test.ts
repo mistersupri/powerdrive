@@ -364,3 +364,68 @@ describe("change badges, activity, tags, comments, metadata", () => {
     assert.deepEqual((await t.call("ana", "GET", `/files/${sid}/${dir}/metadata`)).data, [], "folders have none");
   });
 });
+
+describe("share bundles and direct shares", () => {
+  let a = ""; let b = ""; let loose = ""; let link: any; let tok = "";
+  const pub = (m: string, url: string, payload?: any) => t.call("", m, `/public/share/${tok}${url}`, payload);
+  before(async () => {
+    a = (await t.call("ana", "POST", "/files/folders", { storageId: sid, name: "Paket-A" })).data.id; b = (await t.call("ana", "POST", "/files/folders", { storageId: sid, name: "Paket-B" })).data.id;
+    await mk("a.txt", "isi A", a); await mk("b.txt", "isi B", b); await mk("lepas.txt", "isi lepas", "root"); await mk("rahasia-paket.txt", "tidak boleh", "root");
+    loose = (await list()).find((i: any) => i.name === "lepas.txt").id;
+    link = (await t.call("ana", "POST", "/shares", { storageId: sid, fileIds: [a, b, loose], role: "VIEWER", title: "Paket klien" })).data; tok = link.url.split("/share/")[1];
+  });
+  it("one link can cover several files and folders", async () => {
+    assert.equal(link.kind, "bundle"); assert.equal(link.itemCount, 3); assert.deepEqual(link.items.map((i: any) => i.name).sort(), ["Paket-A", "Paket-B", "lepas.txt"]); assert.equal(link.fileId, "");
+    const meta = (await pub("GET", "")).data; assert.equal(meta.isBundle, true); assert.equal(meta.itemCount, 3); assert.equal(meta.name, "3 item", "the private title is not leaked as the page name");
+    const root = (await pub("GET", "/list")).data; assert.deepEqual(root.items.map((i: any) => i.name), ["Paket-A", "Paket-B", "lepas.txt"], "folders first, then files");
+    const fa = root.items.find((i: any) => i.name === "Paket-A");
+    const inA = (await pub("GET", `/list?folderId=${fa.id}`)).data; assert.deepEqual(inA.items.map((i: any) => i.name), ["a.txt"]); assert.deepEqual(inA.folder.path.map((c: any) => c.name), ["Paket-A"]);
+    const lepas = root.items.find((i: any) => i.name === "lepas.txt"); assert.equal((await pub("GET", `/files/${lepas.id}/download`)).res.rawPayload.toString(), "isi lepas");
+    const zip = await pub("GET", "/files/root/download"); assert.equal(zip.res.rawPayload.subarray(0, 2).toString(), "PK", "the whole bundle downloads as one ZIP");
+    const z2 = await t.call("", "POST", `/public/share/${tok}/zip`, { id: "root" }); assert.equal(z2.res.rawPayload.subarray(0, 2).toString(), "PK");
+  });
+  it("nothing outside the bundle is reachable", async () => {
+    const outside = (await list()).find((i: any) => i.name === "rahasia-paket.txt"); assert.ok(outside);
+    assert.equal((await pub("GET", `/files/${outside.id}/download`)).status, 403);
+    assert.equal((await pub("GET", `/files/${outside.id}/preview`)).status, 403);
+    assert.equal((await pub("GET", `/list?folderId=${(await list()).find((i: any) => i.name === "Proyek").id}`)).status, 403);
+    assert.equal((await t.call("", "POST", `/public/share/${tok}/zip`, { id: outside.id })).status, 403);
+  });
+  it("editor on a bundle writes only inside its folders, never at the virtual top level or on the shared items themselves", async () => {
+    assert.equal((await t.call("ana", "PATCH", `/shares/${link.id}`, { role: "EDITOR" })).data.role, "EDITOR");
+    assert.equal((await pub("POST", "/folders", { name: "di-puncak" })).status, 400, "no folder at the virtual top level");
+    assert.equal((await pub("POST", "/uploads", { name: "x.txt", size: 1 })).status, 400);
+    const fa = (await pub("GET", "/list")).data.items.find((i: any) => i.name === "Paket-A");
+    assert.equal((await pub("POST", "/folders", { parentId: fa.id, name: "baru-di-A" })).status, 200);
+    assert.equal((await pub("POST", "/rename", { fileId: fa.id, name: "diganti" })).status, 403, "top-level items cannot be renamed");
+    assert.equal((await pub("DELETE", `/files/${fa.id}`)).status, 403, "or deleted");
+    const outside = (await list()).find((i: any) => i.name === "rahasia-paket.txt");
+    assert.equal((await pub("DELETE", `/files/${outside.id}`)).status, 403);
+    assert.equal((await t.call("ana", "PATCH", `/shares/${link.id}`, { role: "VIEWER" })).data.role, "VIEWER");
+    const files = await t.call("ana", "POST", "/shares", { storageId: sid, fileIds: [loose, (await list()).find((i: any) => i.name === "rahasia-paket.txt").id], role: "EDITOR" });
+    assert.equal(files.status, 400, "editor needs at least one folder in the bundle");
+  });
+  it("shares directly with a member, who finds it under \"shared with me\" and needs to be signed in", async () => {
+    const viv = (await t.call("viv", "GET", "/auth/me")).data.user.id; const benId = (await t.call("ben", "GET", "/auth/me")).data.user.id;
+    assert.equal((await t.call("ana", "POST", "/shares", { storageId: sid, fileId: a, recipientUserIds: [benId], role: "VIEWER" })).status, 400, "recipients must belong to the workspace");
+    const made = (await t.call("ana", "POST", "/shares", { storageId: sid, fileIds: [a, b], recipientUserIds: [viv], role: "VIEWER", title: "Untuk Viv" })).data as any[];
+    assert.equal(made.length, 1); assert.equal(made[0].recipient.id, viv);
+    const mine = (await t.call("viv", "GET", "/shared-with-me")).data as any[]; const m = mine.find((x) => x.id === made[0].id); assert.ok(m, "viv sees it"); assert.equal(m.kind, "bundle"); assert.equal(m.createdByName, "ana", "and who shared it");
+    assert.equal((await t.call("ana", "GET", "/shared-with-me")).data.some((x: any) => x.id === made[0].id), false, "the sharer does not see it in their own inbox");
+    assert.ok((await t.call("viv", "GET", "/notifications")).data.items.some((n: any) => n.type === "share.received"), "the recipient is notified");
+    const dl = (path: string) => t.call("viv", "GET", `/shared/share/${made[0].id}${path}`);
+    assert.deepEqual((await dl("/list")).data.items.map((i: any) => i.name), ["Paket-A", "Paket-B"]);
+    assert.equal((await t.call("", "GET", `/shared/share/${made[0].id}/list`)).status, 401, "not signed in");
+    assert.ok([403, 404].includes((await t.call("ben", "GET", `/shared/share/${made[0].id}/list`)).status), "another account cannot open it");
+    const outside = (await list()).find((i: any) => i.name === "rahasia-paket.txt"); assert.equal((await dl(`/files/${outside.id}/download`)).status, 403);
+    assert.equal((await t.call("viv", "POST", `/shared/share/${made[0].id}/folders`, { parentId: "root", name: "x" })).status, 403, "viewer cannot write");
+    await t.call("ana", "PATCH", `/shares/${made[0].id}`, { role: "EDITOR" });
+    const fa = (await dl("/list")).data.items.find((i: any) => i.name === "Paket-A");
+    assert.equal((await t.call("viv", "POST", `/shared/share/${made[0].id}/folders`, { parentId: fa.id, name: "dari-viv" })).status, 200, "the permission change applies at once");
+    const act = (await t.call("ana", "GET", `/files/${sid}/${a}/activity`)).data as any[]; assert.ok(act.some((x) => x.action === "share" && x.actorKind === "member"));
+    const again = (await t.call("ana", "POST", "/shares", { storageId: sid, fileId: a, recipientUserIds: [viv], role: "VIEWER" })).data; const again2 = (await t.call("ana", "POST", "/shares", { storageId: sid, fileId: a, recipientUserIds: [viv], role: "EDITOR" })).data;
+    assert.equal(again[0].id, again2[0].id, "sharing the same item with the same member again updates it instead of duplicating");
+    await t.call("ana", "DELETE", `/shares/${made[0].id}`); assert.equal((await dl("/list")).status, 404, "revoking takes it away immediately");
+    assert.ok(!(await t.call("viv", "GET", "/shared-with-me")).data.some((x: any) => x.id === made[0].id));
+  });
+});

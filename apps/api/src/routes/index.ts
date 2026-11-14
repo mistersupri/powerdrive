@@ -5,7 +5,7 @@ import { storageRoutes } from "./storages.ts";
 import { fileRoutes } from "./files.ts";
 import { transferRoutes } from "./transfers.ts";
 import { miscRoutes } from "./misc.ts";
-import { publicRoutes } from "./public.ts";
+import { directShareRoutes, publicRoutes } from "./public.ts";
 import { shareRoutes } from "./shares.ts";
 import { trashRoutes } from "./trash.ts";
 
@@ -19,4 +19,5 @@ export async function registerRoutes(app: FastifyInstance) {
   await app.register(shareRoutes);
   await app.register(trashRoutes);
   await app.register(publicRoutes, { prefix: "/public" });
+  await app.register(directShareRoutes, { prefix: "/shared" });
 }

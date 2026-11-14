@@ -5,8 +5,20 @@ import { api } from "@/lib/api";
 import { queryClient } from "@/lib/query";
 
 export const folderKey = (storageId: string, folderId: string) => ["files", storageId, folderId] as const;
-const fetchPage = (storageId: string, folderId: string, pageToken?: string) =>
-  api<FileListing>(`/files?storageId=${storageId}&folderId=${encodeURIComponent(folderId)}&limit=300${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ""}`);
+/** Opening a folder clears its "changed" badge on the server; mirror that in every cached listing so it vanishes at once. */
+function clearBadge(storageId: string, folderId: string) {
+  queryClient.setQueriesData({ queryKey: ["files", storageId] }, (old: any) => {
+    const fix = (items: FileEntry[]) => (items.some((e) => e.id === folderId && e.changed) ? items.map((e) => (e.id === folderId ? { ...e, changed: false } : e)) : items);
+    if (Array.isArray(old)) return fix(old);
+    if (old?.pages) return { ...old, pages: old.pages.map((p: FileListing) => { const items = fix(p.items); return items === p.items ? p : { ...p, items }; }) };
+    return old;
+  });
+}
+const fetchPage = async (storageId: string, folderId: string, pageToken?: string, peek = false) => {
+  const r = await api<FileListing>(`/files?storageId=${storageId}&folderId=${encodeURIComponent(folderId)}&limit=300${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ""}${peek ? "&peek=1" : ""}`);
+  if (!peek && !pageToken && folderId !== "root") clearBadge(storageId, folderId);
+  return r;
+};
 
 /** Folder contents with transparent paging: the next page is pulled in as soon as the first one lands. */
 export function useFolder(storageId: string, folderId: string) {
@@ -26,7 +38,7 @@ export function useFolder(storageId: string, folderId: string) {
 
 /** Warm the cache when the pointer rests on a folder, so opening it feels instant. */
 export function prefetchFolder(storageId: string, folderId: string) {
-  void queryClient.prefetchInfiniteQuery({ queryKey: folderKey(storageId, folderId), queryFn: ({ pageParam }) => fetchPage(storageId, folderId, pageParam), initialPageParam: undefined as string | undefined, staleTime: 20_000, pages: 1, getNextPageParam: (p: FileListing) => p.nextPageToken ?? undefined });
+  void queryClient.prefetchInfiniteQuery({ queryKey: folderKey(storageId, folderId), queryFn: ({ pageParam }) => fetchPage(storageId, folderId, pageParam, true), initialPageParam: undefined as string | undefined, staleTime: 20_000, pages: 1, getNextPageParam: (p: FileListing) => p.nextPageToken ?? undefined });
 }
 
 export type SortKey = "name" | "size" | "modified" | "type";

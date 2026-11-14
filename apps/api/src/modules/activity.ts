@@ -5,7 +5,7 @@ import { decodeId, ROOT } from "../providers/types.ts";
 import type { AuthCtx } from "./permissions.ts";
 
 /** Who did it, as stored: a member's id, or "share:<id>" for a visitor of a share link. */
-export const actorOf = (ctx: AuthCtx, shareId?: string) => (ctx.viaShare ? `share:${shareId ?? "?"}` : ctx.userId);
+export const actorOf = (ctx: AuthCtx, shareId?: string) => ctx.actorOverride ?? (ctx.viaShare ? `share:${shareId ?? "?"}` : ctx.userId);
 
 /* ---------------- "something changed in this folder" badges ---------------- */
 

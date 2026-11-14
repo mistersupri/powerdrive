@@ -133,13 +133,15 @@ export interface TrashItemDto {
 }
 
 export interface ShareLinkDto {
-  id: string; /** Free text for the owner: who this link was made for. Never shown to visitors. */ title: string | null; storageId: string; storageName: string; fileId: string; name: string; isFolder: boolean; role: "VIEWER" | "EDITOR";
+  id: string; /** Free text for the owner: who this link was made for. Never shown to visitors. */ title: string | null;
+  /** "bundle" = several items under one link. */ kind: "single" | "bundle"; itemCount: number; items: { name: string; isFolder: boolean }[];
+  /** Set when shared directly with a workspace member instead of by link. */ recipient: { id: string; name: string; email: string } | null; storageId: string; storageName: string; fileId: string; name: string; isFolder: boolean; role: "VIEWER" | "EDITOR";
   url: string; hasPassword: boolean; expiresAt: string | null; maxUploadBytes: number | null; uploadedBytes: number;
   accessCount: number; lastAccessAt: string | null; createdAt: string; createdByName: string | null; revokedAt: string | null; expired: boolean;
 }
 
 export interface PublicShareDto {
-  name: string; isFolder: boolean; role: "VIEWER" | "EDITOR"; requiresPassword: boolean; unlocked: boolean; expiresAt: string | null;
+  name: string; isFolder: boolean; isBundle?: boolean; itemCount?: number; role: "VIEWER" | "EDITOR"; requiresPassword: boolean; unlocked: boolean; expiresAt: string | null;
   maxUploadBytes: number | null; uploadedBytes: number;
 }
 

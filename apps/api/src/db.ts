@@ -234,6 +234,12 @@ const MIGRATIONS: string[] = [
   CREATE INDEX idx_file_comments ON file_comments(storage_id, file_id, created_at);
   CREATE TABLE file_meta_cache (storage_id TEXT NOT NULL, file_id TEXT NOT NULL, version TEXT NOT NULL DEFAULT '', data TEXT NOT NULL, PRIMARY KEY (storage_id, file_id)) WITHOUT ROWID;
   `,
+  /* 6 */ `
+  ALTER TABLE share_links ADD COLUMN kind TEXT NOT NULL DEFAULT 'single';
+  ALTER TABLE share_links ADD COLUMN recipient_user_id TEXT;
+  CREATE TABLE share_items (share_id TEXT NOT NULL REFERENCES share_links(id) ON DELETE CASCADE, file_id TEXT NOT NULL, name TEXT NOT NULL, is_folder INTEGER NOT NULL, position INTEGER NOT NULL, PRIMARY KEY (share_id, file_id)) WITHOUT ROWID;
+  CREATE INDEX idx_share_recipient ON share_links(recipient_user_id, revoked_at);
+  `,
 ];
 
 function migrate(d: Database) {

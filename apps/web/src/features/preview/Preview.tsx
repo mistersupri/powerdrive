@@ -35,7 +35,7 @@ function Viewer({ f }: { f: FileEntry }) {
  * Preview in a centered window (not full screen), so the page behind stays recognisable and the layout never
  * shifts. Arrow keys move between previewable files, Escape closes.
  */
-export function Preview({ items, index, onIndex, onClose, onShare, canDownload = true, location, storageName }: { location?: string; storageName?: string; items: FileEntry[]; index: number; onIndex(i: number): void; onClose(): void; onShare?(f: FileEntry): void; canDownload?: boolean }) {
+export function Preview({ items, index, onIndex, onClose, onShare, canDownload = true, location, storageName, extras = true }: { location?: string; storageName?: string; extras?: boolean; items: FileEntry[]; index: number; onIndex(i: number): void; onClose(): void; onShare?(f: FileEntry): void; canDownload?: boolean }) {
   const f = items[index]; const urls = useFileUrls(); const panel = useRef<HTMLDivElement>(null);
   const [info, setInfo] = useState(false); const [show, setShow] = useState(false);
   const images = items.filter((x) => previewKind(x) === "image");
@@ -76,7 +76,7 @@ export function Preview({ items, index, onIndex, onClose, onShare, canDownload =
           </header>
         <div className="relative flex min-h-0 flex-1">
           <div className="relative min-h-0 min-w-0 flex-1"><Viewer key={f.id} f={f} /><Nav dir={-1}><ChevronLeft className="size-5" /></Nav><Nav dir={1}><ChevronRight className="size-5" /></Nav></div>
-          {info && <DetailsPanel entry={f} storageName={storageName} location={location ?? f.path} stats={false} onClose={() => setInfo(false)} className="absolute inset-x-0 bottom-0 z-20 max-h-[65%] rounded-t-2xl border-t border-line shadow-float sm:static sm:max-h-none sm:w-72 sm:shrink-0 sm:rounded-none sm:border-t-0 sm:border-l sm:shadow-none" />}
+          {info && <DetailsPanel entry={f} storageName={storageName} location={location ?? f.path} stats={false} extras={extras} onClose={() => setInfo(false)} className="absolute inset-x-0 bottom-0 z-20 max-h-[65%] rounded-t-2xl border-t border-line shadow-float sm:static sm:max-h-none sm:w-72 sm:shrink-0 sm:rounded-none sm:border-t-0 sm:border-l sm:shadow-none" />}
         </div>
         {show && <Slideshow items={images} start={Math.max(0, images.findIndex((x) => x.id === f.id))} onClose={() => setShow(false)} />}
       </div>

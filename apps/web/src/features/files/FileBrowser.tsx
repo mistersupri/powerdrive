@@ -263,12 +263,18 @@ const Check1 = ({ on }: { on: boolean }) => (
 /** "Google Drive/Foto/2025" — where a search result lives. Only set when results span several storages. */
 const whereOf = (names: Record<string, string> | undefined, e: FileEntry) => (names ? `${names[e.storageId] ?? ""}${e.path && e.path !== "/" ? e.path : ""}` : undefined);
 
+/** Small accent dot: someone else changed something inside this folder since you last opened it. */
+export const ChangeDot = ({ className }: { className?: string }) => (
+  <span className={cn("inline-flex shrink-0 items-center", className)} title="Ada perubahan baru sejak terakhir Anda buka"><span className="size-2.5 rounded-full bg-primary ring-2 ring-surface" aria-hidden /><span className="sr-only">Ada perubahan baru</span></span>
+);
+
 const FolderChip = memo(function FolderChip({ e, sel, drop, props, where, onMenu }: { e: FileEntry; sel: boolean; drop: boolean; props: any; where?: string; onMenu(x: number, y: number): void }) {
   const Icon = KIND_ICON.folder;
   return (
     <div {...props} className={cn("group flex h-[52px] cursor-default items-center gap-3 rounded-xl border bg-surface px-3 transition-colors select-none", sel ? "border-primary bg-primary-soft" : "border-line hover:border-line-strong hover:bg-surface-2", drop && "border-primary bg-primary-soft ring-2 ring-primary")}>
       <span className={cn("grid size-9 shrink-0 place-items-center rounded-lg", KIND_TONE.folder)}><Icon className="size-[18px]" fill="currentColor" fillOpacity={0.15} aria-hidden /></span>
       <span className="min-w-0 flex-1"><span className="block truncate text-[13px] font-medium" title={e.name}>{e.name}</span>{where && <span className="block truncate text-[11px] text-muted" title={where}>{where}</span>}</span>
+      {e.changed && <ChangeDot />}
       {e.starred && <Star className="size-3.5 shrink-0 fill-warn-ink text-warn-ink" aria-label="Berbintang" />}
       <button aria-label={`Menu untuk ${e.name}`} className="relative grid size-7 place-items-center rounded-md text-muted opacity-0 group-hover:opacity-100 hover:bg-surface focus:opacity-100 pointer-coarse:opacity-100 after:absolute after:-inset-2 after:content-['']" onClick={(ev) => { ev.stopPropagation(); const r = ev.currentTarget.getBoundingClientRect(); onMenu(r.right - 200, r.bottom); }}><MoreVertical className="size-4" /></button>
     </div>
@@ -310,7 +316,7 @@ const ListRow = memo(function ListRow({ e, sel, drop, cursor, props, storageName
     <div {...props} className={cn("group grid h-[52px] items-center gap-3 border-b border-line px-3 text-[13px] select-none", compact ? COLS_COMPACT : storageName ? COLS_WIDE : COLS, sel ? "bg-primary-soft" : "hover:bg-surface-2", cursor && !sel && "bg-surface-2", drop && "bg-primary-soft ring-2 ring-primary ring-inset")}>
       {compact && <RowCheck on={sel} label={`Pilih ${e.name}`} onToggle={onToggle} />}
       <span className="relative"><FileThumb file={e} size={128} className="size-7 rounded-md" iconClass="size-4" />{sel && <span className="absolute -top-1 -left-1 grid size-3.5 place-items-center rounded-full bg-primary text-white"><Check className="size-2.5" strokeWidth={3.5} /></span>}</span>
-      <span className="flex min-w-0 flex-col justify-center"><span className="flex min-w-0 items-center gap-2"><span className={cn("truncate font-medium")} title={e.name}>{e.name}</span>{e.starred && <Star className="size-3.5 shrink-0 fill-warn-ink text-warn-ink" aria-label="Berbintang" />}</span>{!compact && <span className="line-clamp-1 text-[11px] text-muted md:hidden" title={storageName}>{storageName ?? shortDate(e.modifiedAt)}</span>}</span>
+      <span className="flex min-w-0 flex-col justify-center"><span className="flex min-w-0 items-center gap-2"><span className={cn("truncate font-medium")} title={e.name}>{e.name}</span>{e.changed && <ChangeDot />}{e.starred && <Star className="size-3.5 shrink-0 fill-warn-ink text-warn-ink" aria-label="Berbintang" />}</span>{!compact && <span className="line-clamp-1 text-[11px] text-muted md:hidden" title={storageName}>{storageName ?? shortDate(e.modifiedAt)}</span>}</span>
       {!compact && <span className="hidden truncate text-muted md:block" title={storageName}>{storageName ?? (e.isFolder ? "Folder" : (e.name.split(".").pop() || kind).toUpperCase())}</span>}
       <span className="tnum text-right whitespace-nowrap text-muted">{e.isFolder ? "–" : formatBytes(e.size)}</span>
       {!compact && <span className="tnum hidden text-muted md:block">{shortDate(e.modifiedAt)}</span>}

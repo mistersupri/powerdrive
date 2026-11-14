@@ -20,7 +20,7 @@ function useChildren(storageId: string, folderId: string, enabled: boolean) {
     queryFn: async () => {
       const out: FileEntry[] = []; let token: string | undefined;
       do {
-        const r = await api<FileListing>(`/files?storageId=${storageId}&folderId=${encodeURIComponent(folderId)}&foldersOnly=true&limit=500${token ? `&pageToken=${encodeURIComponent(token)}` : ""}`);
+        const r = await api<FileListing>(`/files?storageId=${storageId}&folderId=${encodeURIComponent(folderId)}&foldersOnly=true&peek=1&limit=500${token ? `&pageToken=${encodeURIComponent(token)}` : ""}`);
         out.push(...r.items); token = r.nextPageToken ?? undefined;
       } while (token);
       return out.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }));
@@ -28,7 +28,7 @@ function useChildren(storageId: string, folderId: string, enabled: boolean) {
   });
 }
 
-function Node({ c, id, name, depth, root }: { c: Ctx; id: string; name: string; depth: number; root?: boolean }) {
+function Node({ c, id, name, depth, root, changed }: { c: Ctx; id: string; name: string; depth: number; root?: boolean; changed?: boolean }) {
   const open = c.expanded.has(id); const q = useChildren(c.storageId, id, open);
   const empty = q.isSuccess && q.data.length === 0; const hover = useRef<ReturnType<typeof setTimeout>>(undefined);
   const active = c.current === id; const over = c.over === id;
@@ -52,9 +52,9 @@ function Node({ c, id, name, depth, root }: { c: Ctx; id: string; name: string; 
           {open && q.isFetching && !q.data ? <Loader2 className="size-3.5 animate-spin" /> : <ChevronRight className={cn("size-3.5 transition-transform", open && "rotate-90")} />}
         </button>
         {root ? <HardDrive className="mr-1.5 size-4 shrink-0 text-primary-ink" aria-hidden /> : open || active ? <FolderOpen className="mr-1.5 size-4 shrink-0 text-primary-ink" aria-hidden /> : <Folder className="mr-1.5 size-4 shrink-0 text-primary-ink" aria-hidden />}
-        <span className="truncate" title={name}>{name}</span>
+        <span className="truncate" title={name}>{name}</span>{changed && <span className="ml-1.5 size-2 shrink-0 rounded-full bg-primary" title="Ada perubahan baru"><span className="sr-only">Ada perubahan baru</span></span>}
       </div>
-      {open && q.data && q.data.length > 0 && <ul role="group">{q.data.map((f) => <Node key={f.id} c={c} id={f.id} name={f.name} depth={depth + 1} />)}</ul>}
+      {open && q.data && q.data.length > 0 && <ul role="group">{q.data.map((f) => <Node key={f.id} c={c} id={f.id} name={f.name} depth={depth + 1} changed={f.changed} />)}</ul>}
     </li>
   );
 }
@@ -62,7 +62,7 @@ function Node({ c, id, name, depth, root }: { c: Ctx; id: string; name: string; 
 function RootChildren({ c }: { c: Ctx }) {
   const q = useChildren(c.storageId, "root", true);
   if (q.isLoading) return <li className="px-3 py-1 text-[12px] text-muted">Memuat…</li>;
-  return <>{q.data?.map((f) => <Node key={f.id} c={c} id={f.id} name={f.name} depth={0} />)}</>;
+  return <>{q.data?.map((f) => <Node key={f.id} c={c} id={f.id} name={f.name} depth={0} changed={f.changed} />)}</>;
 }
 
 export function FolderTree({ storageId, rootLabel, current, pathIds, onNavigate, onDrop, hideRoot }: { hideRoot?: boolean; storageId: string; rootLabel: string; current: string; pathIds: string[]; onNavigate(id: string): void; onDrop(target: string, p: DropPayload, copy: boolean): void }) {

@@ -96,7 +96,7 @@ function Content({ token, meta }: { token: string; meta: PublicShareDto }) {
       <NameDialog open={dlg?.t === "folder"} title="Folder baru" label="Nama folder" action="Buat" onClose={() => setDlg(null)} onSubmit={async (name) => { await api(`/public/share/${token}/folders`, { body: { parentId: folderId, name } }); await refresh(); }} />
       <NameDialog open={dlg?.t === "rename"} title="Ganti nama" label="Nama baru" initial={dlg?.t === "rename" ? dlg.e.name : ""} action="Simpan" onClose={() => setDlg(null)} onSubmit={async (name) => { if (dlg?.t === "rename") { await api(`/public/share/${token}/rename`, { body: { fileId: dlg.e.id, name } }); await refresh(); } }} />
       <DeleteDialog open={dlg?.t === "delete"} entries={dlg?.t === "delete" ? [dlg.e] : []} onClose={() => setDlg(null)} onConfirm={() => act(async () => { if (dlg?.t === "delete") await api(`/public/share/${token}/files/${dlg.e.id}`, { method: "DELETE" }); }, "Dipindahkan ke sampah pemilik")} />
-      {preview !== null && <Preview items={previewList} index={preview} onIndex={setPreview} onClose={() => setPreview(null)} />}
+      {preview !== null && <Preview extras={false} items={previewList} index={preview} onIndex={setPreview} onClose={() => setPreview(null)} />}
       <FloatingProgress />
     </div>
   );
