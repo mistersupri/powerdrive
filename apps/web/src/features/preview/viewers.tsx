@@ -50,61 +50,7 @@ export function ImageViewer({ f }: { f: FileEntry }) {
 }
 
 /* ---------- video / audio ---------- */
-/** Seek step: 5 s, but never more than a tenth of a short clip. */
-const seekStep = (d: number) => (!isFinite(d) || d <= 0 ? 5 : Math.min(5, Math.max(1, Math.round(d / 10 * 2) / 2)));
-
-/**
- * Video with touch/mouse gestures on top of the native controls: double-tap the left/right side to jump back/forward,
- * single tap to play/pause, press and hold to play at 2×. J / L (or the buttons) also skip.
- */
-export function VideoViewer({ f }: { f: FileEntry }) {
-  const urls = useFileUrls(); const ref = useRef<HTMLVideoElement>(null); const [rate, setRate] = useState(1);
-  const [flash, setFlash] = useState<{ side: "l" | "r" | "c"; text: string; n: number } | null>(null); const [fast, setFast] = useState(false);
-  const st = useRef<{ tap?: ReturnType<typeof setTimeout>; lastTap: number; lastSide: string; hold?: ReturnType<typeof setTimeout>; holding: boolean; moved: boolean; x: number; y: number; prevRate: number }>({ lastTap: 0, lastSide: "", holding: false, moved: false, x: 0, y: 0, prevRate: 1 });
-  useEffect(() => { if (ref.current && !st.current.holding) ref.current.playbackRate = rate; }, [rate, f.id]);
-  useEffect(() => () => { clearTimeout(st.current.tap); clearTimeout(st.current.hold); }, []);
-  const skip = (dir: -1 | 1, side: "l" | "r") => {
-    const v = ref.current; if (!v) return; const step = seekStep(v.duration);
-    v.currentTime = Math.max(0, Math.min(isFinite(v.duration) ? v.duration : Infinity, v.currentTime + dir * step));
-    setFlash((x) => ({ side, text: `${dir < 0 ? "−" : "+"}${step % 1 ? step.toFixed(1) : step} dtk`, n: (x?.n ?? 0) + 1 }));
-  };
-  useEffect(() => { if (!flash) return; const t = setTimeout(() => setFlash(null), 650); return () => clearTimeout(t); }, [flash]);
-  useEffect(() => {
-    const k = (e: KeyboardEvent) => { if ((e.target as HTMLElement)?.closest("input,textarea,select")) return; if (e.key.toLowerCase() === "j") skip(-1, "l"); else if (e.key.toLowerCase() === "l") skip(1, "r"); };
-    addEventListener("keydown", k); return () => removeEventListener("keydown", k);
-  });
-  const endHold = () => { const s = st.current; clearTimeout(s.hold); if (s.holding) { s.holding = false; setFast(false); if (ref.current) ref.current.playbackRate = s.prevRate; } };
-  const down = (e: React.PointerEvent<HTMLDivElement>) => {
-    const s = st.current; s.moved = false; s.x = e.clientX; s.y = e.clientY; e.currentTarget.setPointerCapture(e.pointerId);
-    s.hold = setTimeout(() => { const v = ref.current; if (!v || s.moved) return; s.holding = true; s.prevRate = v.playbackRate; v.playbackRate = 2; if (v.paused) void v.play(); setFast(true); clearTimeout(s.tap); }, 380);
-  };
-  const move = (e: React.PointerEvent<HTMLDivElement>) => { const s = st.current; if (Math.abs(e.clientX - s.x) + Math.abs(e.clientY - s.y) > 12) { s.moved = true; clearTimeout(s.hold); } };
-  const up = (e: React.PointerEvent<HTMLDivElement>) => {
-    const s = st.current; const wasHolding = s.holding; endHold(); if (wasHolding || s.moved) return;
-    const r = e.currentTarget.getBoundingClientRect(); const rel = (e.clientX - r.left) / r.width; const side = rel < 0.38 ? "l" : rel > 0.62 ? "r" : "c"; const now = Date.now();
-    if (now - s.lastTap < 320 && s.lastSide === side && side !== "c") { clearTimeout(s.tap); s.lastTap = 0; skip(side === "l" ? -1 : 1, side); return; }
-    s.lastTap = now; s.lastSide = side; clearTimeout(s.tap);
-    // A single tap waits briefly in case it is the first half of a double tap.
-    s.tap = setTimeout(() => { const v = ref.current; if (!v) return; if (v.paused) void v.play(); else v.pause(); }, 330);
-  };
-  return (
-    <div className="flex h-full flex-col bg-black">
-      <div className="relative min-h-0 flex-1">
-        <video ref={ref} key={f.id} src={urls.preview(f)} controls autoPlay preload="metadata" playsInline className="absolute inset-0 size-full bg-black" />
-        {/* Gesture layer: stops short of the native control bar so scrubbing and volume keep working. */}
-        <div className="absolute inset-x-0 top-0 bottom-14 touch-manipulation select-none" onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={endHold} onContextMenu={(e) => e.preventDefault()} aria-hidden />
-        {flash && <div key={flash.n} className={cn("pointer-events-none absolute top-1/2 grid size-24 -translate-y-1/2 place-items-center rounded-full bg-white/25 text-[14px] font-semibold text-white backdrop-blur-sm", flash.side === "l" ? "left-[12%]" : "right-[12%]")}>{flash.text}</div>}
-        {fast && <div className="pointer-events-none absolute top-3 left-1/2 -translate-x-1/2 rounded-full bg-black/70 px-3 py-1 text-[13px] font-semibold text-white">2× ▶▶</div>}
-      </div>
-      <div className="flex flex-wrap items-center gap-2 bg-surface px-3 py-1.5 text-[12px] text-muted">
-        <button className="rounded px-2 py-0.5 hover:bg-surface-2" aria-label="Mundur 5 detik" onClick={() => skip(-1, "l")}>⏪ 5s</button>
-        <button className="rounded px-2 py-0.5 hover:bg-surface-2" aria-label="Maju 5 detik" onClick={() => skip(1, "r")}>5s ⏩</button>
-        <span className="mx-1 hidden h-4 w-px bg-line sm:block" />Kecepatan
-        {[0.5, 1, 1.25, 1.5, 2].map((r) => <button key={r} onClick={() => setRate(r)} className={cn("rounded px-2 py-0.5", rate === r ? "bg-primary-soft text-primary-ink" : "hover:bg-surface-2")}>{r}×</button>)}
-        <span className="ml-auto hidden text-faint md:inline">Ketuk 2× kiri/kanan = ±5 dtk · tahan = 2×</span></div>
-    </div>
-  );
-}
+export { VideoPlayer as VideoViewer } from "./VideoPlayer";
 export function AudioViewer({ f }: { f: FileEntry }) {
   const urls = useFileUrls();
   return <div className="grid h-full place-items-center bg-surface-2 p-8"><div className="w-full max-w-xl text-center"><p className="mb-4 truncate text-[15px] font-medium">{f.name}</p><audio key={f.id} src={urls.preview(f)} controls autoPlay className="w-full" /></div></div>;
