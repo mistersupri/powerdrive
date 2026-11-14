@@ -123,7 +123,7 @@ export default function TransfersPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <PageHeader title="Transfer" subtitle="Pantau pemindahan file antar penyimpanan." actions={<Link to="/dual"><Button variant="primary" size="sm" iconOnlyMobile icon={<Columns2 className="size-4" />}>Transfer baru</Button></Link>} />
+      <PageHeader title="Transfer" subtitle="Pantau pemindahan file antar penyimpanan." actions={<div className="flex items-center gap-2"><Button size="sm" className="max-sm:hidden" icon={<Eraser className="size-4" />} onClick={() => setClear("finished")}>Bersihkan</Button><Link to="/dual"><Button variant="primary" size="sm" iconOnlyMobile icon={<Columns2 className="size-4" />}>Transfer baru</Button></Link></div>} />
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-line bg-surface px-4 py-3 max-sm:hidden sm:px-8">
         {([["Aktif", nActive, "bg-primary"], ["Selesai", nDone, "bg-ok-ink"], ["Gagal/batal", nFailed, "bg-danger"]] as const).map(([l, v, c]) => (
           <div key={l} className="flex items-center gap-1.5 text-[12px]"><span className={cn("size-2 rounded-full", c)} aria-hidden /><span className="text-muted">{l}</span><span className="tnum text-[13px] font-semibold">{v}</span></div>))}
@@ -142,6 +142,7 @@ export default function TransfersPage() {
           <Button size="sm" iconOnlyMobile className="relative sm:hidden" variant={showFilters || activeN ? "soft" : "secondary"} aria-expanded={showFilters} aria-controls="transfer-filters" aria-label={activeN ? `Filter, ${activeN} aktif` : "Filter"} title="Filter" icon={<SlidersHorizontal className="size-4" />} onClick={() => setShowFilters((v) => !v)}>
             Filter{activeN > 0 && <span className="tnum absolute -top-1.5 -right-1.5 grid size-[18px] place-items-center rounded-full bg-primary text-[11px] font-semibold text-white">{activeN}</span>}
           </Button>
+          <Button size="sm" iconOnlyMobile className="sm:hidden" aria-label="Bersihkan riwayat" title="Bersihkan riwayat" icon={<Eraser className="size-4" />} onClick={() => setClear("finished")}>Bersihkan</Button>
           <div id="transfer-filters" className={cn("w-full grid-cols-2 gap-2 sm:contents", showFilters ? "grid" : "hidden")}>
             <label className="text-[12px] text-muted sm:contents"><span className="sm:sr-only">Jenis</span><Select aria-label="Jenis" className="h-9 w-full text-[13px] sm:h-8 sm:w-32" value={f.type} onChange={(e) => setF({ ...f, type: e.target.value })}><option value="">Semua jenis</option><option value="COPY">Salin</option><option value="MOVE">Pindah</option></Select></label>
             <label className="text-[12px] text-muted sm:contents"><span className="sm:sr-only">Penyimpanan</span><Select aria-label="Penyimpanan" className="h-9 w-full text-[13px] sm:h-8 sm:w-44" value={f.storageId} onChange={(e) => setF({ ...f, storageId: e.target.value })}><option value="">Semua penyimpanan</option>{storages.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></label>
@@ -149,8 +150,6 @@ export default function TransfersPage() {
             <span className="hidden text-muted sm:inline" aria-hidden>–</span>
             <label className="text-[12px] text-muted sm:contents"><span className="sm:sr-only">Sampai tanggal</span><Input type="date" aria-label="Sampai tanggal" className="h-9 w-full text-[13px] sm:h-8 sm:w-36" value={f.to} onChange={(e) => setF({ ...f, to: e.target.value })} /></label>
             <Button size="sm" variant="ghost" disabled={!dirty} icon={<FilterX className="size-4" />} onClick={() => setF(EMPTY)}>Reset</Button>
-            <span className="hidden flex-1 sm:block" />
-            <label className="text-[12px] text-muted sm:contents"><span className="sm:sr-only">Bersihkan riwayat</span><Select aria-label="Bersihkan riwayat" className="h-9 w-full text-[13px] sm:h-8 sm:w-44" value="" onChange={(e) => { if (e.target.value) setClear(e.target.value as "finished" | "done" | "failed"); }}><option value="">Bersihkan riwayat…</option><option value="done">Yang selesai</option><option value="failed">Yang gagal / dibatalkan</option><option value="finished">Semua yang sudah berakhir</option></Select></label>
           </div>
         </div>
       </div>
@@ -159,8 +158,16 @@ export default function TransfersPage() {
           : <div className="mx-auto max-w-4xl space-y-3">{uploads.length > 0 && page === 1 && <UploadsCard tasks={uploads} />}<ul className="space-y-3">{items.map((j) => <JobCard key={j.id} j={j} />)}</ul></div>}
       </div>
       <Pagination className="border-t border-line bg-surface px-4 py-2.5 sm:px-8" page={page} pages={pages} total={res.data?.total ?? 0} noun="transfer" note={res.isFetching ? " · memperbarui…" : ""} onPage={setPage} limit={limit} limits={[10, 20, 50, 100]} onLimit={setLimit} />
-      <Dialog open={clear !== null} onClose={() => setClear(null)} width="max-w-sm" title="Bersihkan riwayat?" footer={<><Button onClick={() => setClear(null)}>Batal</Button><Button variant="danger" icon={<Eraser className="size-4" />} onClick={clearHistory}>Bersihkan</Button></>}>
-        <p className="text-[14px] text-muted">Catatan transfer yang sudah berakhir{dirty ? " dan cocok dengan filter saat ini" : ""} akan dihapus dari daftar. <b className="text-ink">File tidak disentuh</b>, dan transfer yang masih berjalan tidak ikut terhapus.</p>
+      <Dialog open={clear !== null} onClose={() => setClear(null)} width="max-w-sm" title="Bersihkan riwayat" footer={<><Button onClick={() => setClear(null)}>Batal</Button><Button variant="danger" icon={<Eraser className="size-4" />} onClick={clearHistory}>Bersihkan</Button></>}>
+        <fieldset className="space-y-1">
+          <legend className="sr-only">Yang dibersihkan</legend>
+          {([["finished", "Semua yang sudah berakhir", nDone + nFailed], ["done", "Yang selesai", nDone], ["failed", "Yang gagal / dibatalkan", nFailed]] as const).map(([k, l, n]) => (
+            <label key={k} className={cn("flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border px-3 text-[14px]", clear === k ? "border-primary bg-primary-soft" : "border-line hover:bg-surface-2")}>
+              <input type="radio" name="clear-scope" className="size-4 accent-[var(--color-primary)]" checked={clear === k} onChange={() => setClear(k)} />
+              <span className="flex-1">{l}</span>{!dirty && <span className="tnum text-[12px] text-muted">{n}</span>}
+            </label>))}
+        </fieldset>
+        <p className="mt-3 text-[13px] text-muted">{dirty ? "Hanya yang cocok dengan filter saat ini. " : ""}Hanya catatan di daftar yang dihapus. <b className="text-ink">File tidak disentuh</b>, dan transfer yang masih berjalan tidak ikut terhapus.</p>
       </Dialog>
     </div>
   );
