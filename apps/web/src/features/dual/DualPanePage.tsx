@@ -26,7 +26,7 @@ function Pane({ label, storageId, setStorageId, folderId, setFolderId, selection
   const open = (e: FileEntry) => { if (e.isFolder) { selection.clear(); setFolderId(e.id); } };
   const path = f.folder?.path ?? [];
   return (
-    <section aria-label={label} className="flex min-h-0 min-w-0 flex-1 flex-col rounded-xl border border-line bg-surface shadow-card">
+    <section aria-label={label} className="flex min-h-0 min-w-0 flex-1 flex-col rounded-xl border border-line bg-surface shadow-card max-lg:h-[28rem] max-lg:flex-none">
       <header className="space-y-2 border-b border-line p-3">
         <div className="flex items-center gap-2"><span className="text-[11px] font-semibold tracking-wider text-muted uppercase">{label}</span><Select aria-label={`Penyimpanan ${label}`} className="h-8 flex-1 text-[13px]" value={storageId} onChange={(e) => { setStorageId(e.target.value); setFolderId("root"); selection.clear(); }}>{storages.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select><IconButton label={`Folder baru di panel ${label}`} disabled={!storageId} onClick={() => setMk(true)}><FolderPlus className="size-4" /></IconButton></div>
         <div className="flex items-center gap-1.5 text-[12px]">
@@ -69,7 +69,7 @@ export default function DualPanePage() {
   };
   const nA = selA.selected.size, nB = selB.selected.size;
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col max-lg:overflow-y-auto max-lg:[&>*]:shrink-0">
       <PageHeader title="Salin dua panel" subtitle="Pilih file di satu sisi, lalu salin atau pindahkan ke sisi lain. Bisa juga ditarik dan dilepas." />
       <div className="grid grid-cols-2 items-center gap-2 border-b border-line bg-surface px-4 py-2.5 sm:flex sm:flex-wrap sm:px-8">
         <p className="col-span-2 text-[11px] font-semibold tracking-wider text-muted uppercase sm:hidden">Sumber → Tujuan</p>
@@ -82,7 +82,7 @@ export default function DualPanePage() {
         <span className="hidden flex-1 sm:block" />
         <label className="col-span-2 mt-1 flex items-center justify-between gap-2 text-[12px] text-muted sm:mt-0 sm:justify-start">Jika nama sama<Select className="h-8 w-44 text-[13px] sm:w-40" value={policy} onChange={(e) => setPolicy(e.target.value as ConflictPolicy)}><option value="RENAME">Simpan keduanya</option><option value="SKIP">Lewati</option><option value="OVERWRITE">Timpa</option><option value="FAIL">Hentikan</option></Select></label>
       </div>
-      <div className="flex min-h-0 flex-1 flex-col gap-3 p-3 sm:p-6 lg:flex-row">
+      <div className="flex min-h-0 flex-1 flex-col gap-3 p-3 max-lg:flex-none sm:p-6 lg:flex-row">
         <Pane label="Sumber" storageId={aS} setStorageId={setAS} folderId={aF} setFolderId={setAF} selection={selA} storages={storages} onDrop={drop(aS)} onEntries={setEa} />
         <Pane label="Tujuan" storageId={bS} setStorageId={setBS} folderId={bF} setFolderId={setBF} selection={selB} storages={storages} onDrop={drop(bS)} onEntries={setEb} />
       </div>
