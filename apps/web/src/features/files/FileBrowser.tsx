@@ -291,8 +291,8 @@ const FileTile = memo(function FileTile({ e, sel, cursor, props, where, onMenu }
   );
 });
 
-const COLS = "grid-cols-[28px_minmax(0,1fr)_88px_120px_32px] md:grid-cols-[28px_minmax(0,1fr)_100px_88px_128px_32px]";
-const COLS_WIDE = "grid-cols-[28px_minmax(0,1fr)_88px_120px_32px] md:grid-cols-[28px_minmax(0,1fr)_minmax(0,1.1fr)_88px_128px_32px]";
+const COLS = "grid-cols-[28px_minmax(0,1fr)_72px_32px] md:grid-cols-[28px_minmax(0,1fr)_100px_88px_128px_32px]";
+const COLS_WIDE = "grid-cols-[28px_minmax(0,1fr)_72px_32px] md:grid-cols-[28px_minmax(0,1fr)_minmax(0,1.1fr)_88px_128px_32px]";
 const COLS_COMPACT = "grid-cols-[28px_minmax(0,1fr)_72px_28px]";
 function ListHeader({ showStorage, compact }: { showStorage: boolean; compact?: boolean }) {
   if (compact) return <div className={cn("grid h-9 items-center gap-3 border-b border-line px-3 text-[12px] font-semibold text-muted", COLS_COMPACT)} data-bg="1"><span /><span>Nama</span><span className="text-right">Ukuran</span><span /></div>;
@@ -304,7 +304,7 @@ const ListRow = memo(function ListRow({ e, sel, drop, cursor, props, storageName
   return (
     <div {...props} className={cn("group grid h-[52px] items-center gap-3 border-b border-line px-3 text-[13px] select-none", compact ? COLS_COMPACT : storageName ? COLS_WIDE : COLS, sel ? "bg-primary-soft" : "hover:bg-surface-2", cursor && !sel && "bg-surface-2", drop && "bg-primary-soft ring-2 ring-primary ring-inset")}>
       <span className="relative"><FileThumb file={e} size={128} className="size-7 rounded-md" iconClass="size-4" />{sel && <span className="absolute -top-1 -left-1 grid size-3.5 place-items-center rounded-full bg-primary text-white"><Check className="size-2.5" strokeWidth={3.5} /></span>}</span>
-      <span className="flex min-w-0 flex-col justify-center"><span className="flex min-w-0 items-center gap-2"><span className={cn("font-medium", storageName ? "truncate" : "line-clamp-2 leading-tight break-all sm:truncate")} title={e.name}>{e.name}</span>{e.starred && <Star className="size-3.5 shrink-0 fill-warn-ink text-warn-ink" aria-label="Berbintang" />}</span>{storageName && !compact && <span className="line-clamp-1 text-[11px] text-muted md:hidden" title={storageName}>{storageName}</span>}</span>
+      <span className="flex min-w-0 flex-col justify-center"><span className="flex min-w-0 items-center gap-2"><span className={cn("truncate font-medium")} title={e.name}>{e.name}</span>{e.starred && <Star className="size-3.5 shrink-0 fill-warn-ink text-warn-ink" aria-label="Berbintang" />}</span>{!compact && <span className="line-clamp-1 text-[11px] text-muted md:hidden" title={storageName}>{storageName ?? shortDate(e.modifiedAt)}</span>}</span>
       {!compact && <span className="hidden truncate text-muted md:block" title={storageName}>{storageName ?? (e.isFolder ? "Folder" : (e.name.split(".").pop() || kind).toUpperCase())}</span>}
       <span className="tnum text-right whitespace-nowrap text-muted">{e.isFolder ? "—" : formatBytes(e.size)}</span>
       {!compact && <span className="tnum hidden text-muted md:block">{shortDate(e.modifiedAt)}</span>}

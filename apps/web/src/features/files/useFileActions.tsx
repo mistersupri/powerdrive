@@ -1,6 +1,6 @@
 import type { ConflictPolicy, FileEntry, Permission, StorageConnectionDto, TransferJobDto } from "@superdrive/shared";
 import { useQueryClient } from "@tanstack/react-query";
-import { Copy, Download, Eye, FolderInput, FolderOpen, FolderPlus, Pencil, RefreshCw, Share2, Star, Trash2, Upload } from "lucide-react";
+import { Copy, Download, Eye, FolderInput, FolderOpen, FolderPlus, Pencil, RefreshCw, Share2, Star, Trash2, Upload, Info } from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
@@ -17,10 +17,12 @@ export { startTransfer, triggerDownload };
 interface Args {
   storage: StorageConnectionDto | undefined; folderId: string; folderName: string; /** Path of the current folder, shown in the details panel. */ location?: string; entries: FileEntry[]; /** Everything in the folder, before filtering — used to recognise no-op drops. */ allEntries?: FileEntry[]; selection: Selection;
   onOpenFolder(id: string): void;
+  /** Show the details panel for this item (null = the current folder). */
+  onDetails?(e: FileEntry | null): void;
 }
 
 /** Everything a file view can do, with its dialogs. Pages render `dialogs` and use `menuFor` / handlers. */
-export function useFileActions({ storage, folderId, folderName, location, entries, allEntries, selection, onOpenFolder }: Args) {
+export function useFileActions({ storage, folderId, folderName, location, onDetails, entries, allEntries, selection, onOpenFolder }: Args) {
   const qc = useQueryClient();
   const perms = useMemo(() => new Set<Permission>(storage?.permissions ?? []), [storage]);
   const can = (p: Permission) => perms.has(p);
@@ -66,6 +68,7 @@ export function useFileActions({ storage, folderId, folderName, location, entrie
     if (!e) return [
       { label: "Folder baru", icon: <FolderPlus />, hidden: !can("UPLOAD"), onSelect: () => setDlg({ t: "folder" }) },
       { label: "Unggah file", icon: <Upload />, hidden: !can("UPLOAD"), onSelect: () => fileInput.current?.click() },
+      { label: "Detail folder ini", icon: <Info />, hidden: !onDetails, onSelect: () => onDetails?.(null) },
       { label: "Muat ulang", icon: <RefreshCw />, divider: true, onSelect: () => { void refresh(); } },
     ];
     const list = selection.selected.has(e.id) && selection.selected.size > 1 ? selectedEntries : [e];
@@ -76,11 +79,12 @@ export function useFileActions({ storage, folderId, folderName, location, entrie
       { label: "Salin ke…", icon: <Copy />, hidden: !can("COPY"), divider: true, onSelect: () => setDlg({ t: "transfer", mode: "COPY", list }) },
       { label: "Pindahkan ke…", icon: <FolderInput />, hidden: !can("MOVE"), onSelect: () => setDlg({ t: "transfer", mode: "MOVE", list }) },
       { label: "Ganti nama", icon: <Pencil />, shortcut: "F2", hidden: multi || !can("RENAME"), onSelect: () => setDlg({ t: "rename", e }) },
+      { label: "Detail", icon: <Info />, hidden: multi || !onDetails, onSelect: () => onDetails?.(e) },
       { label: "Bagikan…", icon: <Share2 />, hidden: multi || !can("SHARE"), onSelect: () => setShareTarget(e) },
       { label: e.starred ? "Hapus bintang" : "Beri bintang", icon: <Star />, hidden: multi, onSelect: () => { void star(e); } },
       { label: "Hapus", icon: <Trash2 />, danger: true, divider: true, hidden: !can("DELETE"), shortcut: "Del", onSelect: () => setDlg({ t: "delete", list }) },
     ];
-  }, [perms, selection.selected, selectedEntries, open, star, refresh]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [perms, selection.selected, selectedEntries, open, star, refresh, onDetails]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const keyAction = useCallback((a: "selectAll" | "delete" | "rename" | "clear") => {
     if (a === "selectAll") selection.selectAll(entries);
