@@ -1,6 +1,7 @@
-import { ArrowRight, CheckCircle2, ChevronDown, ChevronUp, FileUp, Pause, Play, RotateCcw, X, XCircle } from "lucide-react";
+import { ArrowRight, CheckCircle2, FolderOpen, ChevronDown, ChevronUp, FileUp, Pause, Play, RotateCcw, X, XCircle } from "lucide-react";
 import { memo, useState } from "react";
 import { Link } from "react-router";
+import { useStorages } from "@/features/layout/Shell";
 import { cn } from "@/lib/cn";
 import { formatBytes, formatEta, formatSpeed, percent } from "@/lib/format";
 import { IconButton } from "@/ui/Button";
@@ -9,6 +10,16 @@ import { uploadActions, uploadStore, type UploadTask } from "@/features/uploads/
 import { transferActions, transferStore, type JobView } from "./store";
 
 const ACTIVE = ["QUEUED", "VALIDATING", "RUNNING", "RETRYING", "VERIFYING"];
+
+/** Opens the folder the uploaded file landed in, with the file selected. Not for uploads made through someone else's share link. */
+function GoToFile({ t }: { t: UploadTask }) {
+  const storages = useStorages().data;
+  const file = t.result; if (!file) return null;
+  const base = storages?.find((s) => s.id === t.storageId)?.isDefault ? "/files" : `/s/${t.storageId}`;
+  const parent = file.parentId && file.parentId !== "root" ? file.parentId : t.parentId;
+  const qs = new URLSearchParams(); if (parent && parent !== "root") qs.set("f", parent); qs.set("hl", file.id);
+  return <Link to={`${base}?${qs}`} aria-label={`Buka lokasi ${t.name}`} title="Buka lokasi file" className="inline-grid size-6 place-items-center rounded-md text-primary-ink hover:bg-primary-soft pointer-coarse:size-9"><FolderOpen className="size-3.5" aria-hidden /></Link>;
+}
 
 export const UploadRow = memo(function UploadRow({ t }: { t: UploadTask }) {
   const running = t.status === "uploading" || t.status === "processing" || t.status === "queued";
@@ -19,7 +30,7 @@ export const UploadRow = memo(function UploadRow({ t }: { t: UploadTask }) {
       <div className="flex items-center gap-2">
         <FileUp className="size-4 shrink-0 text-primary-ink" aria-hidden />
         <span className="min-w-0 flex-1 truncate text-[13px] font-medium" title={t.relativePath}>{t.name}</span>
-        {t.status === "done" && <CheckCircle2 className="size-4 text-ok-ink" aria-label="Selesai" />}
+        {t.status === "done" && <><CheckCircle2 className="size-4 text-ok-ink" aria-label="Selesai" />{!t.shareToken && <GoToFile t={t} />}</>}
         {t.status === "skipped" && <span className="text-[11px] text-muted">Dilewati</span>}
         {t.status === "error" && <><XCircle className="size-4 text-danger-ink" aria-label="Gagal" /><IconButton label="Coba lagi" className="size-6" onClick={() => uploadActions.retry(t.id)}><RotateCcw className="size-3.5" /></IconButton></>}
         {running && <IconButton label="Batalkan" className="size-6" onClick={() => uploadActions.cancel(t.id)}><X className="size-3.5" /></IconButton>}

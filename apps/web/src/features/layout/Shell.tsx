@@ -18,6 +18,7 @@ import { Logo } from "./Logo";
 import { GlobalSearch } from "./GlobalSearch";
 import { MfaCard, useMfaStatus } from "@/features/settings/Mfa";
 import { useIdleLogout } from "@/lib/useIdleLogout";
+import { startNativeProgress } from "@/lib/nativeProgress";
 import { startTransfer } from "@/features/files/transferApi";
 import { DRAG_MIME } from "@/features/files/dnd";
 import { toast } from "sonner";
@@ -218,6 +219,7 @@ export function AppShell() {
   const me = useMe(); const nav = useNavigate(); const loc = useLocation(); const [drawer, setDrawer] = useState(false);
   const mfa = useMfaStatus(); const mfaGate = !!mfa.data?.required && !mfa.data.enabled;
   useIdleLogout(me.data?.policy?.idleTimeoutMinutes ?? 0);
+  useEffect(() => startNativeProgress(), []);
   useEffect(() => onUnauthorized(() => { queryClient.clear(); nav(`/login?next=${encodeURIComponent(loc.pathname)}`, { replace: true }); }), [nav, loc.pathname]);
   useEffect(() => { if (me.data) { connectTransfers(); return disconnectTransfers; } }, [me.data]);
   useEffect(() => setDrawer(false), [loc.pathname]);

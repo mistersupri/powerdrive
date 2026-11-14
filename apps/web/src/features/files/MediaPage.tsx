@@ -1,7 +1,7 @@
 import type { FileEntry, StorageConnectionDto } from "@superdrive/shared";
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Check, Download, Images, Play, X } from "lucide-react";
+import { Check, Download, Images, Play, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
@@ -12,11 +12,14 @@ import { Select } from "@/ui/Field";
 import { EmptyState, Skeleton } from "@/ui/misc";
 import { FileThumb } from "./FileThumb";
 import { IndexBanner } from "./FilesPages";
+import { toast } from "sonner";
+import { DeleteDialog } from "./dialogs";
 import { triggerDownload } from "./transferApi";
 
 type Kind = "all" | "image" | "video";
 interface Page { items: FileEntry[]; nextCursor: string | null; counts: { image: number; video: number } }
 const GAP = 4;
+const SORTS = [["date:desc", "Terbaru"], ["date:asc", "Terlama"], ["name:asc", "Nama A–Z"], ["name:desc", "Nama Z–A"], ["size:desc", "Terbesar"], ["size:asc", "Terkecil"]] as const;
 
 const dayLabel = (iso: string | null) => {
   if (!iso) return "Tanpa tanggal"; const d = new Date(iso); const t = new Date(); const day = (x: Date) => Math.floor(new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime() / 86_400_000);
@@ -32,9 +35,11 @@ type Row = { key: string; kind: "head"; label: string; count: number } | { key: 
 export default function MediaPage() {
   const storages = useStorages().data ?? []; const names = useMemo(() => Object.fromEntries(storages.map((s: StorageConnectionDto) => [s.id, s.isDefault ? "Semua file" : s.name])), [storages]);
   const [kind, setKind] = useState<Kind>("all"); const [storageId, setStorageId] = useState(""); const [open, setOpen] = useState<number | null>(null); const [sel, setSel] = useState<Set<string>>(new Set());
+  const [sort, setSort] = useState<(typeof SORTS)[number][0]>("date:desc"); const [confirmDelete, setConfirmDelete] = useState(false); const qc = useQueryClient();
+  const [sortKey, sortDir] = sort.split(":") as [string, string];
   const q = useInfiniteQuery({
-    queryKey: ["media", kind, storageId], initialPageParam: "", getNextPageParam: (p: Page) => p.nextCursor ?? undefined, staleTime: 30_000,
-    queryFn: ({ pageParam }) => api<Page>(`/media?kind=${kind}&limit=150${storageId ? `&storageId=${storageId}` : ""}${pageParam ? `&cursor=${encodeURIComponent(pageParam)}` : ""}`),
+    queryKey: ["media", kind, storageId, sort], initialPageParam: "", getNextPageParam: (p: Page) => p.nextCursor ?? undefined, staleTime: 30_000,
+    queryFn: ({ pageParam }) => api<Page>(`/media?kind=${kind}&limit=150&sort=${sortKey}&dir=${sortDir}${storageId ? `&storageId=${storageId}` : ""}${pageParam ? `&cursor=${encodeURIComponent(pageParam)}` : ""}`),
   });
   const items = useMemo(() => q.data?.pages.flatMap((p) => p.items) ?? [], [q.data]); const counts = q.data?.pages[0]?.counts;
   const key = (e: FileEntry) => `${e.storageId}:${e.id}`;
@@ -45,13 +50,14 @@ export default function MediaPage() {
   const rows: Row[] = useMemo(() => {
     const out: Row[] = []; let i = 0;
     while (i < items.length) {
-      const label = dayLabel(items[i]!.modifiedAt); let j = i; while (j < items.length && dayLabel(items[j]!.modifiedAt) === label) j++;
-      out.push({ key: `h${i}`, kind: "head", label, count: j - i });
+      // Day headings only make sense when the order is by date.
+      const label = sortKey === "date" ? dayLabel(items[i]!.modifiedAt) : ""; let j = i; while (j < items.length && (sortKey !== "date" || dayLabel(items[j]!.modifiedAt) === label)) j++;
+      if (sortKey === "date") out.push({ key: `h${i}`, kind: "head", label, count: j - i });
       for (let k = i; k < j; k += cols) out.push({ key: `t${k}`, kind: "tiles", items: items.slice(k, Math.min(j, k + cols)) });
       i = j;
     }
     return out;
-  }, [items, cols]);
+  }, [items, cols, sortKey]);
   const virt = useVirtualizer({ count: rows.length, getScrollElement: () => box.current, estimateSize: (i) => (rows[i]!.kind === "head" ? 48 : size + GAP), overscan: 6, getItemKey: (i) => rows[i]!.key });
   useEffect(() => { virt.measure(); }, [size, rows.length]); // eslint-disable-line react-hooks/exhaustive-deps
   // Pull the next page in before the end is reached.
@@ -60,6 +66,12 @@ export default function MediaPage() {
 
   const toggle = (e: FileEntry) => setSel((c) => { const n = new Set(c); const k = key(e); if (n.has(k)) n.delete(k); else n.add(k); return n; });
   const chosen = items.filter((e) => sel.has(key(e))); const oneStorage = chosen.length > 0 && chosen.every((e) => e.storageId === chosen[0]!.storageId);
+  const removeChosen = async () => {
+    let failed = 0;
+    for (const e of chosen) { try { await api(`/files/${e.storageId}/${e.id}`, { method: "DELETE" }); } catch (err) { failed++; toast.error(`${e.name}: ${(err as Error).message}`); } }
+    if (failed < chosen.length) toast.success(`${chosen.length - failed} item dipindahkan ke sampah`);
+    setSel(new Set()); setOpen(null); await qc.invalidateQueries({ queryKey: ["media"] });
+  };
   const empty = !q.isLoading && !items.length;
   const chip = (k: Kind, label: string, n?: number) => <button key={k} type="button" aria-pressed={kind === k} onClick={() => { setKind(k); setSel(new Set()); }} className={cn("h-9 rounded-full px-3.5 text-[13px] font-medium pointer-coarse:h-11", kind === k ? "bg-primary-soft text-primary-ink" : "text-muted hover:bg-surface-2")}>{label}{n !== undefined ? <span className="tnum ml-1.5 text-[12px] opacity-70">{n.toLocaleString("id-ID")}</span> : null}</button>;
 
@@ -69,9 +81,11 @@ export default function MediaPage() {
       <div className="flex flex-wrap items-center gap-2 border-b border-line bg-surface px-4 py-2 sm:px-8">
         {kindChips(chip, counts)}
         <span className="flex-1" />
+        <Select aria-label="Urutkan" value={sort} onChange={(e) => { setSort(e.target.value as typeof sort); setSel(new Set()); }} className="h-9 w-32 text-[13px] sm:w-36">{SORTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</Select>
         {chosen.length > 0 ? (<>
           <span className="tnum inline-flex items-center gap-1 rounded-lg bg-primary-soft py-1 pr-1 pl-2.5 text-[13px] font-medium text-primary-ink">{chosen.length} dipilih<IconButton label="Batal pilih" className="size-6" onClick={() => setSel(new Set())}><X className="size-3.5" /></IconButton></span>
           <Button size="sm" icon={<Download className="size-4" />} disabled={!oneStorage} title={oneStorage ? undefined : "Pilih dari satu penyimpanan untuk mengunduh sekaligus"} onClick={() => triggerDownload(chosen[0]!.storageId, chosen.map((e) => e.id), chosen.length === 1 ? chosen[0]!.name : undefined)}>Unduh{chosen.length > 1 ? " ZIP" : ""}</Button>
+          <Button size="sm" iconOnlyMobile aria-label="Hapus" title="Hapus" className="text-danger-ink hover:bg-danger-soft hover:text-danger-ink" icon={<Trash2 className="size-4" />} onClick={() => setConfirmDelete(true)}>Hapus</Button>
         </>) : (
           <Select aria-label="Penyimpanan" value={storageId} onChange={(e) => { setStorageId(e.target.value); setSel(new Set()); }} className="h-9 w-full text-[13px] sm:w-52"><option value="">Semua penyimpanan</option>{storages.filter((s: StorageConnectionDto) => s.status === "CONNECTED").map((s: StorageConnectionDto) => <option key={s.id} value={s.id}>{s.isDefault ? "Semua file" : s.name}</option>)}</Select>)}
       </div>
@@ -98,6 +112,7 @@ export default function MediaPage() {
             </div>)}
         {q.isFetchingNextPage && <p className="py-4 text-center text-[12px] text-muted" role="status">Memuat lebih banyak…</p>}
       </div>
+      <DeleteDialog open={confirmDelete} entries={chosen} onClose={() => setConfirmDelete(false)} onConfirm={removeChosen} />
       {open !== null && items[open] && (
         <Preview items={items} index={open} onIndex={(i) => { setOpen(i); if (i > items.length - 12 && q.hasNextPage) void q.fetchNextPage(); }} onClose={() => setOpen(null)} storageName={names[items[open]!.storageId]} location={undefined} />)}
     </div>

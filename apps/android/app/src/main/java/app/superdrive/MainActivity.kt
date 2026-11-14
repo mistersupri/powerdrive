@@ -26,6 +26,8 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.app.NotificationManager
+import org.json.JSONObject
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
@@ -60,11 +62,19 @@ class MainActivity : AppCompatActivity() {
     private var customCallback: WebChromeClient.CustomViewCallback? = null
     private var pendingDownload: DownloadRequest? = null
     private lateinit var updater: Updater
+    private var transfersActive = false
+    private var lastDone = 0
+    private var lastFailed = 0
 
     private data class DownloadRequest(val url: String, val userAgent: String?, val contentDisposition: String?, val mimeType: String?)
 
     private val pickFiles = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        chooser?.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(result.resultCode, result.data))
+        val data = result.data
+        val picked: Array<Uri>? = if (result.resultCode != RESULT_OK || data == null) null else {
+            val clip = data.clipData
+            if (clip != null && clip.itemCount > 0) Array(clip.itemCount) { clip.getItemAt(it).uri } else data.data?.let { arrayOf(it) }
+        }
+        chooser?.onReceiveValue(picked)
         chooser = null
     }
 
@@ -74,6 +84,8 @@ class MainActivity : AppCompatActivity() {
         if (request == null) return@registerForActivityResult
         if (granted) enqueue(request) else Toast.makeText(this, R.string.download_denied, Toast.LENGTH_LONG).show()
     }
+
+    private val askNotifications = registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* the notification simply stays hidden when refused */ }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -121,11 +133,55 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        if (isFinishing && transfersActive) {
+            stopService(Intent(this, TransferService::class.java))
+            getSystemService(NotificationManager::class.java).cancel(Notifier.PROGRESS_ID)
+        }
         if (::web.isInitialized) {
             (web.parent as? ViewGroup)?.removeView(web)
             web.destroy()
         }
         super.onDestroy()
+    }
+
+    private fun showProgress(json: String) {
+        val o = try { JSONObject(json) } catch (e: Exception) { return }
+        val active = o.optInt("active")
+        val done = o.optInt("done")
+        val failed = o.optInt("failed")
+        val nm = getSystemService(NotificationManager::class.java)
+        if (active > 0) {
+            if (!transfersActive && Build.VERSION.SDK_INT >= 33 &&
+                ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED &&
+                !getSharedPreferences("superdrive", Context.MODE_PRIVATE).getBoolean("notif_asked", false)
+            ) {
+                getSharedPreferences("superdrive", Context.MODE_PRIVATE).edit().putBoolean("notif_asked", true).apply()
+                askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+            transfersActive = true
+            lastDone = done
+            lastFailed = failed
+            nm.cancel(Notifier.DONE_ID)
+            val percent = o.optInt("percent", -1)
+            val title = o.optString("title", getString(R.string.app_name))
+            val text = getString(R.string.notif_progress_text, percent, done)
+            val service = Intent(this, TransferService::class.java).putExtra("title", title).putExtra("text", text).putExtra("percent", percent)
+            try {
+                ContextCompat.startForegroundService(this, service)
+            } catch (e: Exception) {
+                // Not allowed to start a service right now: a plain notification still reports progress.
+                nm.notify(Notifier.PROGRESS_ID, Notifier.progress(this, title, text, percent))
+            }
+        } else if (transfersActive) {
+            transfersActive = false
+            stopService(Intent(this, TransferService::class.java))
+            nm.cancel(Notifier.PROGRESS_ID)
+            val total = maxOf(done, lastDone) + maxOf(failed, lastFailed)
+            if (total > 0) {
+                val text = if (failed > 0) getString(R.string.notif_done_failed, done, failed) else getString(R.string.notif_done_text, done)
+                nm.notify(Notifier.DONE_ID, Notifier.done(this, getString(R.string.notif_done_title), text))
+            }
+        }
     }
 
     private fun configureWebView() {
@@ -175,6 +231,12 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread { updater.check(manual = true) }
         }
 
+        /** Upload/transfer progress from the web app: {active, done, failed, percent, title}. */
+        @JavascriptInterface
+        fun progress(json: String) {
+            runOnUiThread { showProgress(json) }
+        }
+
         @JavascriptInterface
         fun themeChanged() {
             runOnUiThread { applySystemBars() }
@@ -221,7 +283,12 @@ class MainActivity : AppCompatActivity() {
             chooser?.onReceiveValue(null)
             chooser = callback
             return try {
-                pickFiles.launch(params.createIntent())
+                // Built by hand: createIntent() does not reliably allow picking several files.
+                val intent = Intent(Intent.ACTION_GET_CONTENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*")
+                val types = params.acceptTypes.flatMap { it.split(",") }.map { it.trim() }.filter { it.contains("/") }
+                if (types.isNotEmpty()) intent.putExtra(Intent.EXTRA_MIME_TYPES, types.toTypedArray())
+                if (params.mode == FileChooserParams.MODE_OPEN_MULTIPLE) intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                pickFiles.launch(Intent.createChooser(intent, null))
                 true
             } catch (e: Exception) {
                 chooser = null

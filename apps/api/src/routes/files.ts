@@ -188,7 +188,7 @@ export async function fileRoutes(app: FastifyInstance) {
   // Photos and videos across storages (the "Media" gallery).
   app.get("/media", async (req) => {
     const ctx = requireAuth(req);
-    const q = z.object({ kind: z.enum(["all", "image", "video"]).optional(), storageId: z.string().optional(), cursor: z.string().max(600).optional(), limit: z.coerce.number().int().optional() }).parse(req.query);
+    const q = z.object({ kind: z.enum(["all", "image", "video"]).optional(), storageId: z.string().optional(), cursor: z.string().max(600).optional(), limit: z.coerce.number().int().optional(), sort: z.enum(["date", "name", "size"]).optional(), dir: z.enum(["asc", "desc"]).optional() }).parse(req.query);
     return ok(req, listMedia(ctx, q));
   });
   app.get("/search", async (req) => {

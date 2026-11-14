@@ -28,4 +28,10 @@
     <string name="update_corrupt">Berkas pembaruan rusak (checksum tidak cocok). Coba lagi.</string>
     <string name="update_permission">Izinkan SuperDrive memasang aplikasi pada layar berikut, lalu kembali dan ketuk Perbarui lagi.</string>
     <string name="update_install_failed">Pemasangan gagal: %1$s</string>
+    <string name="notif_channel_progress">Progres unggah dan transfer</string>
+    <string name="notif_channel_done">Unggah dan transfer selesai</string>
+    <string name="notif_progress_text">%1$d%% · %2$d selesai</string>
+    <string name="notif_done_title">Unggah dan transfer selesai</string>
+    <string name="notif_done_text">%1$d berhasil</string>
+    <string name="notif_done_failed">%1$d berhasil, %2$d gagal</string>
 </resources>

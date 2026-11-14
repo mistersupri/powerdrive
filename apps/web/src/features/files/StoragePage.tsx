@@ -1,7 +1,7 @@
 import type { FileEntry } from "@superdrive/shared";
 import { PROVIDER_LABEL } from "@superdrive/shared";
 import { ChevronRight, Copy, Info, Download, FolderInput, FolderOpen, FolderPlus, HardDrive, Share2, Trash2, Upload, X } from "lucide-react";
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { ApiError } from "@/lib/api";
@@ -26,7 +26,7 @@ import { DetailsPanel } from "./DetailsPanel";
 export function StoragePage({ forcedStorageId }: { forcedStorageId?: string }) {
   const params = useParams(); const storageId = forcedStorageId ?? params.storageId ?? "";
   const [sp, setSp] = useSearchParams(); const nav = useNavigate();
-  const folderId = sp.get("f") ?? "root";
+  const folderId = sp.get("f") ?? "root"; const highlight = sp.get("hl");
   const storages = useStorages(); const storage = storages.data?.find((s) => s.id === storageId);
   const f = useFolder(storage?.status === "CONNECTED" ? storageId : "", folderId);
   const [view, setView] = usePersistentState<"grid" | "list">("sd-view", "grid");
@@ -34,8 +34,14 @@ export function StoragePage({ forcedStorageId }: { forcedStorageId?: string }) {
   const [filter, setFilter] = useState(emptyFilter);
   const [showInfo, setShowInfo] = usePersistentState<boolean>("sd-details-open", false);
   const selection = useSelection();
+  // "Buka lokasi file": once the folder has loaded, select that file (only once per visit).
+  const [shownHl, setShownHl] = useState<string | null>(null);
   const go = useCallback((id: string) => { selection.clear(); setFilter(emptyFilter); setSp(id === "root" ? {} : { f: id }); }, [selection, setSp]);
   const shown = useMemo(() => sortEntries(applyFilter(f.entries, filter), sort), [f.entries, filter, sort]);
+  useEffect(() => {
+    if (!highlight || shownHl === highlight || !f.entries.some((e) => e.id === highlight)) return;
+    setShownHl(highlight); selection.setSelected(new Set([highlight]));
+  }, [highlight, shownHl, f.entries, selection]);
   const title = storage?.isDefault ? "Semua file" : storage?.name ?? "Memuat…";
   const crumbPath = "/" + (f.folder?.path ?? []).map((c) => c.name).join("/");
   const a = useFileActions({ storage, folderId, location: crumbPath === "/" ? "/" : crumbPath, folderName: folderId === "root" ? title : f.folder?.name ?? "", entries: shown, allEntries: f.entries, selection, onOpenFolder: go, onDetails: (e) => { if (e) selection.setSelected(new Set([e.id])); else selection.clear(); setShowInfo(true); } });
@@ -64,6 +70,7 @@ export function StoragePage({ forcedStorageId }: { forcedStorageId?: string }) {
         empty={<EmptyState icon={FolderPlus} title={filtered ? "Tidak ada yang cocok" : "Folder ini masih kosong"} action={filtered ? <Button onClick={() => setFilter(emptyFilter)}>Hapus filter</Button> : a.can("UPLOAD") ? <Button variant="primary" icon={<Upload className="size-4" />} onClick={a.pickFiles}>Unggah file</Button> : undefined}>{filtered ? "Ubah atau hapus filter untuk melihat semua isi folder." : "Tarik file ke sini, atau gunakan tombol Unggah."}</EmptyState>}
         onSelect={(e, m) => selection.click(e.id, shown, m)} onSetSelection={(ids) => selection.setSelected(new Set(ids))} onOpen={a.open}
         onContext={(e, x, y) => menu.open(x, y, a.menuFor(e))} onKeyAction={a.keyAction}
+        revealId={highlight}
         onDropItems={a.dropItems} onDropFiles={(t, files) => a.upload(files, t ? t.id : folderId, t?.name)} dropLabel={`Unggah ke ${f.folder?.name || title}`}
       />
     );

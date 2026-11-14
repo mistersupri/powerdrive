@@ -449,6 +449,17 @@ describe("media gallery", () => {
     assert.equal((await t.call("ben", "GET", "/media")).data.items.some((i: any) => i.parentId === dir), false, "another workspace sees none of it");
     assert.equal((await t.call("", "GET", "/media")).status, 401);
   });
+  it("sorts by name or size in either direction without gaps across pages", async () => {
+    const dir = (await t.call("ana", "POST", "/files/folders", { storageId: sid, name: "Urut" })).data.id; const abs = path.join(t.root, "s", "Urut");
+    const files: Record<string, number> = { "b.jpg": 30, "a.png": 10, "d.webp": 20, "c.jpg": 40 };
+    for (const [n, size] of Object.entries(files)) fs.writeFileSync(path.join(abs, n), "x".repeat(size));
+    await t.call("ana", "GET", `/files?storageId=${sid}&folderId=${dir}`);
+    const run = async (sort: string, d: string) => { const out: string[] = []; let cur = ""; let n = 0; do { const r = (await t.call("ana", "GET", `/media?sort=${sort}&dir=${d}&limit=2${cur ? `&cursor=${encodeURIComponent(cur)}` : ""}`)).data; n++; for (const i of r.items) if (i.parentId === dir) out.push(i.name); cur = r.nextCursor ?? ""; } while (cur && n < 200); return out; };
+    assert.deepEqual(await run("name", "asc"), ["a.png", "b.jpg", "c.jpg", "d.webp"]);
+    assert.deepEqual(await run("name", "desc"), ["d.webp", "c.jpg", "b.jpg", "a.png"]);
+    assert.deepEqual(await run("size", "asc"), ["a.png", "d.webp", "b.jpg", "c.jpg"]);
+    assert.deepEqual(await run("size", "desc"), ["c.jpg", "b.jpg", "d.webp", "a.png"]);
+  });
 });
 
 describe("zip tickets (plain-GET ZIP downloads for the Android app)", () => {

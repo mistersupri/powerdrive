@@ -33,6 +33,8 @@ export interface BrowserProps {
   onDropItems(target: FileEntry | null, payload: { storageId: string; ids: string[] }, copy: boolean): void;
   onDropFiles(target: FileEntry | null, files: UploadInput[]): void;
   dropLabel?: string;
+  /** Scroll this entry into view once it is in the list (used by "Buka lokasi file"). */
+  revealId?: string | null;
 }
 
 const useWidth = (ref: React.RefObject<HTMLElement | null>) => {
@@ -151,6 +153,13 @@ export function FileBrowser(p: BrowserProps) {
   }, [p.view, p.entries, p.selected, width, dropTarget, cursor, p.storageNames, p.compact]);
 
   const virt = useVirtualizer({ count: rows.length, getScrollElement: () => scroller.current, estimateSize: (i) => rows[i]!.h, overscan: 6, getItemKey: (i) => rows[i]!.key });
+
+  const revealed = useRef<string | null>(null);
+  useEffect(() => {
+    if (!p.revealId || revealed.current === p.revealId) return;
+    const r = rowOf.get(p.revealId); if (r === undefined) return;
+    revealed.current = p.revealId; virt.scrollToIndex(r, { align: "center" });
+  }, [p.revealId, rows, rowOf, virt]);
 
   const move = useCallback((d: number) => {
     const n = Math.max(0, Math.min(ordered.length - 1, (cursor < 0 ? 0 : cursor) + d)); setCursor(n);

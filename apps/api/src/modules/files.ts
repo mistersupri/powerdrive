@@ -218,18 +218,24 @@ export function searchIndex(ctx: AuthCtx, s: SearchParams) {
  * Photos and videos from every readable storage, newest first, for the media gallery. Works from the metadata index, so
  * third-party storages show up as soon as their crawl has reached the files. Keyset paging: the cursor is the last row.
  */
-export function listMedia(ctx: AuthCtx, q: { kind?: "all" | "image" | "video"; storageId?: string; cursor?: string; limit?: number }) {
+/** Gallery order: what the rows are sorted on, expressed so a cursor can resume exactly after the last row. */
+const MEDIA_SORT = { date: "COALESCE(f.modified_at, '')", name: "LOWER(f.name)", size: "COALESCE(f.size, 0)" } as const;
+export function listMedia(ctx: AuthCtx, q: { kind?: "all" | "image" | "video"; storageId?: string; cursor?: string; limit?: number; sort?: keyof typeof MEDIA_SORT; dir?: "asc" | "desc" }) {
   const storages = db.all<{ id: string }>("SELECT id FROM storages WHERE workspace_id = ? AND status = 'CONNECTED'", ctx.workspaceId).map((r) => r.id).filter((id) => permissionsFor(ctx, id).includes("READ") && (!q.storageId || q.storageId === id));
   if (!storages.length) return { items: [] as FileEntry[], nextCursor: null as string | null, counts: { image: 0, video: 0 } };
   const base: string[] = [`f.storage_id IN (${storages.map(() => "?").join(",")})`, "f.is_folder = 0"]; const bargs: (string | number)[] = [...storages];
   const kinds = q.kind === "image" ? [TYPE_FILTERS.image!] : q.kind === "video" ? [TYPE_FILTERS.video!] : [TYPE_FILTERS.image!, TYPE_FILTERS.video!];
   const where = [...base, `(${kinds.join(" OR ")})`]; const args = [...bargs];
+  const sortKey = q.sort ?? "date"; const expr = MEDIA_SORT[sortKey]; const dir = q.dir === "asc" ? "ASC" : "DESC";
   if (q.cursor) {
     const [at, sid, fid] = q.cursor.split("\u0001");
-    if (at !== undefined && sid && fid) { where.push("(COALESCE(f.modified_at, '') < ? OR (COALESCE(f.modified_at, '') = ? AND (f.storage_id > ? OR (f.storage_id = ? AND f.file_id > ?))))"); args.push(at, at, sid, sid, fid); }
+    if (at !== undefined && sid && fid) {
+      const v: string | number = sortKey === "size" ? Number(at) || 0 : at;
+      where.push(`(${expr} ${dir === "ASC" ? ">" : "<"} ? OR (${expr} = ? AND (f.storage_id > ? OR (f.storage_id = ? AND f.file_id > ?))))`); args.push(v, v, sid, sid, fid);
+    }
   }
   const limit = Math.min(Math.max(q.limit ?? 120, 1), 300);
-  const rows = db.all<any>(`SELECT f.* FROM files f WHERE ${where.join(" AND ")} ORDER BY COALESCE(f.modified_at, '') DESC, f.storage_id, f.file_id LIMIT ?`, ...args, limit + 1);
+  const rows = db.all<any>(`SELECT f.* FROM files f WHERE ${where.join(" AND ")} ORDER BY ${expr} ${dir}, f.storage_id, f.file_id LIMIT ?`, ...args, limit + 1);
   const more = rows.length > limit; const page = more ? rows.slice(0, limit) : rows;
   const items: FileEntry[] = page.map((r) => ({
     id: encodeId(r.file_id), storageId: r.storage_id, parentId: r.parent_id ? encodeId(r.parent_id) : null, name: r.name, isFolder: false, mimeType: r.mime_type, size: r.size,
@@ -237,5 +243,5 @@ export function listMedia(ctx: AuthCtx, q: { kind?: "all" | "image" | "video"; s
   }));
   const last = page.at(-1);
   const c = (kind: string) => db.get<{ n: number }>(`SELECT COUNT(*) n FROM files f WHERE ${base.join(" AND ")} AND (${TYPE_FILTERS[kind]})`, ...bargs)!.n;
-  return { items, nextCursor: more && last ? `${last.modified_at ?? ""}\u0001${last.storage_id}\u0001${last.file_id}` : null, counts: { image: c("image"), video: c("video") } };
+  return { items, nextCursor: more && last ? `${sortKey === "date" ? last.modified_at ?? "" : sortKey === "name" ? String(last.name).toLowerCase() : last.size ?? 0}\u0001${last.storage_id}\u0001${last.file_id}` : null, counts: { image: c("image"), video: c("video") } };
 }
