@@ -1,3 +1,4 @@
+import { Pagination } from "@/ui/Pagination";
 import type { Paged, TransferItemDto, TransferJobDto } from "@superdrive/shared";
 import { formatBytes } from "@superdrive/shared";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -118,11 +119,7 @@ export default function TransfersPage() {
         {res.isLoading ? <Skeleton className="mx-auto h-48 max-w-4xl" /> : items.length === 0 ? <EmptyState icon={Columns2} title={dirty ? "Tidak ada transfer yang cocok" : "Belum ada transfer"} action={dirty ? <Button onClick={() => setF(EMPTY)}>Reset filter</Button> : <Link to="/dual"><Button variant="primary">Buka salin dua panel</Button></Link>}>{dirty ? "Ubah atau reset filter." : "Pilih file di file manager lalu pilih Salin atau Pindahkan, atau gunakan tampilan dua panel."}</EmptyState>
           : <ul className="mx-auto max-w-4xl space-y-3">{items.map((j) => <JobCard key={j.id} j={j} />)}</ul>}
       </div>
-      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line bg-surface px-4 py-2.5 text-[12px] text-muted sm:px-8">
-        <span className="tnum">{res.data?.total ?? 0} transfer{res.isFetching ? " · memperbarui…" : ""}</span>
-        <div className="flex items-center gap-2"><label className="flex items-center gap-1.5">Per halaman<Select aria-label="Per halaman" className="h-8 w-[76px] pr-6 pl-2 text-[12px]" value={limit} onChange={(e) => setLimit(Number(e.target.value))}>{[10, 20, 50, 100].map((n) => <option key={n}>{n}</option>)}</Select></label>
-          <Button size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>Sebelumnya</Button><span className="tnum">{page} / {pages}</span><Button size="sm" disabled={page >= pages} onClick={() => setPage(page + 1)}>Berikutnya</Button></div>
-      </div>
+      <Pagination className="border-t border-line bg-surface px-4 py-2.5 sm:px-8" page={page} pages={pages} total={res.data?.total ?? 0} noun="transfer" note={res.isFetching ? " · memperbarui…" : ""} onPage={setPage} limit={limit} limits={[10, 20, 50, 100]} onLimit={setLimit} />
       <Dialog open={clear !== null} onClose={() => setClear(null)} width="max-w-sm" title="Bersihkan riwayat?" footer={<><Button onClick={() => setClear(null)}>Batal</Button><Button variant="danger" icon={<Eraser className="size-4" />} onClick={clearHistory}>Bersihkan</Button></>}>
         <p className="text-[14px] text-muted">Catatan transfer yang sudah berakhir{dirty ? " dan cocok dengan filter saat ini" : ""} akan dihapus dari daftar. <b className="text-ink">File tidak disentuh</b>, dan transfer yang masih berjalan tidak ikut terhapus.</p>
       </Dialog>

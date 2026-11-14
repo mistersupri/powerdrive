@@ -34,7 +34,7 @@ export function Dialog({ open, onClose, title, description, children, footer, wi
           </header>
         )}
         <div className={cn("min-h-0 flex-1 overflow-y-auto", !bare && "px-6 py-5")}>{children}</div>
-        {footer && <footer className="flex justify-end gap-2 border-t border-line px-6 py-4">{footer}</footer>}
+        {footer && <footer className="flex flex-wrap justify-end gap-2 border-t border-line px-4 py-3 sm:px-6 sm:py-4 max-sm:[&>*]:flex-1">{footer}</footer>}
       </div>
     </dialog>
   );

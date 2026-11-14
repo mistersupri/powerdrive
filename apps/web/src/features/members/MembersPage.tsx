@@ -1,3 +1,4 @@
+import { Pagination } from "@/ui/Pagination";
 import type { AuditLogDto, MemberDto, WorkspaceRole } from "@superdrive/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Copy, Search, Trash2, UserPlus } from "lucide-react";
@@ -73,7 +74,7 @@ export function ActivityPage() {
             <ul className="divide-y divide-line sm:hidden">{q.data.items.map((l) => <li key={l.id} className="px-4 py-3 text-[13px]"><p className="break-words">{actionText(l)}</p><p className="tnum mt-0.5 text-[12px] text-muted">{l.userName ?? "Sistem"} · {dateTime(l.createdAt)}{l.ipAddress ? ` · ${l.ipAddress}` : ""}</p></li>)}</ul>
             <table className="hidden w-full text-left text-[13px] sm:table"><thead><tr className="border-b border-line bg-surface-2/60 text-[12px] text-muted"><th className="px-4 py-2.5 font-semibold">Waktu</th><th className="px-4 py-2.5 font-semibold">Pengguna</th><th className="px-4 py-2.5 font-semibold">Aktivitas</th><th className="hidden px-4 py-2.5 font-semibold md:table-cell">Alamat IP</th></tr></thead>
               <tbody className="divide-y divide-line">{q.data.items.map((l) => <tr key={l.id}><td className="tnum px-4 py-2.5 whitespace-nowrap text-muted">{dateTime(l.createdAt)}</td><td className="px-4 py-2.5">{l.userName ?? "Sistem"}</td><td className="max-w-md truncate px-4 py-2.5" title={actionText(l)}>{actionText(l)}</td><td className="tnum hidden px-4 py-2.5 text-muted md:table-cell">{l.ipAddress ?? "—"}</td></tr>)}</tbody></table>
-            <div className="flex items-center justify-between border-t border-line px-4 py-2.5 text-[12px] text-muted"><span className="tnum">{q.data.total} catatan</span><div className="flex items-center gap-2"><Button size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>Sebelumnya</Button><span className="tnum">{page} / {pages}</span><Button size="sm" disabled={page >= pages} onClick={() => setPage(page + 1)}>Berikutnya</Button></div></div>
+            <Pagination className="border-t border-line px-4 py-2.5" page={page} pages={pages} total={q.data.total} noun="catatan" onPage={setPage} />
           </Card>)}
       </div>
     </div>

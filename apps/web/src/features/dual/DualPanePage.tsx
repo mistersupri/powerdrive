@@ -71,14 +71,16 @@ export default function DualPanePage() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <PageHeader title="Salin dua panel" subtitle="Pilih file di satu sisi, lalu salin atau pindahkan ke sisi lain. Bisa juga ditarik dan dilepas." />
-      <div className="flex flex-wrap items-center gap-2 border-b border-line bg-surface px-4 py-2.5 sm:px-8">
-        <Button size="sm" variant="primary" disabled={!nA} icon={<Copy className="size-3.5" />} onClick={() => send("COPY", "ab")}>Salin <ArrowRight className="size-3.5" /></Button>
-        <Button size="sm" disabled={!nA} icon={<FolderInput className="size-3.5" />} onClick={() => send("MOVE", "ab")}>Pindahkan <ArrowRight className="size-3.5" /></Button>
-        <span className="mx-1 h-5 w-px bg-line" />
-        <Button size="sm" variant="primary" disabled={!nB} icon={<ArrowLeft className="size-3.5" />} onClick={() => send("COPY", "ba")}>Salin</Button>
-        <Button size="sm" disabled={!nB} icon={<ArrowLeft className="size-3.5" />} onClick={() => send("MOVE", "ba")}>Pindahkan</Button>
-        <span className="flex-1" />
-        <label className="flex items-center gap-2 text-[12px] text-muted">Jika nama sama<Select className="h-8 w-40 text-[13px]" value={policy} onChange={(e) => setPolicy(e.target.value as ConflictPolicy)}><option value="RENAME">Simpan keduanya</option><option value="SKIP">Lewati</option><option value="OVERWRITE">Timpa</option><option value="FAIL">Hentikan</option></Select></label>
+      <div className="grid grid-cols-2 items-center gap-2 border-b border-line bg-surface px-4 py-2.5 sm:flex sm:flex-wrap sm:px-8">
+        <p className="col-span-2 text-[11px] font-semibold tracking-wider text-muted uppercase sm:hidden">Sumber → Tujuan</p>
+        <Button size="sm" variant="primary" className="w-full sm:w-auto" disabled={!nA} icon={<Copy className="size-3.5" />} onClick={() => send("COPY", "ab")}>Salin <ArrowRight className="size-3.5" /></Button>
+        <Button size="sm" className="w-full sm:w-auto" disabled={!nA} icon={<FolderInput className="size-3.5" />} onClick={() => send("MOVE", "ab")}>Pindahkan <ArrowRight className="size-3.5" /></Button>
+        <span className="mx-1 hidden h-5 w-px bg-line sm:block" />
+        <p className="col-span-2 mt-1 text-[11px] font-semibold tracking-wider text-muted uppercase sm:hidden">Tujuan → Sumber</p>
+        <Button size="sm" variant="primary" className="w-full sm:w-auto" disabled={!nB} icon={<ArrowLeft className="size-3.5" />} onClick={() => send("COPY", "ba")}>Salin</Button>
+        <Button size="sm" className="w-full sm:w-auto" disabled={!nB} icon={<ArrowLeft className="size-3.5" />} onClick={() => send("MOVE", "ba")}>Pindahkan</Button>
+        <span className="hidden flex-1 sm:block" />
+        <label className="col-span-2 mt-1 flex items-center justify-between gap-2 text-[12px] text-muted sm:mt-0 sm:justify-start">Jika nama sama<Select className="h-8 w-44 text-[13px] sm:w-40" value={policy} onChange={(e) => setPolicy(e.target.value as ConflictPolicy)}><option value="RENAME">Simpan keduanya</option><option value="SKIP">Lewati</option><option value="OVERWRITE">Timpa</option><option value="FAIL">Hentikan</option></Select></label>
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-3 p-3 sm:p-6 lg:flex-row">
         <Pane label="Sumber" storageId={aS} setStorageId={setAS} folderId={aF} setFolderId={setAF} selection={selA} storages={storages} onDrop={drop(aS)} onEntries={setEa} />

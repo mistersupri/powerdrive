@@ -1,3 +1,4 @@
+import { Pagination } from "@/ui/Pagination";
 import type { FileEntry, FileListing, Paged, TrashItemDto } from "@superdrive/shared";
 import { formatBytes } from "@superdrive/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -91,9 +92,7 @@ export default function TrashPage() {
                   <td className="hidden px-4 py-2.5 text-muted sm:table-cell" title={dateTime(i.trashedAt)}>{timeAgo(i.trashedAt)}{i.trashedBy ? ` · ${i.trashedBy}` : ""}</td>
                   <td className="px-2 py-2.5 text-right"><Button size="sm" variant="ghost" icon={<RotateCcw className="size-3.5" />} aria-label={`Pulihkan ${i.name}`} onClick={() => restore.mutate([i.id])}><span className="hidden sm:inline">Pulihkan</span></Button></td></tr>
                 {i.isFolder && expanded.has(i.id) && <ChildRows item={i} folderId="root" depth={0} sel={csel} toggle={childToggle} act={onChildAct} />}</Fragment>))}</tbody></table></div>
-            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line px-4 py-2.5 text-[12px] text-muted"><span className="tnum">{q.data!.total} item</span>
-              <div className="flex items-center gap-2"><label className="flex items-center gap-1.5">Per halaman<Select aria-label="Per halaman" className="h-8 w-[76px] pr-6 pl-2 text-[12px]" value={limit} onChange={(e) => setLimit(Number(e.target.value))}>{[10, 25, 50, 100].map((n) => <option key={n}>{n}</option>)}</Select></label>
-                <Button size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>Sebelumnya</Button><span className="tnum">{page} / {pages}</span><Button size="sm" disabled={page >= pages} onClick={() => setPage(page + 1)}>Berikutnya</Button></div></div>
+            <Pagination className="border-t border-line px-4 py-2.5" page={page} pages={pages} total={q.data!.total} noun="item" onPage={setPage} limit={limit} onLimit={setLimit} />
           </Card>)}
       </div>
       <Dialog open={confirm !== null} onClose={() => setConfirm(null)} width="max-w-sm" title={confirm === "empty" ? "Kosongkan sampah?" : `Hapus permanen ${sel.size} item?`}

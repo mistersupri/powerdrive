@@ -81,11 +81,11 @@ export function StoragePage({ forcedStorageId }: { forcedStorageId?: string }) {
           <FilterButton value={filter} onChange={setFilter} />
         </>) : (<>
           <span className="mr-2 inline-flex items-center gap-1 rounded-lg bg-primary-soft py-1 pr-1 pl-2.5 text-[13px] font-medium text-primary-ink"><span className="tnum">{sel.length}</span> dipilih<IconButton label="Batal pilih" className="size-6" onClick={selection.clear}><X className="size-3.5" /></IconButton></span>
-          {a.can("DOWNLOAD") && <Button size="sm" variant="ghost" icon={<Download className="size-4" />} onClick={a.downloadSelected}>{sel.length > 1 ? "Unduh ZIP" : "Unduh"}</Button>}
-          {a.can("SHARE") && sel.length === 1 && <Button size="sm" variant="ghost" icon={<Share2 className="size-4" />} onClick={() => a.share(sel[0]!)}>Bagikan</Button>}
-          {a.can("COPY") && <Button size="sm" variant="ghost" icon={<Copy className="size-4" />} onClick={() => a.transferSelected("COPY")}>Salin</Button>}
-          {a.can("MOVE") && <Button size="sm" variant="ghost" icon={<FolderInput className="size-4" />} onClick={() => a.transferSelected("MOVE")}>Pindahkan</Button>}
-          {a.can("DELETE") && <Button size="sm" variant="ghost" className="text-danger-ink hover:bg-danger-soft hover:text-danger-ink" icon={<Trash2 className="size-4" />} onClick={a.deleteSelected}>Hapus</Button>}
+          {a.can("DOWNLOAD") && <Button size="sm" variant="ghost" aria-label="Unduh" icon={<Download className="size-4" />} onClick={a.downloadSelected}><span className="hidden sm:inline">{sel.length > 1 ? "Unduh ZIP" : "Unduh"}</span></Button>}
+          {a.can("SHARE") && sel.length === 1 && <Button size="sm" variant="ghost" aria-label="Bagikan" icon={<Share2 className="size-4" />} onClick={() => a.share(sel[0]!)}><span className="hidden sm:inline">Bagikan</span></Button>}
+          {a.can("COPY") && <Button size="sm" variant="ghost" aria-label="Salin" icon={<Copy className="size-4" />} onClick={() => a.transferSelected("COPY")}><span className="hidden sm:inline">Salin</span></Button>}
+          {a.can("MOVE") && <Button size="sm" variant="ghost" aria-label="Pindahkan" icon={<FolderInput className="size-4" />} onClick={() => a.transferSelected("MOVE")}><span className="hidden sm:inline">Pindahkan</span></Button>}
+          {a.can("DELETE") && <Button size="sm" variant="ghost" aria-label="Hapus" className="text-danger-ink hover:bg-danger-soft hover:text-danger-ink" icon={<Trash2 className="size-4" />} onClick={a.deleteSelected}><span className="hidden sm:inline">Hapus</span></Button>}
         </>)}
         <span className="flex-1" />
         <IconButton label={showInfo ? "Sembunyikan detail" : "Tampilkan detail"} className={cn(showInfo && "bg-surface-2")} onClick={() => setShowInfo(!showInfo)}><Info className="size-4" /></IconButton>

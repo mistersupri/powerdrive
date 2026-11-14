@@ -1,3 +1,4 @@
+import { Pagination } from "@/ui/Pagination";
 import type { Paged, ShareLinkDto } from "@superdrive/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Copy, Eye, Link2, Pencil, Trash2 } from "lucide-react";
@@ -29,7 +30,7 @@ export default function SharesPage() {
                 <Button size="sm" icon={copied === l.id ? <Check className="size-3.5" /> : <Copy className="size-3.5" />} onClick={async () => { await navigator.clipboard.writeText(l.url); setCopied(l.id); setTimeout(() => setCopied(""), 1500); }}>Salin</Button>
                 <Button size="sm" variant="ghost" className="text-danger-ink hover:bg-danger-soft" aria-label={`Matikan tautan ${l.name}`} icon={<Trash2 className="size-3.5" />} onClick={() => revoke.mutate(l.id)}><span className="hidden sm:inline">Matikan</span></Button>
               </li>))}</ul>
-            <div className="flex items-center justify-between border-t border-line px-4 py-2.5 text-[12px] text-muted"><span className="tnum">{q.data.total} tautan</span><div className="flex items-center gap-2"><Button size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>Sebelumnya</Button><span className="tnum">{page} / {pages}</span><Button size="sm" disabled={page >= pages} onClick={() => setPage(page + 1)}>Berikutnya</Button></div></div>
+            <Pagination className="border-t border-line px-4 py-2.5" page={page} pages={pages} total={q.data.total} noun="tautan" onPage={setPage} />
           </Card>)}
       </div>
     </div>
