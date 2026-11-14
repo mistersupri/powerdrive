@@ -46,7 +46,7 @@ const useWidth = (ref: React.RefObject<HTMLElement | null>) => {
   return w;
 };
 
-type Row = { key: string; h: number; node: (w: number) => ReactNode };
+type Row = { key: string; h: number; gap?: number; node: (w: number) => ReactNode };
 const GAP = 12;
 
 export function FileBrowser(p: BrowserProps) {
@@ -136,14 +136,14 @@ export function FileBrowser(p: BrowserProps) {
       out.push({ key: "lbl-f", h: 30, node: () => <SectionLabel>Folder · {folders.length}</SectionLabel> });
       for (let i = 0; i < folders.length; i += fCols) {
         const chunk = folders.slice(i, i + fCols); chunk.forEach((e) => rowOf.set(e.id, out.length));
-        out.push({ key: `f${i}`, h: 52 + GAP, node: () => <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${fCols}, minmax(0, 1fr))` }}>{chunk.map((e) => <FolderChip key={e.id} e={e} sel={p.selected.has(e.id)} drop={dropTarget === e.id} props={itemProps(e, idx.get(e.id)!)} where={whereOf(p.storageNames, e)} onMenu={(x, y) => p.onContext(e, x, y)} />)}</div> });
+        out.push({ key: `f${i}`, h: 52 + GAP, gap: GAP, node: () => <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${fCols}, minmax(0, 1fr))` }}>{chunk.map((e) => <FolderChip key={e.id} e={e} sel={p.selected.has(e.id)} drop={dropTarget === e.id} props={itemProps(e, idx.get(e.id)!)} where={whereOf(p.storageNames, e)} onMenu={(x, y) => p.onContext(e, x, y)} />)}</div> });
       }
     }
     if (files.length) {
       out.push({ key: "lbl-d", h: 30, node: () => <SectionLabel>File · {files.length}</SectionLabel> });
       for (let i = 0; i < files.length; i += cols) {
         const chunk = files.slice(i, i + cols); chunk.forEach((e) => rowOf.set(e.id, out.length));
-        out.push({ key: `d${i}`, h: tileH + GAP, node: () => <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>{chunk.map((e) => <FileTile key={e.id} e={e} sel={p.selected.has(e.id)} cursor={cursor === idx.get(e.id)} props={itemProps(e, idx.get(e.id)!)} where={whereOf(p.storageNames, e)} onMenu={(x, y) => p.onContext(e, x, y)} />)}</div> });
+        out.push({ key: `d${i}`, h: tileH + GAP, gap: GAP, node: () => <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>{chunk.map((e) => <FileTile key={e.id} e={e} sel={p.selected.has(e.id)} cursor={cursor === idx.get(e.id)} props={itemProps(e, idx.get(e.id)!)} where={whereOf(p.storageNames, e)} onMenu={(x, y) => p.onContext(e, x, y)} />)}</div> });
       }
     }
     return out;
@@ -151,7 +151,6 @@ export function FileBrowser(p: BrowserProps) {
   }, [p.view, p.entries, p.selected, width, dropTarget, cursor, p.storageNames, p.compact]);
 
   const virt = useVirtualizer({ count: rows.length, getScrollElement: () => scroller.current, estimateSize: (i) => rows[i]!.h, overscan: 6, getItemKey: (i) => rows[i]!.key });
-  useEffect(() => { virt.measure(); }, [rows.length, p.view, width]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const move = useCallback((d: number) => {
     const n = Math.max(0, Math.min(ordered.length - 1, (cursor < 0 ? 0 : cursor) + d)); setCursor(n);
@@ -243,7 +242,7 @@ export function FileBrowser(p: BrowserProps) {
         {p.loading ? <BrowserSkeleton view={p.view} /> : p.entries.length === 0 ? p.empty : (
           <div style={{ height: virt.getTotalSize(), position: "relative" }} data-bg="1">
             {virt.getVirtualItems().map((v) => (
-              <div key={v.key} style={{ position: "absolute", top: 0, left: 0, width: "100%", height: v.size, transform: `translateY(${v.start}px)` }} data-bg="1">{rows[v.index]!.node(width)}</div>
+              <div key={v.key} ref={virt.measureElement} data-index={v.index} style={{ position: "absolute", top: 0, left: 0, width: "100%", paddingBottom: rows[v.index]!.gap ?? 0, minHeight: rows[v.index]!.gap ? undefined : rows[v.index]!.h, transform: `translateY(${v.start}px)` }} data-bg="1">{rows[v.index]!.node(width)}</div>
             ))}
           </div>)}
         {internalDrop && <div className="pointer-events-none sticky bottom-4 mx-auto w-fit rounded-full bg-primary px-4 py-2 text-[13px] font-medium text-white shadow-float">{activeDrag ? (p.dropLabel?.replace(/^Unggah/, "Pindahkan") ?? "Pindahkan ke sini") : p.dropLabel ?? "Lepaskan di sini"}</div>}
