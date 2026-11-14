@@ -52,6 +52,14 @@ Daftarkan redirect URI OAuth: `${APP_URL}/api/v1/storages/{google-drive|onedrive
 | **Pohon folder** di "Semua file"/penyimpanan (lazy, seret-lepas ke folder, buka otomatis saat menahan), **Sampah sebagai pohon** (buka folder terhapus, pulihkan/hapus sebagian isi), **Folder baru** di dua panel, **panel Detail** (ukuran folder rekursif), **cetak**, **tayangan slide**, **pencarian global** lintas penyimpanan terhubung lewat indeks latar belakang (lokasi folder tampil di hasil) | ✅ diuji otomatis + browser |
 | Audit log, notifikasi, dashboard (kapasitas yang tidak dilaporkan tampil "—", bukan 0), tema terang/gelap, responsif | ✅ |
 
+## Pengaturan sistem (admin)
+
+Halaman **Pengaturan sistem** (khusus administrator instalasi) mengatur: tema dan merek (nama, warna utama dengan pemeriksaan kontras, ikon aplikasi yang dipakai di favicon dan manifest pemasangan), pendaftaran (terbuka, hanya undangan, tertutup), akses tamu (matikan tautan publik, matikan unggahan tamu, wajibkan sandi, masa berlaku bawaan dan maksimal), keamanan (verifikasi dua langkah TOTP opsional atau wajib untuk admin/semua, keluar otomatis saat tidak aktif, lama sesi), retensi (sampah, log audit dan aktivitas file, riwayat transfer), serta email SMTP (atur ulang sandi dan undangan; kata sandi SMTP tersimpan terenkripsi). Nilai bawaan mengikuti variabel lingkungan, jadi instalasi lama berperilaku sama sampai diubah.
+
+## Fitur file lainnya
+
+Folder bertanda titik bila anggota lain mengubah isinya sejak terakhir Anda buka; panel Detail punya tab Aktivitas (siapa membuka, mengunduh, mengubah, termasuk tamu tautan), tag, komentar, dan metadata (EXIF gambar, info video); satu tautan bisa membagikan banyak file/folder; berbagi langsung ke anggota muncul di **Dibagikan ke saya**; halaman **Media** menampilkan semua foto dan video dari semua penyimpanan (termasuk cloud setelah diindeks) per tanggal.
+
 ## Pencarian global
 
 Setiap penyimpanan yang terhubung (termasuk Google Drive, OneDrive, SMB, SFTP…) dirayapi di latar belakang ke indeks metadata lokal, sehingga pencarian menjangkau folder yang belum pernah dibuka. Perayapan berjalan saat penyimpanan dihubungkan, saat server menyala, tiap 6 jam, dan bisa dipicu admin lewat **Penyimpanan → Indeks ulang pencarian**. Untuk penyimpanan cloud, perayapan diberi jeda agar tidak menghabiskan kuota API. Hasil menampilkan penyimpanan dan folder tempat file berada.

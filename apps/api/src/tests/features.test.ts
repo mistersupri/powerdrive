@@ -314,6 +314,10 @@ describe("change badges, activity, tags, comments, metadata", () => {
     assert.equal((await mark("viv")).changed, true, "the other member sees one (a folder was created inside)");
     assert.equal((await t.call("viv", "GET", `/files?storageId=${sid}&folderId=${dir}&peek=1`)).status, 200);
     assert.equal((await mark("viv")).changed, true, "a hover prefetch does not count as opening the folder");
+    await t.call("ana", "POST", "/files/folders", { storageId: sid, parentId: inner, name: "Diam-diam" });
+    await t.call("viv", "POST", "/files/seen", { storageId: sid, folderId: dir });
+    assert.ok(!(await mark("viv")).changed, "an explicit \"I opened it\" (listing came from the browser cache) clears the badge too");
+    await t.call("ana", "POST", "/files/folders", { storageId: sid, parentId: inner, name: "Lagi" });
     await t.call("viv", "GET", `/files?storageId=${sid}&folderId=${dir}`);
     assert.ok(!(await mark("viv")).changed, "opening it clears the badge");
     await t.call("ana", "POST", "/files/folders", { storageId: sid, parentId: inner, name: "Lebih-dalam" });

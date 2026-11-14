@@ -1,4 +1,5 @@
 import { listMedia } from "../modules/files.ts";
+import { markSeen } from "../modules/activity.ts";
 import { addComment, addTag, deleteComment, listActivity, listComments, listTags, removeTag, workspaceTags } from "../modules/activity.ts";
 import { fileMetadata } from "../modules/metadata.ts";
 import { logActivity } from "../modules/activity.ts";
@@ -41,6 +42,11 @@ export async function fileRoutes(app: FastifyInstance) {
   });
 
   /* ---- activity, tags, comments, metadata (shown in the details panel) ---- */
+  // "I opened this folder": clears its change badge even when the listing itself came from the browser's cache.
+  app.post("/files/seen", async (req) => {
+    const b = z.object({ storageId: z.string(), folderId: z.string() }).parse(req.body); const { ctx } = open(req, "READ", b.storageId);
+    markSeen(ctx.userId, b.storageId, decodeId(b.folderId)); return ok(req, {});
+  });
   app.get("/files/:storageId/:fileId/activity", async (req) => { const { storageId, fileId } = req.params as any; open(req, "READ", storageId); return ok(req, listActivity(storageId, decodeId(fileId), Number((req.query as any).limit) || 60)); });
   app.get("/files/:storageId/:fileId/metadata", async (req) => { const { storageId, fileId } = req.params as any; const { p } = open(req, "READ", storageId); return ok(req, await fileMetadata(storageId, p, await metaOf(storageId, p, decodeId(fileId)))); });
   app.get("/files/:storageId/:fileId/tags", async (req) => { const { storageId, fileId } = req.params as any; open(req, "READ", storageId); return ok(req, listTags(storageId, decodeId(fileId))); });

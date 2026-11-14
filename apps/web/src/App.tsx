@@ -1,5 +1,6 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { lazy, Suspense } from "react";
+import { BrandingApplier } from "@/lib/branding";
 import { createBrowserRouter, RouterProvider, Navigate } from "react-router";
 import { queryClient } from "@/lib/query";
 import { ForgotPage, LoginPage, RegisterPage, ResetPage } from "@/features/auth/AuthPages";
@@ -17,6 +18,7 @@ const Members = lazy(() => import("@/features/members/MembersPage").then((m) => 
 const Trash = lazy(() => import("@/features/trash/TrashPage"));
 const Shares = lazy(() => import("@/features/share/SharesPage"));
 const PublicShare = lazy(() => import("@/features/share/PublicSharePage"));
+const AdminSettings = lazy(() => import("@/features/settings/AdminSettingsPage"));
 const Media = lazy(() => import("@/features/files/MediaPage"));
 const SharedWithMe = lazy(() => import("@/features/share/SharedWithMePage"));
 const DirectShare = lazy(() => import("@/features/share/SharedWithMePage").then((m) => ({ default: m.DirectSharePage })));
@@ -36,7 +38,7 @@ const router = createBrowserRouter([
       { path: "files", element: <AllFilesPage /> },
       { path: "s/:storageId", element: <StoragePage /> },
       { path: "recent", element: <ResultsPage mode="recent" /> }, { path: "starred", element: <ResultsPage mode="starred" /> }, { path: "search", element: <ResultsPage mode="search" /> },
-      { path: "trash", element: <L><Trash /></L> }, { path: "media", element: <L><Media /></L> }, { path: "shared", element: <L><SharedWithMe /></L> }, { path: "shared/:id", element: <L><DirectShare /></L> }, { path: "shares", element: <L><Shares /></L> },
+      { path: "trash", element: <L><Trash /></L> }, { path: "admin", element: <L><AdminSettings /></L> }, { path: "media", element: <L><Media /></L> }, { path: "shared", element: <L><SharedWithMe /></L> }, { path: "shared/:id", element: <L><DirectShare /></L> }, { path: "shares", element: <L><Shares /></L> },
       { path: "transfers", element: <L><Transfers /></L> }, { path: "storage", element: <L><StorageAdmin /></L> }, { path: "dual", element: <L><Dual /></L> },
       { path: "activity", element: <L><Activity /></L> }, { path: "members", element: <L><Members /></L> }, { path: "settings", element: <L><Settings /></L> },
       { path: "*", element: <Navigate to="/" replace /> },
@@ -44,4 +46,4 @@ const router = createBrowserRouter([
   },
 ]);
 
-export default function App() { return <QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider>; }
+export default function App() { return <QueryClientProvider client={queryClient}><BrandingApplier /><RouterProvider router={router} /></QueryClientProvider>; }

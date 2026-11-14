@@ -6,6 +6,7 @@ import { queryClient } from "@/lib/query";
 import { Button } from "@/ui/Button";
 import { Field, Input } from "@/ui/Field";
 import { Logo } from "@/features/layout/Logo";
+import { useBranding } from "@/lib/branding";
 
 function AuthLayout({ title, subtitle, children, footer }: { title: string; subtitle: string; children: ReactNode; footer: ReactNode }) {
   return (
@@ -49,11 +50,33 @@ async function afterAuth(nav: ReturnType<typeof useNavigate>, to = "/") {
 }
 
 export function LoginPage() {
-  const nav = useNavigate(); const [sp] = useSearchParams();
+  const nav = useNavigate(); const [sp] = useSearchParams(); const brand = useBranding().data;
   const [email, setEmail] = useState(""); const [password, setPassword] = useState("");
-  const { error, busy, submit } = useSubmit(async () => { await api("/auth/login", { body: { email, password } }); await afterAuth(nav, sp.get("next") || "/"); });
+  const [challenge, setChallenge] = useState<string | null>(null); const [code, setCode] = useState(""); const [useRecovery, setUseRecovery] = useState(false);
+  const { error, busy, submit } = useSubmit(async () => {
+    const r = await api<{ mfaRequired?: boolean; challenge?: string }>("/auth/login", { body: { email, password } });
+    if (r.mfaRequired && r.challenge) { setChallenge(r.challenge); return; }
+    await afterAuth(nav, sp.get("next") || "/");
+  });
+  const verify = useSubmit(async () => {
+    try { await api("/auth/mfa/verify", { body: { challenge, ...(useRecovery ? { recoveryCode: code } : { code }) } }); }
+    catch (e) { setCode(""); // after five wrong tries the challenge is gone: start over
+      if (e instanceof ApiError && e.status === 401 && /berakhir/i.test(e.message)) { setChallenge(null); setPassword(""); } throw e; }
+    await afterAuth(nav, sp.get("next") || "/");
+  });
+  const canRegister = brand?.registration === "open";
+  if (challenge) return (
+    <AuthLayout title="Verifikasi dua langkah" subtitle={useRecovery ? "Masukkan salah satu kode pemulihan yang Anda simpan." : "Masukkan kode 6 digit dari aplikasi autentikator Anda."} footer={<button type="button" className="font-medium text-primary-ink hover:underline" onClick={() => { setChallenge(null); setCode(""); setPassword(""); }}>Kembali</button>}>
+      <form onSubmit={verify.submit} className="space-y-4">
+        <Field label={useRecovery ? "Kode pemulihan" : "Kode verifikasi"}>{(id) => <Input id={id} autoFocus required autoComplete="one-time-code" inputMode={useRecovery ? "text" : "numeric"} pattern={useRecovery ? undefined : "[0-9 ]*"} maxLength={useRecovery ? 20 : 7} value={code} onChange={(e) => setCode(e.target.value)} placeholder={useRecovery ? "xxxxxx-xxxxxx" : "123456"} className="tnum tracking-widest" />}</Field>
+        <Err msg={verify.error} />
+        <Button type="submit" variant="primary" loading={verify.busy} className="h-10 w-full">Verifikasi</Button>
+        <div className="text-center"><button type="button" className="text-[13px] text-muted hover:text-ink hover:underline" onClick={() => { setUseRecovery((v) => !v); setCode(""); }}>{useRecovery ? "Pakai kode dari aplikasi" : "Pakai kode pemulihan"}</button></div>
+      </form>
+    </AuthLayout>
+  );
   return (
-    <AuthLayout title="Selamat datang kembali" subtitle="Masuk untuk membuka penyimpanan Anda." footer={<>Belum punya akun? <Link className="font-medium text-primary-ink hover:underline" to="/register">Daftar</Link></>}>
+    <AuthLayout title="Selamat datang kembali" subtitle={sp.get("expired") ? "Sesi Anda berakhir karena tidak ada aktivitas. Masuk lagi untuk melanjutkan." : brand?.loginMessage || "Masuk untuk membuka penyimpanan Anda."} footer={canRegister ? <>Belum punya akun? <Link className="font-medium text-primary-ink hover:underline" to="/register">Daftar</Link></> : <>Akun baru dibuat lewat undangan administrator.</>}>
       <form onSubmit={submit} className="space-y-4">
         <Field label="Email">{(id) => <Input id={id} type="email" autoComplete="username" required autoFocus value={email} onChange={(e) => setEmail(e.target.value)} placeholder="nama@instansi.id" />}</Field>
         <Field label="Kata sandi">{(id) => <Input id={id} type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />}</Field>
@@ -69,16 +92,17 @@ export function RegisterPage() {
   const nav = useNavigate(); const [sp] = useSearchParams();
   const invitation = sp.get("invitation") ?? undefined;
   const [name, setName] = useState(""); const [email, setEmail] = useState(sp.get("email") ?? ""); const [password, setPassword] = useState("");
+  const brand = useBranding().data; const blocked = brand && !invitation && brand.registration !== "open";
   const { error, busy, submit } = useSubmit(async () => { await api("/auth/register", { body: { name, email, password, invitationToken: invitation } }); await afterAuth(nav); });
   return (
     <AuthLayout title={invitation ? "Terima undangan" : "Buat akun"} subtitle={invitation ? "Lengkapi data untuk bergabung ke workspace." : "Akun pertama menjadi administrator instalasi."} footer={<>Sudah punya akun? <Link className="font-medium text-primary-ink hover:underline" to="/login">Masuk</Link></>}>
-      <form onSubmit={submit} className="space-y-4">
+      {blocked ? <p role="status" className="rounded-lg bg-warn-soft px-3 py-3 text-[14px] text-warn-ink">Pendaftaran terbuka dinonaktifkan. Minta administrator mengirim undangan ke email Anda, lalu buka tautannya.</p> : <form onSubmit={submit} className="space-y-4">
         <Field label="Nama lengkap">{(id) => <Input id={id} required autoComplete="name" autoFocus value={name} onChange={(e) => setName(e.target.value)} />}</Field>
         <Field label="Email">{(id) => <Input id={id} type="email" required autoComplete="username" value={email} readOnly={!!invitation} onChange={(e) => setEmail(e.target.value)} />}</Field>
         <Field label="Kata sandi" hint="Minimal 8 karakter.">{(id) => <Input id={id} type="password" required minLength={8} autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />}</Field>
         <Err msg={error} />
         <Button type="submit" variant="primary" loading={busy} className="h-10 w-full">{invitation ? "Gabung workspace" : "Daftar"}</Button>
-      </form>
+      </form>}
     </AuthLayout>
   );
 }

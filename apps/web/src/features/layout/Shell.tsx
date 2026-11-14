@@ -1,6 +1,6 @@
 import type { NotificationDto, StorageConnectionDto } from "@superdrive/shared";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Activity, ArrowRightLeft, Bell, Check, ChevronRight, ChevronsUpDown, Clock, Columns2, FolderOpen, Images, HardDrive, LayoutDashboard, Link2, LogOut, Menu as MenuIcon, Moon, Search, Settings, Star, Sun, Trash2, Users, X } from "lucide-react";
+import { Activity, ArrowRightLeft, Bell, Check, ChevronRight, ChevronsUpDown, Clock, Columns2, FolderOpen, Images, SlidersHorizontal, HardDrive, LayoutDashboard, Link2, LogOut, Menu as MenuIcon, Moon, Search, Settings, Star, Sun, Trash2, Users, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { NavLink, Navigate, Outlet, useLocation, useNavigate } from "react-router";
 import { Toaster } from "sonner";
@@ -16,6 +16,8 @@ import { IconButton } from "@/ui/Button";
 import { useMenu } from "@/ui/Menu";
 import { Logo } from "./Logo";
 import { GlobalSearch } from "./GlobalSearch";
+import { MfaCard, useMfaStatus } from "@/features/settings/Mfa";
+import { useIdleLogout } from "@/lib/useIdleLogout";
 import { startTransfer } from "@/features/files/transferApi";
 import { DRAG_MIME } from "@/features/files/dnd";
 import { toast } from "sonner";
@@ -96,8 +98,16 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         <Section>Workspace</Section>
         <NavItem to="/members" icon={Users}>Anggota</NavItem>
         <NavItem to="/settings" icon={Settings}>Pengaturan</NavItem>
+        {useWorkspace().user?.isSuperAdmin && <NavItem to="/admin" icon={SlidersHorizontal}>Pengaturan sistem</NavItem>}
       </div>
     </nav>
+  );
+}
+
+/** Shown instead of the app while the administrator requires two-step verification and this account has none yet. */
+function MfaGate() {
+  return (
+    <div className="scroll-thin flex-1 overflow-y-auto p-4 sm:p-8"><div className="mx-auto max-w-2xl space-y-4"><h1 className="text-[20px] font-bold">Satu langkah lagi</h1><MfaCard forced /></div></div>
   );
 }
 
@@ -183,6 +193,8 @@ const useShell = () => useContext(ShellCtx);
 
 export function AppShell() {
   const me = useMe(); const nav = useNavigate(); const loc = useLocation(); const [drawer, setDrawer] = useState(false);
+  const mfa = useMfaStatus(); const mfaGate = !!mfa.data?.required && !mfa.data.enabled;
+  useIdleLogout(me.data?.policy?.idleTimeoutMinutes ?? 0);
   useEffect(() => onUnauthorized(() => { queryClient.clear(); nav(`/login?next=${encodeURIComponent(loc.pathname)}`, { replace: true }); }), [nav, loc.pathname]);
   useEffect(() => { if (me.data) { connectTransfers(); return disconnectTransfers; } }, [me.data]);
   useEffect(() => setDrawer(false), [loc.pathname]);
@@ -198,7 +210,7 @@ export function AppShell() {
             <div className="anim-fade absolute inset-0 bg-black/40" onClick={() => setDrawer(false)} />
             <aside className="anim-slide-up absolute inset-y-0 left-0 w-72 max-w-[85vw] bg-surface shadow-float"><IconButton label="Tutup menu" className="absolute top-4 right-3 z-10" onClick={() => setDrawer(false)}><X className="size-5" /></IconButton><Sidebar onNavigate={() => setDrawer(false)} /></aside>
           </div>)}
-        <div className="flex min-w-0 flex-1 flex-col"><Outlet /></div>
+        <div className="flex min-w-0 flex-1 flex-col">{mfaGate ? <MfaGate /> : <Outlet />}</div>
         <FloatingProgress />
         <Toaster position="bottom-left" toastOptions={{ classNames: { toast: "!rounded-xl !border-line !bg-surface !text-ink !shadow-float" } }} />
       </div>

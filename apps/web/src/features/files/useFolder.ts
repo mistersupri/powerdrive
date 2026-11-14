@@ -14,9 +14,10 @@ function clearBadge(storageId: string, folderId: string) {
     return old;
   });
 }
+const lastSeenSent = new Map<string, number>();
 const fetchPage = async (storageId: string, folderId: string, pageToken?: string, peek = false) => {
   const r = await api<FileListing>(`/files?storageId=${storageId}&folderId=${encodeURIComponent(folderId)}&limit=300${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ""}${peek ? "&peek=1" : ""}`);
-  if (!peek && !pageToken && folderId !== "root") clearBadge(storageId, folderId);
+  if (!peek && !pageToken && folderId !== "root") { clearBadge(storageId, folderId); lastSeenSent.set(`${storageId}|${folderId}`, Date.now()); }
   return r;
 };
 
@@ -30,6 +31,13 @@ export function useFolder(storageId: string, folderId: string) {
     // Keep showing the previous folder's data until the new one is ready? No: show skeletons, folders are cached anyway.
     staleTime: 20_000, enabled: !!storageId,
   });
+  // The listing may have come from a hover prefetch (which must not count as opening): tell the server the folder really was opened.
+  const have = !!q.data;
+  useEffect(() => {
+    if (!storageId || !have || folderId === "root") return; const k = `${storageId}|${folderId}`;
+    if (Date.now() - (lastSeenSent.get(k) ?? 0) < 3000) return; lastSeenSent.set(k, Date.now());
+    clearBadge(storageId, folderId); void api("/files/seen", { body: { storageId, folderId } }).catch(() => {});
+  }, [storageId, folderId, have]);
   useEffect(() => { if (q.hasNextPage && !q.isFetchingNextPage) void q.fetchNextPage(); }, [q.hasNextPage, q.isFetchingNextPage, q.fetchNextPage]);
   const entries = useMemo(() => q.data?.pages.flatMap((p) => p.items) ?? [], [q.data]);
   const folder = q.data?.pages[0]?.folder;

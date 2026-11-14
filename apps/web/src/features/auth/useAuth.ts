@@ -2,7 +2,7 @@ import type { User, WorkspaceSummary } from "@superdrive/shared";
 import { useQuery } from "@tanstack/react-query";
 import { api, getWorkspaceId, setWorkspaceId } from "@/lib/api";
 
-export interface Me { user: User; workspaces: WorkspaceSummary[]; activeWorkspaceId: string }
+export interface Me { user: User; workspaces: WorkspaceSummary[]; activeWorkspaceId: string; policy?: { idleTimeoutMinutes: number } }
 
 export function useMe() {
   return useQuery({
