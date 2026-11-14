@@ -240,6 +240,12 @@ const MIGRATIONS: string[] = [
   CREATE TABLE share_items (share_id TEXT NOT NULL REFERENCES share_links(id) ON DELETE CASCADE, file_id TEXT NOT NULL, name TEXT NOT NULL, is_folder INTEGER NOT NULL, position INTEGER NOT NULL, PRIMARY KEY (share_id, file_id)) WITHOUT ROWID;
   CREATE INDEX idx_share_recipient ON share_links(recipient_user_id, revoked_at);
   `,
+  /* 7 */ `
+  CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL);
+  ALTER TABLE sessions ADD COLUMN last_seen_at TEXT;
+  CREATE TABLE user_mfa (user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, secret_enc TEXT NOT NULL, confirmed_at TEXT, recovery TEXT NOT NULL DEFAULT '[]', last_step INTEGER NOT NULL DEFAULT 0);
+  CREATE TABLE mfa_challenges (token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, expires_at TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, ip TEXT, user_agent TEXT);
+  `,
 ];
 
 function migrate(d: Database) {

@@ -1,3 +1,6 @@
+import { getSettings } from "./settings.ts";
+import { sendMail } from "../lib/mailer.ts";
+import { hasMfa, mfaRequiredFor, startChallenge } from "./mfa.ts";
 import { hash, verify } from "@node-rs/argon2";
 import { z } from "zod";
 import { config } from "../config.ts";
@@ -42,7 +45,9 @@ export async function register(input: z.infer<typeof registerSchema>, ip: string
   if (input.invitationToken && !inv) throw badRequest("Undangan tidak valid atau sudah kedaluwarsa.", "INVALID_INVITATION");
   if (inv && inv.email.toLowerCase() !== email) throw badRequest("Undangan ini dibuat untuk alamat email lain.", "INVALID_INVITATION");
   const first = !db.get("SELECT 1 FROM users LIMIT 1");
-  if (!first && !inv && !config.allowRegistration) throw new AppError(403, "REGISTRATION_CLOSED", "Pendaftaran ditutup. Minta undangan dari administrator.");
+  const mode = getSettings().registration.mode;
+  if (!first && mode === "closed") throw new AppError(403, "REGISTRATION_CLOSED", "Pendaftaran akun baru sedang ditutup oleh administrator.");
+  if (!first && !inv && mode !== "open") throw new AppError(403, "REGISTRATION_CLOSED", "Pendaftaran ditutup. Minta undangan dari administrator.");
   if (db.get("SELECT 1 FROM users WHERE email = ?", email)) throw conflict("Email sudah terdaftar.", "EMAIL_TAKEN");
   const passwordHash = await hash(input.password, ARGON);
   const id = newId();
@@ -64,13 +69,19 @@ export async function login(emailRaw: string, password: string, ip: string, ua: 
   // Verify against a dummy hash when the user is unknown so timing does not reveal which emails exist.
   const ok = u ? await verify(u.password_hash, password).catch(() => false) : (await verify(await getDummy(), password).catch(() => false), false);
   if (!u || !ok || u.status !== "ACTIVE") throw unauthorized("Email atau kata sandi salah.");
+  // Right password, but a second factor is set up: hand out a short-lived challenge, not a session.
+  if (hasMfa(u.id)) return { mfa: true as const, challenge: startChallenge(u.id, ip, ua) };
+  return { mfa: false as const, ...issueSession(u, ip, ua) };
+}
+
+export function issueSession(u: any, ip: string, ua: string) {
   const token = randomToken(32);
-  const expires = new Date(Date.now() + config.sessionTtlDays * 86_400_000).toISOString();
-  db.run("INSERT INTO sessions(id,user_id,token_hash,expires_at,ip,user_agent) VALUES (?,?,?,?,?,?)", newId(), u.id, sha256(token), expires, ip, ua.slice(0, 250));
+  const expires = new Date(Date.now() + getSettings().security.sessionDays * 86_400_000).toISOString();
+  db.run("INSERT INTO sessions(id,user_id,token_hash,expires_at,ip,user_agent,last_seen_at) VALUES (?,?,?,?,?,?,?)", newId(), u.id, sha256(token), expires, ip, ua.slice(0, 250), now());
   db.run("UPDATE users SET last_login_at = ? WHERE id = ?", now(), u.id);
   const m = db.get<any>("SELECT workspace_id FROM memberships WHERE user_id = ? ORDER BY created_at LIMIT 1", u.id);
   if (m) audit({ workspaceId: m.workspace_id, userId: u.id, action: "auth.login", resourceType: "user", resourceId: u.id, ip });
-  return { token, expires: new Date(expires), user: toUser(u) };
+  return { token, expires: new Date(expires), user: toUser(u), mfaSetupRequired: mfaRequiredFor(u.id) && !hasMfa(u.id) };
 }
 let dummyHash: Promise<string> | null = null;
 const getDummy = () => (dummyHash ??= hash("not-a-real-password", ARGON));
@@ -78,8 +89,13 @@ const getDummy = () => (dummyHash ??= hash("not-a-real-password", ARGON));
 export function sessionUser(token: string | undefined): User | null {
   if (!token) return null;
   const r = db.get<any>(
-    "SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires_at > ? AND u.status = 'ACTIVE'", sha256(token), now());
-  return r ? toUser(r) : null;
+    "SELECT u.*, s.last_seen_at AS seen FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND s.expires_at > ? AND u.status = 'ACTIVE'", sha256(token), now());
+  if (!r) return null;
+  // Inactivity timeout: a session nobody has touched for too long is over. "Seen" is refreshed at most once a minute.
+  const idle = getSettings().security.idleTimeoutMinutes; const last = r.seen ? Date.parse(r.seen) : 0;
+  if (idle > 0 && last && Date.now() - last > idle * 60_000) { db.run("DELETE FROM sessions WHERE token_hash = ?", sha256(token)); return null; }
+  if (!last || Date.now() - last > 60_000) db.run("UPDATE sessions SET last_seen_at = ? WHERE token_hash = ?", now(), sha256(token));
+  return toUser(r);
 }
 export function logout(token: string) { db.run("DELETE FROM sessions WHERE token_hash = ?", sha256(token)); }
 export function revokeOtherSessions(userId: string, keepToken: string) { db.run("DELETE FROM sessions WHERE user_id = ? AND token_hash <> ?", userId, sha256(keepToken)); }
@@ -93,13 +109,17 @@ export async function changePassword(userId: string, current: string, next: stri
 }
 
 /** There is no mail server in the box: the reset link is written to the server log for the administrator. */
-export function requestPasswordReset(emailRaw: string, log: (msg: string) => void) {
+export async function requestPasswordReset(emailRaw: string, log: (msg: string) => void) {
   const u = db.get<any>("SELECT id FROM users WHERE email = ? AND status = 'ACTIVE'", emailRaw.toLowerCase());
   if (!u) return;
   const token = randomToken(32);
   db.run("DELETE FROM password_resets WHERE user_id = ?", u.id);
   db.run("INSERT INTO password_resets(token_hash,user_id,expires_at) VALUES (?,?,?)", sha256(token), u.id, new Date(Date.now() + 3600_000).toISOString());
-  log(`[password-reset] ${emailRaw}: ${config.appUrl}/reset-password?token=${token}`);
+  const link = `${config.appUrl}/reset-password?token=${token}`;
+  const app = getSettings().brand.appName;
+  // With SMTP configured the link is emailed; otherwise (or if sending fails) it goes to the server log for the administrator.
+  const sent = await sendMail({ to: emailRaw, subject: `Atur ulang kata sandi ${app}`, text: `Seseorang meminta pengaturan ulang kata sandi untuk akun ini.\n\nBuka tautan ini dalam 1 jam:\n${link}\n\nJika bukan Anda, abaikan email ini.` }).catch((e) => { log(`[password-reset] email failed: ${(e as Error).message}`); return false; });
+  if (!sent) log(`[password-reset] ${emailRaw}: ${link}`);
 }
 export async function resetPassword(token: string, password: string) {
   if (password.length < 8) throw badRequest("Kata sandi minimal 8 karakter.");

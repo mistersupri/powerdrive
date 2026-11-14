@@ -1,3 +1,5 @@
+import { sendMail } from "../lib/mailer.ts";
+import { getSettings } from "../modules/settings.ts";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { config } from "../config.ts";
@@ -63,8 +65,11 @@ export async function workspaceRoutes(app: FastifyInstance) {
     db.run("INSERT INTO invitations(id,workspace_id,email,role,token_hash,expires_at) VALUES (?,?,?,?,?,?)",
       newId(), ctx.workspaceId, b.email.toLowerCase(), b.role, sha256(token), new Date(Date.now() + 7 * 86_400_000).toISOString());
     audit({ workspaceId: ctx.workspaceId, userId: ctx.userId, action: "member.invite", resourceType: "invitation", metadata: { email: b.email, role: b.role }, ip: ctx.ip });
-    // The link is shown once to the inviter; only its hash is stored.
-    return ok(req, { link: `${config.appUrl}/register?invitation=${token}&email=${encodeURIComponent(b.email)}`, expiresInDays: 7 });
+    // The link is shown once to the inviter; only its hash is stored. With SMTP configured it is emailed as well.
+    const link = `${config.appUrl}/register?invitation=${token}&email=${encodeURIComponent(b.email)}`;
+    const wsName = db.get<{ name: string }>("SELECT name FROM workspaces WHERE id = ?", ctx.workspaceId)?.name ?? "workspace";
+    const emailed = await sendMail({ to: b.email, subject: `${ctx.userName} mengundang Anda ke ${wsName}`, text: `${ctx.userName} mengundang Anda bergabung ke "${wsName}" di ${getSettings().brand.appName}.\n\nBuka tautan ini dalam 7 hari untuk membuat akun:\n${link}` }).catch(() => false);
+    return ok(req, { link, expiresInDays: 7, emailed });
   });
 
   app.delete("/:id/invitations/:inviteId", async (req) => {

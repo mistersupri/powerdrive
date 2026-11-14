@@ -1,3 +1,5 @@
+import { getSettings } from "./modules/settings.ts";
+import { hasMfa, mfaRequiredFor } from "./modules/mfa.ts";
 import fs from "node:fs";
 import path from "node:path";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
@@ -18,8 +20,10 @@ declare module "fastify" {
 
 export const COOKIE = "sd_session";
 
-const sessionCache = new Map<string, { user: ReturnType<typeof sessionUser>; until: number }>();
+const sessionCache = new Map<string, { user: ReturnType<typeof sessionUser>; until: number; needsMfa: boolean }>();
 export function dropSession(token: string) { sessionCache.delete(token); }
+/** Policy changes (two-step verification required, idle limit) apply at once instead of after the 15 s cache. */
+export function clearSessionCache() { sessionCache.clear(); }
 
 /** Resolve the caller and the workspace they are acting in. Throws 401/403 — never returns a half-authenticated context. */
 export function requireAuth(req: FastifyRequest): AuthCtx {
@@ -27,9 +31,11 @@ export function requireAuth(req: FastifyRequest): AuthCtx {
   const token = req.cookies[COOKIE];
   if (!token) throw unauthorized();
   let c = sessionCache.get(token);
-  if (!c || c.until < Date.now()) { c = { user: sessionUser(token), until: Date.now() + 15_000 }; sessionCache.set(token, c); }
+  if (!c || c.until < Date.now()) { const u = sessionUser(token); c = { user: u, until: Date.now() + 15_000, needsMfa: !!u && mfaRequiredFor(u.id) && !hasMfa(u.id) }; sessionCache.set(token, c); }
   if (!c.user) { sessionCache.delete(token); throw unauthorized("Sesi berakhir. Silakan masuk lagi."); }
   const user = c.user;
+  // The administrator requires two-step verification and this account has none yet: only the sign-in/enrolment endpoints work until it is set up.
+  if (c.needsMfa && !req.url.startsWith("/api/v1/auth/")) throw new AppError(403, "MFA_SETUP_REQUIRED", "Administrator mewajibkan verifikasi dua langkah. Aktifkan dulu di Pengaturan.");
 
   // The workspace comes from an explicit header/query, else from the storage in the URL (so <img>/<a> work), else the first membership.
   const params = (req.params ?? {}) as Record<string, string>;
@@ -100,6 +106,11 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
 
   const { registerRoutes } = await import("./routes/index.ts");
   await app.register(registerRoutes, { prefix: "/api/v1" });
+  // Web app manifest built from the branding settings, so "install app" uses the custom name, colour and icon.
+  app.get("/manifest.webmanifest", async (_req, reply) => {
+    const b = getSettings().brand; const icons = b.iconVersion ? [192, 512].map((s) => ({ src: `/api/v1/branding/icon/${s}?v=${b.iconVersion}`, sizes: `${s}x${s}`, type: "image/png", purpose: "any" })) : [];
+    return reply.header("content-type", "application/manifest+json").header("cache-control", "no-cache").send({ name: b.appName, short_name: b.appName.slice(0, 12), start_url: "/", display: "standalone", background_color: "#ffffff", theme_color: b.color, icons });
+  });
   app.get("/healthz", async () => ({ ok: true, uptime: process.uptime() }));
   app.all("/api/*", async (_req, reply) => reply.status(404).send({ success: false, error: { code: "NOT_FOUND", message: "Endpoint tidak ditemukan." } }));
 

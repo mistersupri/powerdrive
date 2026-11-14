@@ -1,3 +1,4 @@
+import { getSettings } from "../modules/settings.ts";
 import { logActivity } from "../modules/activity.ts";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
@@ -35,6 +36,7 @@ const makeShareRoutes = (direct: boolean) => async function shareRoutes(app: Fas
     if (!direct && r.share.password_hash && !accessKeyValid(r.share.id, (req.cookies as any)[cookieName(r.share.id)]))
       throw new AppError(401, "PASSWORD_REQUIRED", "Tautan ini dilindungi kata sandi.");
     if (needEditor && r.share.role !== "EDITOR") throw forbidden("Tautan ini hanya untuk melihat.");
+    if (needEditor && !direct && !getSettings().guest.allowUploads) throw forbidden("Unggahan lewat tautan sedang dimatikan oleh administrator.");
     return r;
   };
   const noStore = (reply: FastifyReply) => reply.header("cache-control", "private, no-store");

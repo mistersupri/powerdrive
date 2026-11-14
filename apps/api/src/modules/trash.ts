@@ -1,3 +1,4 @@
+import { getSettings } from "./settings.ts";
 import { actorOf, logActivity, touchFolder } from "./activity.ts";
 import type { TrashItemDto } from "@superdrive/shared";
 import { config } from "../config.ts";
@@ -38,7 +39,7 @@ export async function trashRaw(workspaceId: string, userId: string | null, stora
   const tf = await trashFolder(storageId, p);
   const moved = await p.move!(f.id, tf, `${Date.now().toString(36)}-${newId().slice(0, 6)}-${f.name}`.slice(0, 250));
   const id = newId();
-  const expires = new Date(Date.now() + config.trashRetentionDays * 86_400_000).toISOString();
+  const expires = new Date(Date.now() + getSettings().retention.trashDays * 86_400_000).toISOString();
   db.run(
     `INSERT INTO trash_items(id,workspace_id,storage_id,name,is_folder,size,original_parent_id,original_path,trash_file_id,trashed_by,expires_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
     id, workspaceId, storageId, f.name, f.isFolder ? 1 : 0, f.size, f.parentId ?? ROOT, "/" + crumbs.map((c) => c.name).join("/"), moved.id, userId, expires);

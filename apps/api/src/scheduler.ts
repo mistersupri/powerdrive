@@ -1,3 +1,4 @@
+import { sweepRetention } from "./modules/retention.ts";
 import { db, now } from "./db.ts";
 import { testConnection } from "./modules/storages.ts";
 import { pruneThumbnailCache } from "./modules/thumbnails.ts";
@@ -16,6 +17,8 @@ export function startScheduler(log: { info: (o: any, m?: string) => void; warn: 
   every(60 * 60_000, "sweep-uploads", sweepStaleUploads);
   every(60 * 60_000, "sweep-sessions", () => { db.run("DELETE FROM sessions WHERE expires_at < ?", now()); db.run("DELETE FROM oauth_states WHERE expires_at < ?", now()); db.run("DELETE FROM password_resets WHERE expires_at < ?", now()); });
   every(60 * 60_000, "sweep-trash", () => sweepTrash());
+  every(24 * 3600_000, "retention", () => sweepRetention());
+  setTimeout(() => sweepRetention(), 60_000).unref();
   every(6 * 3600_000, "reindex", () => scheduleStale(6));
   setTimeout(() => scheduleStale(12), 15_000).unref();
   every(24 * 3600_000, "prune-thumbnails", () => pruneThumbnailCache(60));

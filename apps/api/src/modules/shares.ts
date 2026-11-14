@@ -1,3 +1,4 @@
+import { getSettings } from "./settings.ts";
 import { logActivity } from "./activity.ts";
 import crypto from "node:crypto";
 import { hash, verify } from "@node-rs/argon2";
@@ -39,11 +40,22 @@ const SELECT = `SELECT l.*, s.name AS storage_name, u.name AS creator_name, r.na
 
 export interface CreateShare { storageId: string; fileId?: string; /** Several items under one link. */ fileIds?: string[]; /** Share with these workspace members instead of making a link. */ recipientUserIds?: string[]; role: "VIEWER" | "EDITOR"; expiresInDays?: number | null; password?: string | null; maxUploadMb?: number | null; regenerate?: boolean; /** Always make an additional link (optionally with a title) instead of reusing the existing one. */ newLink?: boolean; title?: string | null }
 
+/** Apply the guest-access policy to a requested expiry: a default when none was asked for, and never beyond the cap. */
+function policyExpiry(days?: number | null): number | null {
+  const g = getSettings().guest; const want = days ?? (g.defaultExpiryDays || null);
+  if (g.maxExpiryDays > 0) { if (want && want > g.maxExpiryDays) throw badRequest(`Masa berlaku tautan maksimal ${g.maxExpiryDays} hari.`); return want ?? g.maxExpiryDays; }
+  return want;
+}
 const expiryOf = (days?: number | null) => (days ? new Date(Date.now() + days * 86_400_000).toISOString() : null);
 
 /** One link for one item, or one bundle link for several. Direct shares to members go through createDirectShares. */
 export async function createShare(ctx: AuthCtx, p: StorageProvider, input: CreateShare) {
   denyVisitor(ctx);
+  const g = getSettings().guest;
+  if (!g.allowLinks) throw forbidden("Tautan berbagi publik dimatikan oleh administrator. Anda masih bisa membagikan ke anggota workspace.");
+  if (input.role === "EDITOR" && !g.allowUploads) throw forbidden("Administrator tidak mengizinkan tamu mengunggah lewat tautan.");
+  if (g.requirePassword && !input.password) throw badRequest("Administrator mewajibkan kata sandi pada tautan publik.");
+  input = { ...input, expiresInDays: policyExpiry(input.expiresInDays) };
   const rawIds = [...new Set((input.fileIds?.length ? input.fileIds : input.fileId ? [input.fileId] : []).map(decodeId))];
   if (!rawIds.length) throw badRequest("Pilih minimal satu file atau folder.");
   if (rawIds.length > 200) throw badRequest("Satu tautan maksimal 200 item.");
@@ -145,6 +157,10 @@ export async function updateShare(ctx: AuthCtx, id: string, patch: { expiresInDa
     logActivity(ctx, r.storage_id, r.file_id, "share_role", { from: r.role, to: patch.role, title: r.title });
     r.role = patch.role;
   }
+  const g = getSettings().guest; const link = !r.recipient_user_id;
+  if (link && patch.role === "EDITOR" && patch.role !== r.role && !g.allowUploads) throw forbidden("Administrator tidak mengizinkan tamu mengunggah lewat tautan.");
+  if (link && patch.password === null && g.requirePassword) throw badRequest("Administrator mewajibkan kata sandi pada tautan publik.");
+  if (link && patch.expiresInDays !== undefined) patch = { ...patch, expiresInDays: policyExpiry(patch.expiresInDays) };
   if (patch.expiresInDays !== undefined) db.run("UPDATE share_links SET expires_at = ? WHERE id = ?", patch.expiresInDays ? new Date(Date.now() + patch.expiresInDays * 86_400_000).toISOString() : null, id);
   if (patch.password !== undefined && !r.recipient_user_id) db.run("UPDATE share_links SET password_hash = ? WHERE id = ?", patch.password ? await hash(patch.password, ARGON) : null, id);
   if (patch.maxUploadMb !== undefined && r.role === "EDITOR") db.run("UPDATE share_links SET max_upload_bytes = ? WHERE id = ?", patch.maxUploadMb ? Math.round(patch.maxUploadMb * 1048576) : null, id);
@@ -165,6 +181,7 @@ export function findShare(token: string) {
   if (!/^[A-Za-z0-9_-]{20,80}$/.test(token)) throw notFound(NOT_FOUND);
   const r = db.get<any>("SELECT * FROM share_links WHERE token_hash = ?", sha256(token));
   if (!r || r.revoked_at || (r.expires_at && r.expires_at < now())) throw notFound(NOT_FOUND);
+  if (!getSettings().guest.allowLinks) throw notFound(NOT_FOUND); // links switched off instance-wide: they stop working, without saying why
   return r;
 }
 
