@@ -23,11 +23,11 @@ export default function SharesPage() {
             {q.data.items.map((l) => (
               <li key={l.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
                 <span className={`grid size-9 place-items-center rounded-lg ${l.role === "EDITOR" ? "bg-warn-soft text-warn-ink" : "bg-primary-soft text-primary-ink"}`}>{l.role === "EDITOR" ? <Pencil className="size-4" /> : <Eye className="size-4" />}</span>
-                <div className="min-w-0 flex-1 basis-[calc(100%-3.5rem)] sm:basis-0"><p className="truncate text-[14px] font-medium" title={l.name}>{l.name}</p>
-                  <p className="tnum truncate text-[12px] text-muted">{l.storageName} · {l.createdByName ?? "—"} · {l.accessCount}× dibuka · {l.expiresAt ? `sampai ${dateTime(l.expiresAt)}` : "tanpa batas"}</p></div>
+                <div className="min-w-0 flex-1 basis-[calc(100%-3.5rem)] sm:basis-0"><p className="text-[14px] font-medium break-words sm:truncate" title={l.name}>{l.name}</p>
+                  <p className="tnum text-[12px] text-muted sm:truncate">{l.storageName} · {l.createdByName ?? "—"} · {l.accessCount}× dibuka · {l.expiresAt ? `sampai ${dateTime(l.expiresAt)}` : "tanpa batas"}</p></div>
                 <Badge tone={l.role === "EDITOR" ? "warn" : "primary"}>{l.role === "EDITOR" ? "Editor" : "Penonton"}</Badge>{l.hasPassword && <Badge>Sandi</Badge>}{l.expired && <Badge tone="danger">Kedaluwarsa</Badge>}
                 <Button size="sm" icon={copied === l.id ? <Check className="size-3.5" /> : <Copy className="size-3.5" />} onClick={async () => { await navigator.clipboard.writeText(l.url); setCopied(l.id); setTimeout(() => setCopied(""), 1500); }}>Salin</Button>
-                <Button size="sm" variant="ghost" className="text-danger-ink hover:bg-danger-soft" aria-label={`Matikan tautan ${l.name}`} icon={<Trash2 className="size-3.5" />} onClick={() => revoke.mutate(l.id)}>Matikan</Button>
+                <Button size="sm" variant="ghost" className="text-danger-ink hover:bg-danger-soft" aria-label={`Matikan tautan ${l.name}`} icon={<Trash2 className="size-3.5" />} onClick={() => revoke.mutate(l.id)}><span className="hidden sm:inline">Matikan</span></Button>
               </li>))}</ul>
             <div className="flex items-center justify-between border-t border-line px-4 py-2.5 text-[12px] text-muted"><span className="tnum">{q.data.total} tautan</span><div className="flex items-center gap-2"><Button size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>Sebelumnya</Button><span className="tnum">{page} / {pages}</span><Button size="sm" disabled={page >= pages} onClick={() => setPage(page + 1)}>Berikutnya</Button></div></div>
           </Card>)}

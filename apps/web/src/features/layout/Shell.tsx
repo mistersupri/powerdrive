@@ -123,8 +123,8 @@ export function PageHeader({ title, subtitle, actions, onMenu }: { title: string
     <header className="flex min-h-[68px] flex-wrap items-center gap-x-4 gap-y-2 border-b border-line bg-surface px-4 py-3 sm:px-8">
       <IconButton label="Buka menu" className="lg:hidden" onClick={onMenu ?? ctx.openMenu}><MenuIcon className="size-5" /></IconButton>
       <div className="min-w-0 flex-1">
-        <h1 className="truncate text-[20px] leading-tight font-bold">{title}</h1>
-        {subtitle && <p className="truncate text-[13px] text-muted">{subtitle}</p>}
+        <h1 className="text-[20px] leading-tight font-bold break-words sm:truncate">{title}</h1>
+        {subtitle && <p className="text-[13px] leading-snug text-muted sm:truncate">{subtitle}</p>}
       </div>
       {actions && <div className="order-last flex w-full flex-wrap items-center gap-2 sm:order-none sm:w-auto">{actions}</div>}
       <div className="flex items-center gap-2"><GlobalSearch /><Notifications /><AccountMenu /></div>

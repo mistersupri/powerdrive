@@ -145,7 +145,7 @@ function StorageRow({ s, onPerms }: { s: StorageConnectionDto; onPerms(): void }
     <Card className="p-5">
       <div className="flex flex-wrap items-start gap-3">
         <span className="grid size-11 place-items-center rounded-[10px] bg-primary-soft text-primary-ink"><HardDrive className="size-5" aria-hidden /></span>
-        <div className="min-w-0 flex-1"><h3 className="truncate text-[15px] font-semibold">{s.name}</h3><p className="truncate text-[12px] text-muted">{PROVIDER_LABEL[s.provider]}{s.accountEmail ? ` · ${s.accountEmail}` : ""}</p></div>
+        <div className="min-w-0 flex-1"><h3 className="text-[15px] font-semibold break-words sm:truncate">{s.name}</h3><p className="text-[12px] break-words text-muted sm:truncate">{PROVIDER_LABEL[s.provider]}{s.accountEmail ? ` · ${s.accountEmail}` : ""}</p></div>
         <ConnectionBadge status={s.status} />
         {s.permissions.includes("MANAGE_STORAGE") && <IconButton label="Aksi" disabled={busy} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); menu.open(r.right - 210, r.bottom + 4, [
           { label: "Uji koneksi", icon: <RefreshCw />, onSelect: () => run(() => api(`/storages/${s.id}/test`, { body: {} }), "Koneksi diperiksa") },
@@ -157,7 +157,7 @@ function StorageRow({ s, onPerms }: { s: StorageConnectionDto; onPerms(): void }
           { label: "Putuskan koneksi", danger: true, divider: true, onSelect: () => setConfirm(true) },
         ]); }}><MoreVertical className="size-4" /></IconButton>}
       </div>
-      {s.info && <p className="mt-3 truncate font-mono text-[11px] text-muted" title={s.info}>{s.info}</p>}
+      {s.info && <p className="mt-3 font-mono text-[11px] break-all text-muted" title={s.info}>{s.info}</p>}
       {s.lastError && s.status !== "CONNECTED" && <p className="mt-3 rounded-lg bg-warn-soft px-3 py-2 text-[12px] text-warn-ink">{s.lastError}</p>}
       <div className="mt-4 grid gap-x-8 gap-y-2 text-[12px] sm:grid-cols-3">
         <div className="sm:col-span-2">{pct !== null ? <><Progress value={pct} tone={pct > 90 ? "danger" : pct > 75 ? "warn" : "primary"} /><p className="tnum mt-1.5 text-muted">{formatBytes(s.quota!.used)} dari {formatBytes(s.quota!.total)} · {pct}%</p></> : <p className="text-muted">{s.quota?.used != null ? `${formatBytes(s.quota.used)} terpakai` : "Kapasitas tidak dilaporkan penyedia"}</p>}</div>

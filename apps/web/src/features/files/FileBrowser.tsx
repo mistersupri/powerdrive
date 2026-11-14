@@ -131,7 +131,7 @@ export function FileBrowser(p: BrowserProps) {
     }
     const fCols = Math.max(1, Math.floor((width + GAP) / (p.compact ? 200 : 236 + GAP)));
     const cols = Math.max(2, Math.floor((width + GAP) / ((p.compact ? 132 : 176) + GAP)));
-    const tileW = (width - GAP * (cols - 1)) / cols; const tileH = Math.round(tileW * 0.75) + 64;
+    const tileW = (width - GAP * (cols - 1)) / cols; const narrow = width < 640; const tileH = Math.round(tileW * 0.75) + 64 + (narrow ? 18 : 0) + (narrow && p.storageNames ? 30 : 0);
     if (folders.length) {
       out.push({ key: "lbl-f", h: 30, node: () => <SectionLabel>Folder · {folders.length}</SectionLabel> });
       for (let i = 0; i < folders.length; i += fCols) {
@@ -285,7 +285,7 @@ const FileTile = memo(function FileTile({ e, sel, cursor, props, where, onMenu }
       <button aria-label={`Menu untuk ${e.name}`} className="absolute top-2 right-2 grid size-7 place-items-center rounded-md bg-surface/90 text-muted opacity-0 shadow-card group-hover:opacity-100 hover:text-ink focus:opacity-100 pointer-coarse:opacity-100" onClick={(ev) => { ev.stopPropagation(); const r = ev.currentTarget.getBoundingClientRect(); onMenu(r.right - 200, r.bottom); }}><MoreVertical className="size-4" /></button>
       <div className="flex min-w-0 items-center gap-2 px-3 py-2.5">
         <Icon className="size-4 shrink-0 text-muted" aria-hidden />
-        <div className="min-w-0 flex-1"><div className="truncate text-[13px] font-medium" title={e.name}>{e.name}</div><div className="tnum truncate text-[11px] text-muted" title={where}>{where ?? `${formatBytes(e.size)} · ${shortDate(e.modifiedAt)}`}</div></div>
+        <div className="min-w-0 flex-1"><div className="line-clamp-2 text-[13px] leading-[1.25] font-medium break-all sm:line-clamp-1" title={e.name}>{e.name}</div><div className="tnum line-clamp-2 text-[11px] break-all text-muted sm:line-clamp-1" title={where}>{where ?? `${formatBytes(e.size)} · ${shortDate(e.modifiedAt)}`}</div></div>
         {e.starred && <Star className="size-3.5 shrink-0 fill-warn-ink text-warn-ink" aria-label="Berbintang" />}
       </div>
     </div>
@@ -305,7 +305,7 @@ const ListRow = memo(function ListRow({ e, sel, drop, cursor, props, storageName
   return (
     <div {...props} className={cn("group grid h-[52px] items-center gap-3 border-b border-line px-3 text-[13px] select-none", compact ? COLS_COMPACT : storageName ? COLS_WIDE : COLS, sel ? "bg-primary-soft" : "hover:bg-surface-2", cursor && !sel && "bg-surface-2", drop && "bg-primary-soft ring-2 ring-primary ring-inset")}>
       <span className="relative"><FileThumb file={e} size={128} className="size-7 rounded-md" iconClass="size-4" />{sel && <span className="absolute -top-1 -left-1 grid size-3.5 place-items-center rounded-full bg-primary text-white"><Check className="size-2.5" strokeWidth={3.5} /></span>}</span>
-      <span className="flex min-w-0 items-center gap-2"><span className="truncate font-medium" title={e.name}>{e.name}</span>{e.starred && <Star className="size-3.5 shrink-0 fill-warn-ink text-warn-ink" aria-label="Berbintang" />}</span>
+      <span className="flex min-w-0 flex-col justify-center"><span className="flex min-w-0 items-center gap-2"><span className={cn("font-medium", storageName ? "truncate" : "line-clamp-2 leading-tight break-all sm:truncate")} title={e.name}>{e.name}</span>{e.starred && <Star className="size-3.5 shrink-0 fill-warn-ink text-warn-ink" aria-label="Berbintang" />}</span>{storageName && !compact && <span className="line-clamp-1 text-[11px] text-muted md:hidden" title={storageName}>{storageName}</span>}</span>
       {!compact && <span className="hidden truncate text-muted md:block" title={storageName}>{storageName ?? (e.isFolder ? "Folder" : (e.name.split(".").pop() || kind).toUpperCase())}</span>}
       <span className="tnum text-right whitespace-nowrap text-muted">{e.isFolder ? "—" : formatBytes(e.size)}</span>
       {!compact && <span className="tnum hidden text-muted md:block">{shortDate(e.modifiedAt)}</span>}

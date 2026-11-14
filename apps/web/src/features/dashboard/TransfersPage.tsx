@@ -29,10 +29,10 @@ function Items({ id }: { id: string }) {
       <ul className="scroll-thin max-h-64 divide-y divide-line overflow-y-auto">
         {q.data?.items.map((i) => (
           <li key={i.id} className="flex items-center gap-3 px-3 py-2 text-[12px]">
-            <span className="min-w-0 flex-1 truncate" title={i.relativePath ?? i.fileName}>{i.relativePath ?? i.fileName}</span>
+            <span className="min-w-0 flex-1 break-all sm:truncate" title={i.relativePath ?? i.fileName}>{i.relativePath ?? i.fileName}</span>
             <span className="tnum text-muted">{formatBytes(i.fileSize)}</span>
             <TransferStatusBadge status={i.status} />
-            {i.errorMessage && <span className="max-w-48 truncate text-danger-ink" title={i.errorMessage}>{i.errorMessage}</span>}
+            {i.errorMessage && <span className="break-words text-danger-ink sm:max-w-48 sm:truncate" title={i.errorMessage}>{i.errorMessage}</span>}
           </li>))}
       </ul>
       {q.data && q.data.total > q.data.items.length && <p className="border-t border-line px-3 py-2 text-[12px] text-muted">Menampilkan {q.data.items.length} dari {q.data.total} file.</p>}
@@ -49,9 +49,9 @@ function JobCard({ j }: { j: JobView }) {
   return (
     <li className="rounded-[10px] border border-line bg-surface-2/50 p-4">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <h3 className="min-w-0 flex-1 truncate text-[14px] font-semibold" title={j.title}>{j.title}</h3>
+        <h3 className="min-w-0 basis-full break-all text-[14px] font-semibold sm:basis-0 sm:flex-1 sm:truncate" title={j.title}>{j.title}</h3>
         <TransferStatusBadge status={j.status} />
-        <div className="flex items-center gap-1 text-[12px] text-muted"><span className="truncate">{j.sourceStorageName}</span><ArrowRight className="size-3" aria-hidden /><span className="truncate">{j.destinationStorageName}</span><span className="ml-1 rounded bg-surface px-1.5 py-0.5 text-[11px] font-medium">{j.type === "COPY" ? "Salin" : "Pindah"}</span></div>
+        <div className="flex items-center gap-1 text-[12px] text-muted"><span className="sm:truncate">{j.sourceStorageName}</span><ArrowRight className="size-3" aria-hidden /><span className="sm:truncate">{j.destinationStorageName}</span><span className="ml-1 rounded bg-surface px-1.5 py-0.5 text-[11px] font-medium">{j.type === "COPY" ? "Salin" : "Pindah"}</span></div>
       </div>
       {(live || paused || j.status === "COMPLETED") && <div className="mt-3 flex items-center gap-3"><Progress value={j.status === "COMPLETED" ? 100 : pct} tone={tone} className="flex-1" /><span className="tnum w-9 text-right text-[12px] font-medium">{j.status === "COMPLETED" ? 100 : pct}%</span></div>}
       {j.errorMessage && <p className="mt-2 text-[12px] text-danger-ink">{j.errorMessage}</p>}
