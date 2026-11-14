@@ -1,3 +1,4 @@
+import { actorOf, logActivity, touchFolder } from "./activity.ts";
 import type { TrashItemDto } from "@superdrive/shared";
 import { config } from "../config.ts";
 import { db, now } from "../db.ts";
@@ -51,8 +52,10 @@ export async function trashFiles(ctx: AuthCtx, storageId: string, p: StorageProv
   const out: Trashed[] = [];
   try {
     for (const id of fileIds) {
+      const before = await p.stat(id).catch(() => null);
       const t = await trashRaw(ctx.workspaceId, ctx.userId, storageId, p, id);
       out.push(t);
+      touchFolder(storageId, before?.parentId, actorOf(ctx)); logActivity(ctx, storageId, id, "delete", { name: t.name });
       audit({ workspaceId: ctx.workspaceId, userId: ctx.userId, action: "file.delete", resourceType: "file", resourceId: id, metadata: { storageId, name: t.name, trash: true }, ip: ctx.ip });
     }
   } catch (e) { mapProviderError(e, storageId); }
@@ -83,6 +86,7 @@ function ownedItem(ctx: AuthCtx, id: string) {
 }
 
 export async function restoreItem(ctx: AuthCtx, id: string) {
+  const _r0 = db.get<any>("SELECT storage_id, original_parent_id FROM trash_items WHERE id = ?", id); if (_r0) touchFolder(_r0.storage_id, _r0.original_parent_id, actorOf(ctx));
   const r = ownedItem(ctx, id);
   const row = db.get<any>("SELECT * FROM storages WHERE id = ?", r.storage_id); if (!row) throw notFound("Penyimpanan sudah tidak ada.");
   const p = providerFor(row);

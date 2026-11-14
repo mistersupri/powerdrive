@@ -1,3 +1,6 @@
+import { addComment, addTag, deleteComment, listActivity, listComments, listTags, removeTag, workspaceTags } from "../modules/activity.ts";
+import { fileMetadata } from "../modules/metadata.ts";
+import { logActivity } from "../modules/activity.ts";
 import fs from "node:fs";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
@@ -31,10 +34,21 @@ export async function fileRoutes(app: FastifyInstance) {
   };
 
   app.get("/files", async (req) => {
-    const q = z.object({ storageId: z.string(), folderId: z.string().default(ROOT), pageToken: z.string().optional(), limit: z.coerce.number().int().min(1).max(1000).default(200), foldersOnly: z.enum(["true", "false"]).optional() }).parse(req.query);
+    const q = z.object({ storageId: z.string(), folderId: z.string().default(ROOT), pageToken: z.string().optional(), limit: z.coerce.number().int().min(1).max(1000).default(200), foldersOnly: z.enum(["true", "false"]).optional(), peek: z.enum(["1"]).optional() }).parse(req.query);
     const { ctx, p } = open(req, "READ", q.storageId);
-    return ok(req, await listFolder(ctx, q.storageId, p, decodeId(q.folderId), q.pageToken ?? null, q.limit, q.foldersOnly === "true"));
+    return ok(req, await listFolder(ctx, q.storageId, p, decodeId(q.folderId), q.pageToken ?? null, q.limit, q.foldersOnly === "true", q.peek === "1"));
   });
+
+  /* ---- activity, tags, comments, metadata (shown in the details panel) ---- */
+  app.get("/files/:storageId/:fileId/activity", async (req) => { const { storageId, fileId } = req.params as any; open(req, "READ", storageId); return ok(req, listActivity(storageId, decodeId(fileId), Number((req.query as any).limit) || 60)); });
+  app.get("/files/:storageId/:fileId/metadata", async (req) => { const { storageId, fileId } = req.params as any; const { p } = open(req, "READ", storageId); return ok(req, await fileMetadata(storageId, p, await metaOf(storageId, p, decodeId(fileId)))); });
+  app.get("/files/:storageId/:fileId/tags", async (req) => { const { storageId, fileId } = req.params as any; open(req, "READ", storageId); return ok(req, listTags(storageId, decodeId(fileId))); });
+  app.post("/files/:storageId/:fileId/tags", async (req) => { const { storageId, fileId } = req.params as any; const { ctx } = open(req, "RENAME", storageId); return ok(req, addTag(ctx, storageId, decodeId(fileId), z.object({ tag: z.string() }).parse(req.body).tag)); });
+  app.delete("/files/:storageId/:fileId/tags/:tag", async (req) => { const { storageId, fileId, tag } = req.params as any; const { ctx } = open(req, "RENAME", storageId); return ok(req, removeTag(ctx, storageId, decodeId(fileId), decodeURIComponent(tag))); });
+  app.get("/tags", async (req) => ok(req, workspaceTags(requireAuth(req).workspaceId)));
+  app.get("/files/:storageId/:fileId/comments", async (req) => { const { storageId, fileId } = req.params as any; const { ctx } = open(req, "READ", storageId); return ok(req, listComments(ctx, storageId, decodeId(fileId))); });
+  app.post("/files/:storageId/:fileId/comments", async (req) => { const { storageId, fileId } = req.params as any; const { ctx } = open(req, "READ", storageId); return ok(req, addComment(ctx, storageId, decodeId(fileId), z.object({ body: z.string() }).parse(req.body).body)); });
+  app.delete("/files/:storageId/comments/:commentId", async (req) => { const { storageId, commentId } = req.params as any; const { ctx } = open(req, "READ", storageId); deleteComment(ctx, storageId, commentId); return ok(req, {}); });
 
   app.get("/files/:storageId/:fileId", async (req) => {
     const { storageId, fileId } = req.params as any;
@@ -108,6 +122,7 @@ export async function fileRoutes(app: FastifyInstance) {
     // Count a download once, not for every range request a video player makes.
     if (!inline && (!req.headers.range || req.headers.range.startsWith("bytes=0-")))
       audit({ workspaceId: ctx.workspaceId, userId: ctx.userId, action: "file.download", resourceType: "file", resourceId: f.id, metadata: { storageId, name: f.name, size: f.size }, ip: ctx.ip });
+    if (!f.isFolder && (!req.headers.range || req.headers.range.startsWith("bytes=0-"))) logActivity(ctx, storageId, f.id, inline ? "view" : "download", {});
     if (f.isFolder) return sendFolderZip(req, reply, p, storageId, f);
     return sendFile(req, reply, p, storageId, f, inline);
   };
@@ -156,7 +171,7 @@ export async function fileRoutes(app: FastifyInstance) {
       q: z.string().optional(), storageId: z.string().optional(), type: z.string().optional(), ext: z.string().optional(),
       minSize: z.coerce.number().optional(), maxSize: z.coerce.number().optional(), modifiedAfter: z.string().optional(), modifiedBefore: z.string().optional(),
       page: z.coerce.number().int().optional(), limit: z.coerce.number().int().optional(), sort: z.string().optional(),
-      starred: z.enum(["true", "false"]).optional(), recent: z.enum(["true", "false"]).optional(),
+      starred: z.enum(["true", "false"]).optional(), recent: z.enum(["true", "false"]).optional(), tag: z.string().max(40).optional(),
     }).parse(req.query);
     return ok(req, searchIndex(ctx, { ...q, starred: q.starred === "true", recent: q.recent === "true" }));
   });

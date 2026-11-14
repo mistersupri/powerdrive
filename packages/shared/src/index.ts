@@ -55,6 +55,8 @@ export interface FileEntry {
   createdAt: string | null;
   checksum: string | null;
   hasThumbnail: boolean;
+  /** Someone else changed something inside this folder since you last opened it. */
+  changed?: boolean;
   starred?: boolean;
   /** Where the item lives (search results): "/Laporan/2026". */
   path?: string;

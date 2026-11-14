@@ -1,3 +1,4 @@
+import { logActivity } from "../modules/activity.ts";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import type { PublicShareDto } from "@superdrive/shared";
@@ -80,6 +81,7 @@ export async function publicRoutes(app: FastifyInstance) {
     const { r, f } = await target(req);
     if (!inline && (!req.headers.range || req.headers.range.startsWith("bytes=0-")))
       audit({ workspaceId: r.share.workspace_id, userId: null, action: "share.download", resourceType: "share", resourceId: r.share.id, metadata: { name: f.name, size: f.size }, ip: req.ip });
+    if (!f.isFolder && (!req.headers.range || req.headers.range.startsWith("bytes=0-"))) logActivity(r.ctx, r.storage.id, f.id, inline ? "view" : "download", {}, r.share.id);
     if (f.isFolder) return sendFolderZip(req, reply, r.p, r.storage.id, f);
     return sendFile(req, reply, r.p, r.storage.id, f, inline);
   };

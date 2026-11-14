@@ -12,7 +12,7 @@ export default function PdfViewer({ f }: { f: FileEntry }) {
   const urls = useFileUrls(); const url = urls.preview(f);
   const [doc, setDoc] = useState<Doc | null>(null); const [err, setErr] = useState<string | null>(null);
   const [scale, setScale] = useState<number | "fit">("fit"); const [page, setPage] = useState(1);
-  const box = useRef<HTMLDivElement>(null); const [width, setWidth] = useState(800);
+  const box = useRef<HTMLDivElement>(null); const [width, setWidth] = useState(800); const [draft, setDraft] = useState<string | null>(null); const pageInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let dead = false; let task: { destroy(): Promise<void> } | null = null; setDoc(null); setErr(null);
@@ -28,6 +28,17 @@ export default function PdfViewer({ f }: { f: FileEntry }) {
     const el = box.current; if (!el) return;
     const ro = new ResizeObserver(([e]) => setWidth(Math.floor(e!.contentRect.width))); ro.observe(el); return () => ro.disconnect();
   }, []);
+  // Jump to a page: type a number and press Enter (G focuses the box; Home/End go to the first/last page).
+  const goTo = (n: number, total: number) => { const t = Math.min(total, Math.max(1, Math.round(n) || 1)); box.current?.querySelector<HTMLElement>(`[data-page="${t}"]`)?.scrollIntoView({ block: "start" }); setPage(t); setDraft(null); };
+  useEffect(() => {
+    if (!doc) return; const total = doc.numPages;
+    const k = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement)?.closest("input,textarea,select")) return;
+      if (e.key.toLowerCase() === "g") { e.preventDefault(); pageInput.current?.focus(); pageInput.current?.select(); }
+      else if (e.key === "Home") { e.preventDefault(); goTo(1, total); } else if (e.key === "End") { e.preventDefault(); goTo(total, total); }
+    };
+    addEventListener("keydown", k); return () => removeEventListener("keydown", k);
+  }); // eslint-disable-line react-hooks/exhaustive-deps
   if (err) return <div className="grid h-full place-items-center p-8 text-center text-[14px] text-muted">{err}</div>;
   if (!doc) return <div className="grid h-full place-items-center"><Spinner className="size-6" /></div>;
   const z = scale === "fit" ? undefined : scale;
@@ -38,7 +49,13 @@ export default function PdfViewer({ f }: { f: FileEntry }) {
         <span className="tnum w-12 text-center text-muted">{scale === "fit" ? "Pas" : `${Math.round(scale * 100)}%`}</span>
         <IconButton label="Perbesar" onClick={() => setScale(Math.min(4, (typeof scale === "number" ? scale : 1) * 1.2))}><Plus className="size-4" /></IconButton>
         <IconButton label="Pas lebar" onClick={() => setScale("fit")}><Maximize2 className="size-4" /></IconButton>
-        <span className="flex-1" /><span className="tnum text-muted">Halaman {page} / {doc.numPages}</span>
+        <span className="flex-1" />
+        <form className="flex items-center gap-1.5 text-muted" onSubmit={(e) => { e.preventDefault(); goTo(Number(draft ?? page), doc.numPages); pageInput.current?.blur(); }}>
+          <label htmlFor="pdf-page" className="sr-only">Pergi ke halaman</label>Halaman
+          <input id="pdf-page" ref={pageInput} inputMode="numeric" pattern="[0-9]*" value={draft ?? String(page)} onFocus={(e) => { setDraft(String(page)); e.currentTarget.select(); }} onChange={(e) => setDraft(e.target.value.replace(/\D/g, "").slice(0, 5))} onBlur={() => setDraft(null)}
+            className="tnum h-8 w-14 rounded-md border border-line-strong bg-surface px-1 text-center text-[16px] text-ink focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/25 sm:text-[13px]" />
+          <span className="tnum">/ {doc.numPages}</span>
+        </form>
       </div>
       <div ref={box} className="scroll-thin min-h-0 flex-1 overflow-auto bg-[#d9dee6] p-3 dark:bg-[#0d1626]">
         <div className="mx-auto flex w-fit flex-col gap-3">{Array.from({ length: doc.numPages }, (_, i) => <PdfPage key={i} doc={doc} n={i + 1} fitWidth={Math.max(280, width - 28)} zoom={z} onVisible={setPage} />)}</div>
@@ -66,5 +83,5 @@ function PdfPage({ doc, n, fitWidth, zoom, onVisible }: { doc: Doc; n: number; f
     }).catch(() => {});
     return () => { cancelled = true; task?.cancel(); };
   }, [doc, n, near, fitWidth, zoom]);
-  return <div ref={ref} className="bg-white shadow-card" style={{ width: dim.w, height: dim.h }}>{near && <canvas ref={canvas} style={{ width: dim.w, height: dim.h }} />}</div>;
+  return <div ref={ref} data-page={n} className="bg-white shadow-card" style={{ width: dim.w, height: dim.h }}>{near && <canvas ref={canvas} style={{ width: dim.w, height: dim.h }} />}</div>;
 }

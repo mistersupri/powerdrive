@@ -217,6 +217,23 @@ const MIGRATIONS: string[] = [
   /* 4 */ `
   ALTER TABLE share_links ADD COLUMN title TEXT;
   `,
+  /* 5 */ `
+  CREATE TABLE folder_changes (storage_id TEXT NOT NULL, folder_id TEXT NOT NULL, changed_at TEXT NOT NULL, by_actor TEXT NOT NULL, PRIMARY KEY (storage_id, folder_id)) WITHOUT ROWID;
+  CREATE TABLE folder_seen (user_id TEXT NOT NULL, storage_id TEXT NOT NULL, folder_id TEXT NOT NULL, seen_at TEXT NOT NULL, PRIMARY KEY (user_id, storage_id, folder_id)) WITHOUT ROWID;
+  CREATE TABLE file_activity (
+    id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, storage_id TEXT NOT NULL, file_id TEXT NOT NULL, actor TEXT NOT NULL, action TEXT NOT NULL, meta TEXT, ip TEXT,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+  );
+  CREATE INDEX idx_file_activity ON file_activity(storage_id, file_id, created_at DESC);
+  CREATE TABLE file_tags (storage_id TEXT NOT NULL, file_id TEXT NOT NULL, tag TEXT NOT NULL, workspace_id TEXT NOT NULL, created_by TEXT, PRIMARY KEY (storage_id, file_id, tag)) WITHOUT ROWID;
+  CREATE INDEX idx_file_tags_tag ON file_tags(workspace_id, tag);
+  CREATE TABLE file_comments (
+    id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, storage_id TEXT NOT NULL, file_id TEXT NOT NULL, user_id TEXT NOT NULL, body TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+  );
+  CREATE INDEX idx_file_comments ON file_comments(storage_id, file_id, created_at);
+  CREATE TABLE file_meta_cache (storage_id TEXT NOT NULL, file_id TEXT NOT NULL, version TEXT NOT NULL DEFAULT '', data TEXT NOT NULL, PRIMARY KEY (storage_id, file_id)) WITHOUT ROWID;
+  `,
 ];
 
 function migrate(d: Database) {

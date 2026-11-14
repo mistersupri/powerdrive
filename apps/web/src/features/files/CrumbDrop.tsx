@@ -36,11 +36,28 @@ export function CrumbDrop({ storageId, folderId, label, children, onDropTo }: { 
   const ref = useRef<HTMLSpanElement>(null); const [open, setOpen] = useState(false); const [hl, setHl] = useState(false);
   const enter = useRef<ReturnType<typeof setTimeout>>(undefined); const leave = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [pos, setPos] = useState({ left: 0, top: 0 });
-  const closeSoon = () => { clearTimeout(enter.current); clearTimeout(leave.current); leave.current = setTimeout(() => { setOpen(false); setHl(false); }, 260); };
+  const pop = useRef<HTMLDivElement>(null); const away = useRef<ReturnType<typeof setTimeout>>(undefined); const lastSeen = useRef(0);
+  const closeNow = () => { clearTimeout(enter.current); clearTimeout(leave.current); clearTimeout(away.current); setOpen(false); setHl(false); };
   const hold = () => { clearTimeout(leave.current); };
+  // While the grid is open it stays open for as long as the pointer is over the crumb, the gap between, or the grid itself.
+  // Judged by pointer position on every dragover, not by dragleave events (those fire between child elements, and a
+  // stationary pointer only produces dragover every ~350 ms).
+  useEffect(() => {
+    if (!open) return;
+    const inside = (x: number, y: number) => {
+      const c = ref.current?.getBoundingClientRect(); const p = pop.current?.getBoundingClientRect(); if (!c || !p) return true;
+      const pad = (r: DOMRect, n: number) => x >= r.left - n && x <= r.right + n && y >= r.top - n && y <= r.bottom + n;
+      const bridge = x >= Math.min(c.left, p.left) && x <= Math.max(c.right, p.right) && y >= c.bottom - 2 && y <= p.top + 2;
+      return pad(c, 4) || pad(p, 6) || bridge;
+    };
+    const over = (e: DragEvent) => { lastSeen.current = Date.now(); if (inside(e.clientX, e.clientY)) clearTimeout(away.current); else { clearTimeout(away.current); away.current = setTimeout(closeNow, 220); } };
+    const idle = setInterval(() => { if (Date.now() - lastSeen.current > 2500) closeNow(); }, 800); lastSeen.current = Date.now();
+    window.addEventListener("dragover", over, true);
+    return () => { window.removeEventListener("dragover", over, true); clearInterval(idle); clearTimeout(away.current); };
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     // Deferred one tick: the drop handlers inside the popover must run before it is unmounted.
-    const stop = () => setTimeout(() => { clearTimeout(enter.current); clearTimeout(leave.current); setOpen(false); setHl(false); }, 0);
+    const stop = () => setTimeout(closeNow, 0);
     window.addEventListener("dragend", stop, true); window.addEventListener("drop", stop, true);
     return () => { window.removeEventListener("dragend", stop, true); window.removeEventListener("drop", stop, true); clearTimeout(enter.current); clearTimeout(leave.current); };
   }, []);
@@ -52,11 +69,11 @@ export function CrumbDrop({ storageId, folderId, label, children, onDropTo }: { 
     <span ref={ref} className={cn("rounded-md transition-colors", hl && "bg-primary-soft ring-2 ring-primary")}
       onDragEnter={(e) => { if (!e.dataTransfer.types.includes(DRAG_MIME)) return; hold(); setHl(true); clearTimeout(enter.current); enter.current = setTimeout(() => { const r = ref.current?.getBoundingClientRect(); if (r) { setPos({ left: Math.max(8, Math.min(r.left, innerWidth - 380)), top: r.bottom + 6 }); setOpen(true); } }, 380); }}
       onDragOver={(e) => { if (e.dataTransfer.types.includes(DRAG_MIME)) { e.preventDefault(); hold(); } }}
-      onDragLeave={closeSoon}
+      onDragLeave={() => { if (!open) { clearTimeout(enter.current); setHl(false); } }}
       onDrop={(e) => { e.preventDefault(); pick(folderId, e); }}>
       {children}
       {open && createPortal(
-        <div className="anim-pop fixed z-[70] w-[360px] max-w-[calc(100vw-1rem)] rounded-xl border border-line bg-surface p-3 shadow-float" style={pos} onDragEnter={hold} onDragOver={(e) => { e.preventDefault(); hold(); }} onDragLeave={closeSoon} role="dialog" aria-label={`Folder di ${label}`}>
+        <div ref={pop} className="anim-pop fixed z-[70] w-[360px] max-w-[calc(100vw-1rem)] rounded-xl border border-line bg-surface p-3 shadow-float" style={pos} onDragEnter={hold} onDragOver={(e) => { e.preventDefault(); hold(); }} role="dialog" aria-label={`Folder di ${label}`}>
           <p className="mb-2 px-1 text-[11px] font-semibold tracking-wide text-muted uppercase">Isi “{label}”</p>
           <FolderGrid storageId={storageId} folderId={folderId} label={label} onPick={pick} />
         </div>, document.body)}

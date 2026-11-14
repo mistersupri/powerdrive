@@ -1,3 +1,4 @@
+import { touchFolder } from "./activity.ts";
 import crypto from "node:crypto";
 import { EventEmitter } from "node:events";
 import { Transform } from "node:stream";
@@ -326,6 +327,7 @@ async function runJob(jobId: string) {
     const final: TransferStatus = fatal.error || j2.failed_files > 0 ? "FAILED" : retained ? "COPY_COMPLETED_SOURCE_RETAINED" : "COMPLETED";
     const msg = fatal.error ?? (j2.failed_files > 0 ? `${j2.failed_files} dari ${j2.total_files} file gagal.` : retained ? "File sudah tersalin, tetapi sebagian sumber tidak dapat dihapus dan dibiarkan." : null);
     setJob(jobId, final, { error_message: msg, completed_at: now() });
+    try { const rq = JSON.parse(job.request); touchFolder(job.destination_storage_id, decodeId(rq.destination.folderId), job.user_id); } catch { /* badge only */ }
     audit({ workspaceId: job.workspace_id, userId: job.user_id, action: `transfer.${final === "FAILED" ? "fail" : "complete"}`, resourceType: "transfer", resourceId: jobId, metadata: { title: job.title, status: final, files: j2.total_files, failed: j2.failed_files } });
     notify(job.workspace_id, job.user_id, final === "FAILED" ? "transfer.failed" : "transfer.completed",
       final === "FAILED" ? "Transfer gagal" : "Transfer selesai", `${job.title}${msg ? ` — ${msg}` : ""}`, { jobId });

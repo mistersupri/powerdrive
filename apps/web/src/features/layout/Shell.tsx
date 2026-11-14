@@ -15,6 +15,7 @@ import { Avatar, Skeleton } from "@/ui/misc";
 import { IconButton } from "@/ui/Button";
 import { useMenu } from "@/ui/Menu";
 import { Logo } from "./Logo";
+import { GlobalSearch } from "./GlobalSearch";
 import { startTransfer } from "@/features/files/transferApi";
 import { DRAG_MIME } from "@/features/files/dnd";
 import { toast } from "sonner";
@@ -130,35 +131,6 @@ export function PageHeader({ title, subtitle, actions, onMenu }: { title: string
       <div className="flex items-center gap-2"><GlobalSearch /><Notifications /><AccountMenu /></div>
     </header>
   );
-}
-
-function GlobalSearch() {
-  const nav = useNavigate(); const ref = useRef<HTMLInputElement>(null); const mref = useRef<HTMLInputElement>(null); const [q, setQ] = useState(""); const [sheet, setSheet] = useState(false);
-  useEffect(() => {
-    const k = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); if (matchMedia("(min-width: 768px)").matches) ref.current?.focus(); else setSheet(true); } };
-    addEventListener("keydown", k); return () => removeEventListener("keydown", k);
-  }, []);
-  useEffect(() => { if (sheet) mref.current?.focus(); }, [sheet]);
-  const go = (e: React.FormEvent) => { e.preventDefault(); if (q.trim()) { setSheet(false); nav(`/search?q=${encodeURIComponent(q.trim())}`); } };
-  return (<>
-    <form role="search" onSubmit={go}
-      className="hidden h-9 w-56 items-center gap-2 rounded-lg bg-surface-2 px-3 focus-within:ring-2 focus-within:ring-primary/30 md:flex">
-      <Search className="size-4 text-faint" aria-hidden />
-      <input ref={ref} value={q} onChange={(e) => setQ(e.target.value)} aria-label="Cari file" placeholder="Cari file…" className="min-w-0 flex-1 bg-transparent text-[13px] placeholder:text-muted focus:outline-none" />
-      <kbd className="text-[11px] text-faint">⌘K</kbd>
-    </form>
-    <IconButton label="Cari file" className="md:hidden" onClick={() => setSheet(true)}><Search className="size-[18px]" /></IconButton>
-    {sheet && (
-      <div className="fixed inset-0 z-[70] bg-black/40 md:hidden" onMouseDown={(e) => { if (e.target === e.currentTarget) setSheet(false); }}>
-        <form role="search" onSubmit={go} onKeyDown={(e) => { if (e.key === "Escape") setSheet(false); }} className="anim-pop flex items-center gap-2 border-b border-line bg-surface p-3 shadow-float">
-          <Search className="ml-1 size-5 shrink-0 text-muted" aria-hidden />
-          <input ref={mref} type="search" enterKeyHint="search" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Cari file" placeholder="Cari nama file di semua penyimpanan" className="h-11 min-w-0 flex-1 bg-transparent text-[16px] placeholder:text-muted focus:outline-none" />
-          <button type="submit" className="h-11 rounded-lg bg-primary px-4 text-[14px] font-medium text-white">Cari</button>
-          <IconButton label="Tutup pencarian" onClick={() => setSheet(false)}><X className="size-5" /></IconButton>
-        </form>
-      </div>
-    )}
-  </>);
 }
 
 function Notifications() {

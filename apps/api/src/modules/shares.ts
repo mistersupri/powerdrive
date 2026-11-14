@@ -1,3 +1,4 @@
+import { logActivity } from "./activity.ts";
 import crypto from "node:crypto";
 import { hash, verify } from "@node-rs/argon2";
 import type { ShareLinkDto } from "@superdrive/shared";
@@ -54,6 +55,7 @@ export async function createShare(ctx: AuthCtx, p: StorageProvider, input: Creat
     input.password ? await hash(input.password, ARGON) : null, input.expiresInDays ? new Date(Date.now() + input.expiresInDays * 86_400_000).toISOString() : null,
     input.role === "EDITOR" && input.maxUploadMb ? Math.round(input.maxUploadMb * 1024 * 1024) : null, ctx.userId, title);
   audit({ workspaceId: ctx.workspaceId, userId: ctx.userId, action: "share.create", resourceType: "share", resourceId: id, metadata: { storageId: input.storageId, name: f.name, role: input.role, title }, ip: ctx.ip });
+  logActivity(ctx, input.storageId, raw, "share", { role: input.role, title });
   return toShareDto(db.get<any>(`${SELECT} WHERE l.id = ?`, id));
 }
 
@@ -85,6 +87,7 @@ export async function updateShare(ctx: AuthCtx, id: string, patch: { expiresInDa
     if (patch.role === "EDITOR" && !r.is_folder) throw badRequest("Tautan editor hanya untuk folder.");
     db.run("UPDATE share_links SET role = ?, max_upload_bytes = CASE WHEN ? = 'EDITOR' THEN max_upload_bytes ELSE NULL END WHERE id = ?", patch.role, patch.role, id);
     audit({ workspaceId: ctx.workspaceId, userId: ctx.userId, action: "share.role", resourceType: "share", resourceId: id, metadata: { name: r.name, from: r.role, to: patch.role }, ip: ctx.ip });
+    logActivity(ctx, r.storage_id, r.file_id, "share_role", { from: r.role, to: patch.role, title: r.title });
     r.role = patch.role;
   }
   if (patch.expiresInDays !== undefined) db.run("UPDATE share_links SET expires_at = ? WHERE id = ?", patch.expiresInDays ? new Date(Date.now() + patch.expiresInDays * 86_400_000).toISOString() : null, id);
@@ -95,6 +98,7 @@ export async function updateShare(ctx: AuthCtx, id: string, patch: { expiresInDa
 export function revokeShare(ctx: AuthCtx, id: string) {
   const r = ownedShare(ctx, id);
   db.run("UPDATE share_links SET revoked_at = ? WHERE id = ?", now(), id);
+  logActivity(ctx, r.storage_id, r.file_id, "unshare", { title: r.title });
   audit({ workspaceId: ctx.workspaceId, userId: ctx.userId, action: "share.revoke", resourceType: "share", resourceId: id, metadata: { name: r.name, role: r.role }, ip: ctx.ip });
 }
 

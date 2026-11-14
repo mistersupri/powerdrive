@@ -300,3 +300,67 @@ describe("share links: titles, changeable permission, visitors", () => {
     assert.equal((await pub("POST", atok, "/shares", { role: "EDITOR" })).status, 404, "no sharing endpoint exists under a public token");
   });
 });
+
+describe("change badges, activity, tags, comments, metadata", () => {
+  let dir = ""; let inner = ""; let png = "";
+  const listRoot = async (who: string) => (await t.call(who, "GET", `/files?storageId=${sid}&folderId=root&limit=500`)).data.items as any[];
+  before(async () => {
+    dir = (await t.call("ana", "POST", "/files/folders", { storageId: sid, name: "Lencana" })).data.id;
+    inner = (await t.call("ana", "POST", "/files/folders", { storageId: sid, parentId: dir, name: "Dalam" })).data.id;
+  });
+  it("marks a folder for everyone else when something inside changes, until they open it", async () => {
+    const mark = async (who: string) => (await listRoot(who)).find((i: any) => i.name === "Lencana");
+    assert.ok(!(await mark("ana")).changed, "the person who made the change never gets a badge for it");
+    assert.equal((await mark("viv")).changed, true, "the other member sees one (a folder was created inside)");
+    assert.equal((await t.call("viv", "GET", `/files?storageId=${sid}&folderId=${dir}&peek=1`)).status, 200);
+    assert.equal((await mark("viv")).changed, true, "a hover prefetch does not count as opening the folder");
+    await t.call("viv", "GET", `/files?storageId=${sid}&folderId=${dir}`);
+    assert.ok(!(await mark("viv")).changed, "opening it clears the badge");
+    await t.call("ana", "POST", "/files/folders", { storageId: sid, parentId: inner, name: "Lebih-dalam" });
+    assert.equal((await mark("viv")).changed, true, "a change deeper down marks every folder above it");
+    const lvl = (await t.call("viv", "GET", `/files?storageId=${sid}&folderId=${dir}`)).data.items.find((i: any) => i.name === "Dalam");
+    assert.equal(lvl.changed, true, "and the folder that changed is flagged one level down");
+    await t.call("viv", "GET", `/files?storageId=${sid}&folderId=${inner}`);
+    const again = (await t.call("viv", "GET", `/files?storageId=${sid}&folderId=${dir}`)).data.items.find((i: any) => i.name === "Dalam"); assert.ok(!again.changed);
+  });
+  it("keeps who-did-what per file, including visitors of a share link", async () => {
+    const sharp = (await import("sharp")).default;
+    const buf = await sharp({ create: { width: 64, height: 48, channels: 3, background: "#369" } }).jpeg().toBuffer();
+    fs.writeFileSync(path.join(t.root, "s", "Lencana", "foto.jpg"), buf);
+    await t.call("ana", "GET", `/files?storageId=${sid}&folderId=${dir}`); png = (await t.call("ana", "GET", `/files?storageId=${sid}&folderId=${dir}`)).data.items.find((i: any) => i.name === "foto.jpg").id;
+    await t.call("viv", "GET", `/files/${sid}/${png}/preview`); await t.call("ana", "GET", `/files/${sid}/${png}/download`);
+    const link = (await t.call("ana", "POST", "/shares", { storageId: sid, fileId: png, role: "VIEWER", newLink: true, title: "Klien A" })).data; const tok = link.url.split("/share/")[1];
+    await t.call("", "GET", `/public/share/${tok}/files/root/download`);
+    const act = (await t.call("ana", "GET", `/files/${sid}/${png}/activity`)).data as any[];
+    const has = (a: string, kind: string) => act.some((x) => x.action === a && x.actorKind === kind);
+    assert.ok(has("view", "member") && has("download", "member") && has("share", "member"), JSON.stringify(act.map((x) => [x.action, x.actorKind])));
+    assert.ok(act.some((x) => x.actorKind === "visitor" && x.actor.includes("Klien A")), "a visitor shows up under the link title, not as a person");
+    const again = await t.call("ana", "GET", `/files/${sid}/${png}/download`); assert.equal(again.status, 200);
+    assert.equal(((await t.call("ana", "GET", `/files/${sid}/${png}/activity`)).data as any[]).filter((x) => x.action === "download" && x.actorKind === "member").length, 1, "repeat downloads within a minute count once");
+  });
+  it("tags: normalised, listed, removable, searchable", async () => {
+    assert.deepEqual((await t.call("ana", "POST", `/files/${sid}/${png}/tags`, { tag: "  Foto  Liburan! " })).data, ["foto-liburan"]);
+    assert.equal((await t.call("ana", "POST", `/files/${sid}/${png}/tags`, { tag: "!!!" })).status, 400);
+    await t.call("ana", "POST", `/files/${sid}/${png}/tags`, { tag: "klien" });
+    assert.deepEqual((await t.call("ana", "GET", `/files/${sid}/${png}/tags`)).data, ["foto-liburan", "klien"]);
+    assert.ok((await t.call("ana", "GET", "/tags")).data.some((x: any) => x.tag === "klien"));
+    assert.deepEqual((await t.call("ana", "GET", "/search?tag=klien")).data.items.map((i: any) => i.name), ["foto.jpg"]);
+    assert.deepEqual((await t.call("ana", "DELETE", `/files/${sid}/${png}/tags/klien`)).data, ["foto-liburan"]);
+    assert.equal((await t.call("ana", "GET", "/search?tag=klien")).data.total, 0);
+  });
+  it("comments: members can write, only the author or an admin can delete", async () => {
+    const c1 = (await t.call("viv", "POST", `/files/${sid}/${png}/comments`, { body: "  Tolong cek warnanya  " })).data; assert.equal(c1.body, "Tolong cek warnanya"); assert.equal(c1.mine, true);
+    assert.equal((await t.call("viv", "POST", `/files/${sid}/${png}/comments`, { body: "   " })).status, 400);
+    const seen = (await t.call("ana", "GET", `/files/${sid}/${png}/comments`)).data; assert.equal(seen.length, 1); assert.equal(seen[0].mine, false);
+    const c2 = (await t.call("ana", "POST", `/files/${sid}/${png}/comments`, { body: "Sudah" })).data;
+    assert.equal((await t.call("viv", "DELETE", `/files/${sid}/comments/${c2.id}`)).status, 403, "not their comment");
+    assert.equal((await t.call("ana", "DELETE", `/files/${sid}/comments/${c1.id}`)).status, 200, "the owner may moderate");
+    assert.ok([403, 404].includes((await t.call("ben", "GET", `/files/${sid}/${png}/comments`)).status), "another workspace cannot read them");
+  });
+  it("metadata: image size and format from the file header", async () => {
+    const m = (await t.call("ana", "GET", `/files/${sid}/${png}/metadata`)).data as any[];
+    const g = m.find((x) => x.title === "Gambar"); assert.ok(g, JSON.stringify(m));
+    assert.equal(g.rows.find((r: any) => r.k === "Dimensi").v, "64 × 48 px"); assert.equal(g.rows.find((r: any) => r.k === "Format").v, "JPEG");
+    assert.deepEqual((await t.call("ana", "GET", `/files/${sid}/${dir}/metadata`)).data, [], "folders have none");
+  });
+});

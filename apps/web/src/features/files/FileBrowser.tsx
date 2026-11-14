@@ -125,8 +125,8 @@ export function FileBrowser(p: BrowserProps) {
     const out: Row[] = [];
     rowOf.clear();
     if (p.view === "list") {
-      out.push({ key: "hdr", h: 36, node: () => <ListHeader showStorage={!!p.storageNames} compact={p.compact} /> });
-      ordered.forEach((e, i) => { rowOf.set(e.id, out.length); out.push({ key: e.id, h: 52, node: () => <ListRow e={e} i={i} sel={p.selected.has(e.id)} drop={dropTarget === e.id} cursor={cursor === i} props={itemProps(e, i)} storageName={whereOf(p.storageNames, e)} compact={p.compact} onMenu={(x, y) => p.onContext(e, x, y)} /> }); });
+      out.push({ key: "hdr", h: 36, node: () => <ListHeader showStorage={!!p.storageNames} compact={p.compact} allOn={ordered.length > 0 && p.selected.size === ordered.length} onAll={() => p.onKeyAction(p.selected.size === ordered.length ? "clear" : "selectAll")} /> });
+      ordered.forEach((e, i) => { rowOf.set(e.id, out.length); out.push({ key: e.id, h: 52, node: () => <ListRow e={e} i={i} sel={p.selected.has(e.id)} drop={dropTarget === e.id} cursor={cursor === i} props={itemProps(e, i)} storageName={whereOf(p.storageNames, e)} compact={p.compact} onToggle={() => p.onSelect(e, { shift: false, additive: true })} onMenu={(x, y) => p.onContext(e, x, y)} /> }); });
       return out;
     }
     const fCols = Math.max(1, Math.floor((width + GAP) / (p.compact ? 200 : 236 + GAP)));
@@ -293,16 +293,22 @@ const FileTile = memo(function FileTile({ e, sel, cursor, props, where, onMenu }
 
 const COLS = "grid-cols-[28px_minmax(0,1fr)_72px_32px] md:grid-cols-[28px_minmax(0,1fr)_100px_88px_128px_32px]";
 const COLS_WIDE = "grid-cols-[28px_minmax(0,1fr)_72px_32px] md:grid-cols-[28px_minmax(0,1fr)_minmax(0,1.1fr)_88px_128px_32px]";
-const COLS_COMPACT = "grid-cols-[28px_minmax(0,1fr)_72px_28px]";
-function ListHeader({ showStorage, compact }: { showStorage: boolean; compact?: boolean }) {
-  if (compact) return <div className={cn("grid h-9 items-center gap-3 border-b border-line px-3 text-[12px] font-semibold text-muted", COLS_COMPACT)} data-bg="1"><span /><span>Nama</span><span className="text-right">Ukuran</span><span /></div>;
+const COLS_COMPACT = "grid-cols-[22px_28px_minmax(0,1fr)_72px_28px]";
+const RowCheck = ({ on, label, onToggle }: { on: boolean; label: string; onToggle(): void }) => (
+  <span className="relative grid place-items-center" data-check="1">
+    <input type="checkbox" aria-label={label} checked={on} onChange={() => {}} onClick={(e) => { e.stopPropagation(); onToggle(); }} onPointerDown={(e) => e.stopPropagation()} className="size-4 cursor-pointer accent-[var(--primary)] after:absolute after:-inset-3 after:content-[''] pointer-coarse:size-5" />
+  </span>
+);
+function ListHeader({ showStorage, compact, allOn, onAll }: { showStorage: boolean; compact?: boolean; allOn?: boolean; onAll?(): void }) {
+  if (compact) return <div className={cn("grid h-9 items-center gap-3 border-b border-line px-3 text-[12px] font-semibold text-muted", COLS_COMPACT)} data-bg="1"><RowCheck on={!!allOn} label={allOn ? "Batalkan semua pilihan" : "Pilih semua"} onToggle={() => onAll?.()} /><span /><span>Nama</span><span className="text-right">Ukuran</span><span /></div>;
   return <div className={cn("grid h-9 items-center gap-3 border-b border-line px-3 text-[12px] font-semibold text-muted", showStorage ? COLS_WIDE : COLS)} data-bg="1"><span /><span>Nama</span><span className="hidden md:block">{showStorage ? "Lokasi" : "Jenis"}</span><span className="text-right">Ukuran</span><span className="hidden md:block">Diubah</span><span /></div>;
 }
-const ListRow = memo(function ListRow({ e, sel, drop, cursor, props, storageName, compact, onMenu }: { e: FileEntry; i: number; sel: boolean; drop: boolean; cursor: boolean; props: any; storageName?: string; compact?: boolean; onMenu(x: number, y: number): void }) {
+const ListRow = memo(function ListRow({ e, sel, drop, cursor, props, storageName, compact, onToggle, onMenu }: { e: FileEntry; i: number; sel: boolean; drop: boolean; cursor: boolean; props: any; storageName?: string; compact?: boolean; onToggle(): void; onMenu(x: number, y: number): void }) {
   const kind = kindOf(e);
   const menuBtn = <button aria-label={`Menu untuk ${e.name}`} className="relative grid size-7 place-items-center rounded-md text-muted opacity-0 group-hover:opacity-100 hover:bg-surface focus:opacity-100 pointer-coarse:opacity-100 after:absolute after:-inset-2 after:content-['']" onClick={(ev) => { ev.stopPropagation(); const r = ev.currentTarget.getBoundingClientRect(); onMenu(r.right - 200, r.bottom); }}><MoreVertical className="size-4" /></button>;
   return (
     <div {...props} className={cn("group grid h-[52px] items-center gap-3 border-b border-line px-3 text-[13px] select-none", compact ? COLS_COMPACT : storageName ? COLS_WIDE : COLS, sel ? "bg-primary-soft" : "hover:bg-surface-2", cursor && !sel && "bg-surface-2", drop && "bg-primary-soft ring-2 ring-primary ring-inset")}>
+      {compact && <RowCheck on={sel} label={`Pilih ${e.name}`} onToggle={onToggle} />}
       <span className="relative"><FileThumb file={e} size={128} className="size-7 rounded-md" iconClass="size-4" />{sel && <span className="absolute -top-1 -left-1 grid size-3.5 place-items-center rounded-full bg-primary text-white"><Check className="size-2.5" strokeWidth={3.5} /></span>}</span>
       <span className="flex min-w-0 flex-col justify-center"><span className="flex min-w-0 items-center gap-2"><span className={cn("truncate font-medium")} title={e.name}>{e.name}</span>{e.starred && <Star className="size-3.5 shrink-0 fill-warn-ink text-warn-ink" aria-label="Berbintang" />}</span>{!compact && <span className="line-clamp-1 text-[11px] text-muted md:hidden" title={storageName}>{storageName ?? shortDate(e.modifiedAt)}</span>}</span>
       {!compact && <span className="hidden truncate text-muted md:block" title={storageName}>{storageName ?? (e.isFolder ? "Folder" : (e.name.split(".").pop() || kind).toUpperCase())}</span>}

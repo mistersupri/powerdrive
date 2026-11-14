@@ -1,3 +1,4 @@
+import { actorOf, changedFolders, logActivity, markSeen, touchFolder } from "./activity.ts";
 import path from "node:path";
 import type { FileEntry, FileListing } from "@superdrive/shared";
 import { db, now } from "../db.ts";
@@ -68,7 +69,7 @@ export function listFolderShared(ctx: AuthCtx, storageId: string, p: StorageProv
   return value;
 }
 
-export async function listFolder(ctx: AuthCtx, storageId: string, p: StorageProvider, folderId: string, pageToken: string | null, limit = 200, foldersOnly = false): Promise<FileListing> {
+export async function listFolder(ctx: AuthCtx, storageId: string, p: StorageProvider, folderId: string, pageToken: string | null, limit = 200, foldersOnly = false, peek = false): Promise<FileListing> {
   try {
     const [res, folder, crumbs] = await Promise.all([
       p.list(folderId, { pageToken, limit }),
@@ -80,8 +81,13 @@ export async function listFolder(ctx: AuthCtx, storageId: string, p: StorageProv
     if (folderId === ROOT) res.items = res.items.filter((i) => i.name !== TRASH);
     indexItems(storageId, folderId, res.items, { complete: !pageToken && !res.nextPageToken });
     const stars = starredSet(ctx.userId, storageId, res.items.map((i) => i.id));
+    // Badges for folders that someone else changed since this user last opened them. Visitors of a share link never see them,
+    // and a hover prefetch (peek) must not count as opening the folder.
+    const dirs = res.items.filter((i) => i.isFolder).map((i) => i.id);
+    const changed = ctx.viaShare ? new Set<string>() : changedFolders(ctx.userId, storageId, dirs);
+    if (!ctx.viaShare && !peek && !pageToken) markSeen(ctx.userId, storageId, folderId);
     return {
-      items: (foldersOnly ? res.items.filter((i) => i.isFolder) : res.items).map((i) => toEntry(storageId, i, stars.has(i.id))), nextPageToken: res.nextPageToken,
+      items: (foldersOnly ? res.items.filter((i) => i.isFolder) : res.items).map((i) => { const e = toEntry(storageId, i, stars.has(i.id)); if (changed.has(i.id)) e.changed = true; return e; }), nextPageToken: res.nextPageToken,
       folder: { id: encodeId(folderId), name: folder?.name ?? "", parentId: folder?.parentId ? encodeId(folder.parentId) : folderId === ROOT ? null : ROOT, path: crumbs.map((c) => ({ id: encodeId(c.id), name: c.name })) },
     };
   } catch (e) { mapProviderError(e, storageId); }
@@ -112,6 +118,7 @@ export async function createFolder(ctx: AuthCtx, storageId: string, p: StoragePr
   try {
     const f = await p.createFolder(parentId, validName(name));
     indexItems(storageId, parentId, [f]); bustListCache(storageId);
+    touchFolder(storageId, parentId, actorOf(ctx)); logActivity(ctx, storageId, f.id, "create", { name: f.name });
     audit({ workspaceId: ctx.workspaceId, userId: ctx.userId, action: "file.create_folder", resourceType: "file", resourceId: f.id, metadata: { storageId, name: f.name }, ip: ctx.ip });
     return toEntry(storageId, f);
   } catch (e) { mapProviderError(e, storageId); }
@@ -123,6 +130,7 @@ export async function renameFile(ctx: AuthCtx, storageId: string, p: StorageProv
     const f = await p.rename(fileId, validName(name));
     if (f.id !== fileId) unindex(storageId, fileId);
     indexItems(storageId, f.parentId ?? ROOT, [f]); bustListCache(storageId);
+    touchFolder(storageId, f.parentId, actorOf(ctx)); logActivity(ctx, storageId, f.id, "rename", { from: old.name, to: f.name });
     audit({ workspaceId: ctx.workspaceId, userId: ctx.userId, action: "file.rename", resourceType: "file", resourceId: f.id, metadata: { storageId, from: old.name, to: f.name }, ip: ctx.ip });
     return toEntry(storageId, f);
   } catch (e) { mapProviderError(e, storageId); }
@@ -153,7 +161,7 @@ const TYPE_FILTERS: Record<string, string> = {
 export interface SearchParams {
   q?: string; storageId?: string; type?: string; ext?: string; minSize?: number; maxSize?: number;
   modifiedAfter?: string; modifiedBefore?: string; folderId?: string; sort?: string; page?: number; limit?: number;
-  starred?: boolean; recent?: boolean;
+  starred?: boolean; recent?: boolean; tag?: string;
 }
 
 /** Search the local metadata index. Never touches provider APIs or file contents. */
@@ -171,6 +179,7 @@ export function searchIndex(ctx: AuthCtx, s: SearchParams) {
   const exts = (s.ext ?? "").split(",").map((x) => x.trim().toLowerCase().replace(/^\./, "")).filter(Boolean).slice(0, 20);
   if (exts.length) { where.push(`f.ext IN (${exts.map(() => "?").join(",")})`); args.push(...exts); }
   if (s.folderId) { where.push("f.parent_id = ?"); args.push(s.folderId); }
+  if (s.tag) { where.push("EXISTS (SELECT 1 FROM file_tags t WHERE t.storage_id = f.storage_id AND t.file_id = f.file_id AND t.tag = ?)"); args.push(s.tag.toLowerCase()); }
   if (s.minSize !== undefined) { where.push("f.size >= ?"); args.push(s.minSize); }
   if (s.maxSize !== undefined) { where.push("f.size <= ?"); args.push(s.maxSize); }
   if (s.modifiedAfter) { where.push("f.modified_at >= ?"); args.push(s.modifiedAfter); }
