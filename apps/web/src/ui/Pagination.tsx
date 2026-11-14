@@ -19,7 +19,8 @@ function windowOf(page: number, pages: number): { n: number | "gap"; phoneHidden
 }
 
 /**
- * List footer: "1–10 dari 100 transfer per [10] halaman" and, next to it, « ‹ 1 2 3 … 10 › ». One row on wide screens, two short ones on phones.
+ * List footer in three parts on one row: "1–10 dari 100" on the left, « ‹ 1 2 3 … 10 › » in the middle, "limit: [10]" on the right.
+ * On phones the page buttons drop to their own centred row underneath.
  */
 export function Pagination({ page, pages, total, noun, onPage, limit, limits = [10, 25, 50, 100], onLimit, pageSize, note, className = "" }: {
   page: number; pages: number; total: number; noun: string; onPage(p: number): void;
@@ -28,24 +29,22 @@ export function Pagination({ page, pages, total, noun, onPage, limit, limits = [
   const size = limit ?? pageSize ?? 25; const from = total === 0 ? 0 : (page - 1) * size + 1; const to = Math.min(total, page * size);
   const btn = "grid size-9 shrink-0 place-items-center rounded-lg text-[13px] font-medium tabular-nums transition-colors pointer-coarse:size-11 disabled:opacity-40";
   return (
-    <div className={cn("flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-[12px] text-muted", className)}>
-      <p className="tnum flex flex-wrap items-center gap-x-1.5 gap-y-1">
-        <span>{from.toLocaleString("id-ID")}–{to.toLocaleString("id-ID")} dari {total.toLocaleString("id-ID")} {noun}{note ?? ""}</span>
-        {limit !== undefined && onLimit && (
-          <label className="flex items-center gap-1.5 whitespace-nowrap">per
-            <Select aria-label="Item per halaman" className="h-8 w-[68px] pr-6 pl-2 text-[12px]" value={limit} onChange={(e) => onLimit(Number(e.target.value))}>{limits.map((n) => <option key={n}>{n}</option>)}</Select>
-            halaman</label>
-        )}
-      </p>
-      {pages > 1 && (
-        <nav aria-label="Halaman" className="flex items-center gap-0.5 max-sm:mx-auto">
+    <div className={cn("grid grid-cols-2 items-center gap-x-4 gap-y-2 text-[12px] text-muted sm:grid-cols-[1fr_auto_1fr]", className)}>
+      <p className="tnum">{from.toLocaleString("id-ID")}–{to.toLocaleString("id-ID")} dari {total.toLocaleString("id-ID")}<span className="sr-only"> {noun}</span>{note ?? ""}</p>
+      {pages > 1 ? (
+        <nav aria-label="Halaman" className="col-span-2 row-start-2 flex items-center justify-center gap-0.5 sm:col-span-1 sm:col-start-2 sm:row-start-1">
           <button type="button" aria-label="Halaman sebelumnya" disabled={page <= 1} onClick={() => onPage(page - 1)} className={cn(btn, "hover:bg-surface-2")}><ChevronLeft className="size-4" aria-hidden /></button>
           {windowOf(page, pages).map((x, i) => x.n === "gap"
             ? <span key={`g${i}`} aria-hidden className="grid size-9 place-items-center pointer-coarse:size-11">…</span>
             : <button key={x.n} type="button" aria-label={`Halaman ${x.n}`} aria-current={x.n === page ? "page" : undefined} onClick={() => onPage(x.n as number)} className={cn(btn, x.phoneHidden && "max-sm:hidden", x.n === page ? "bg-primary-soft font-semibold text-primary-ink" : "hover:bg-surface-2 hover:text-ink")}>{x.n}</button>)}
           <button type="button" aria-label="Halaman berikutnya" disabled={page >= pages} onClick={() => onPage(page + 1)} className={cn(btn, "hover:bg-surface-2")}><ChevronRight className="size-4" aria-hidden /></button>
         </nav>
-      )}
+      ) : <span className="hidden sm:block" />}
+      {limit !== undefined && onLimit ? (
+        <label className="flex items-center gap-1.5 justify-self-end whitespace-nowrap sm:col-start-3 sm:row-start-1">limit:
+          <Select aria-label="Item per halaman" className="h-8 w-[68px] pr-6 pl-2 text-[12px]" value={limit} onChange={(e) => onLimit(Number(e.target.value))}>{limits.map((n) => <option key={n}>{n}</option>)}</Select>
+        </label>
+      ) : <span />}
     </div>
   );
 }
