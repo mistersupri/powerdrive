@@ -80,7 +80,7 @@ export class OneDriveProvider implements StorageProvider {
 
   async read(id: string, o: ReadOptions = {}): Promise<ReadResult> {
     const meta = await this.stat(id);
-    const h = await this.h(o.range ? { range: `bytes=${o.range.start}-${o.range.end ?? ""}` } : {});
+    const h = await this.h({ "accept-encoding": "identity", ...(o.range ? { range: `bytes=${o.range.start}-${o.range.end ?? ""}` } : {}) }); // identity: raw bytes, so lengths and ranges match what the browser is told
     // /content answers 302 to a pre-authenticated CDN URL; fetch drops the bearer on the cross-origin hop.
     const res = await request(`${GRAPH}${this.item(id)}/content`, { headers: h, sem: this.sem, signal: o.signal, timeoutMs: 120_000 });
     let range: ReadResult["range"];

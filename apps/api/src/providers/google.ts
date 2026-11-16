@@ -104,6 +104,8 @@ export class GoogleDriveProvider implements StorageProvider {
     const exp = EXPORTS[raw.mimeType];
     const url = exp ? `${API}/files/${encodeURIComponent(this.id(id))}/export?mimeType=${encodeURIComponent(exp.mime)}` : `${API}/files/${encodeURIComponent(this.id(id))}?alt=media&supportsAllDrives=true`;
     const h: Record<string, string> = await this.headers();
+    // Raw bytes only: a transparently decompressed body would not match the Content-Length / ranges we pass on to the browser.
+    h["accept-encoding"] = "identity";
     if (o.range && !exp) h.range = `bytes=${o.range.start}-${o.range.end ?? ""}`;
     const res = await request(url, { headers: h, sem: this.sem, signal: o.signal, timeoutMs: 120_000 });
     let range: ReadResult["range"];

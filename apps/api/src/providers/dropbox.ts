@@ -85,7 +85,7 @@ export class DropboxProvider implements StorageProvider {
   }
 
   async read(id: string, o: ReadOptions = {}): Promise<ReadResult> {
-    const h = await this.h({ "dropbox-api-arg": argHeader({ path: id }), ...(o.range ? { range: `bytes=${o.range.start}-${o.range.end ?? ""}` } : {}) });
+    const h = await this.h({ "accept-encoding": "identity", "dropbox-api-arg": argHeader({ path: id }), ...(o.range ? { range: `bytes=${o.range.start}-${o.range.end ?? ""}` } : {}) });
     const res = await request(`${CONTENT}/files/download`, { method: "POST", headers: h, sem: this.sem, signal: o.signal, timeoutMs: 120_000 });
     const meta = JSON.parse(res.headers.get("dropbox-api-result") ?? "{}");
     const name = meta.name ?? id.split("/").pop() ?? "";

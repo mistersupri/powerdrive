@@ -1,8 +1,9 @@
 import type { FileEntry } from "@superdrive/shared";
 import { formatBytes } from "@superdrive/shared";
-import { ChevronDown, ChevronRight, Copy, FileArchive, Folder, Maximize2, Minus, Plus, RotateCw, Search, WrapText } from "lucide-react";
+import { ChevronDown, ChevronRight, Copy, Download, FileArchive, Folder, Maximize2, Minus, Plus, RotateCw, Search, SlidersHorizontal, WrapText } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/cn";
+import { wheelZoomFactor } from "@/lib/wheelZoom";
 import { IconButton } from "@/ui/Button";
 import { Spinner } from "@/ui/misc";
 import { useFileUrls } from "@/features/files/urls";
@@ -12,15 +13,58 @@ const Msg = ({ children }: { children: React.ReactNode }) => <div className="gri
 const Loading = () => <div className="grid h-full place-items-center"><Spinner className="size-6" /></div>;
 const Toolbar = ({ children }: { children: React.ReactNode }) => <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-line bg-surface px-3 py-2 text-[13px]">{children}</div>;
 
-/* ---------- image: fast rendition, zoom, pan, rotate ---------- */
+/* ---------- image: fast rendition, zoom (wheel, ctrl+scroll, pinch), pan, rotate, filters ---------- */
+// Looks are plain CSS filters, so they cost nothing to preview; the sliders stack on top of the chosen look.
+const LOOKS = [
+  { id: "asli", label: "Asli", css: "" },
+  { id: "cerah", label: "Cerah", css: "brightness(1.1) saturate(1.25)" },
+  { id: "dramatis", label: "Dramatis", css: "contrast(1.3) saturate(1.1) brightness(0.95)" },
+  { id: "hangat", label: "Hangat", css: "sepia(0.25) saturate(1.3) hue-rotate(-8deg)" },
+  { id: "dingin", label: "Dingin", css: "saturate(0.9) hue-rotate(15deg) brightness(1.03)" },
+  { id: "pudar", label: "Pudar", css: "contrast(0.85) brightness(1.1) saturate(0.8)" },
+  { id: "sepia", label: "Sepia", css: "sepia(1)" },
+  { id: "hitam-putih", label: "Hitam putih", css: "grayscale(1) contrast(1.1)" },
+  { id: "negatif", label: "Negatif", css: "invert(1)" },
+] as const;
+const ADJUST = { brightness: 100, contrast: 100, saturate: 100 };
+const inApp = () => !!(window as unknown as { SuperDriveAndroid?: unknown }).SuperDriveAndroid;
+
 export function ImageViewer({ f }: { f: FileEntry }) {
   const urls = useFileUrls();
   const [orig, setOrig] = useState(!f.hasThumbnail); const [loaded, setLoaded] = useState(false);
   const [z, setZ] = useState(1); const [pos, setPos] = useState({ x: 0, y: 0 }); const [rot, setRot] = useState(0);
+  const [look, setLook] = useState<(typeof LOOKS)[number]["id"]>("asli"); const [adj, setAdj] = useState(ADJUST); const [panel, setPanel] = useState(false); const [saving, setSaving] = useState(false);
   const drag = useRef<{ x: number; y: number; px: number; py: number } | null>(null);
-  useEffect(() => { setZ(1); setPos({ x: 0, y: 0 }); setRot(0); setLoaded(false); setOrig(!f.hasThumbnail); }, [f.id, f.hasThumbnail]);
-  const zoom = (d: number) => setZ((v) => { const n = Math.min(8, Math.max(0.5, v * d)); if (n <= 1) setPos({ x: 0, y: 0 }); return n; });
+  const pts = useRef(new Map<number, { x: number; y: number }>()); const pinch = useRef<{ d: number; z: number } | null>(null);
+  const stage = useRef<HTMLDivElement>(null);
+  useEffect(() => { setZ(1); setPos({ x: 0, y: 0 }); setRot(0); setLoaded(false); setOrig(!f.hasThumbnail); setLook("asli"); setAdj(ADJUST); }, [f.id, f.hasThumbnail]);
+  const zoomTo = (fn: (v: number) => number) => setZ((v) => { const n = Math.min(8, Math.max(0.5, fn(v))); if (n <= 1) setPos({ x: 0, y: 0 }); return n; });
+  const zoom = (d: number) => zoomTo((v) => v * d);
+  // Wheel needs a native, non-passive listener: Ctrl+scroll (and a trackpad pinch) would otherwise zoom the whole page.
+  useEffect(() => {
+    const el = stage.current; if (!el) return;
+    const h = (e: WheelEvent) => { e.preventDefault(); zoom(e.ctrlKey || e.metaKey ? wheelZoomFactor(e) : e.deltaY < 0 ? 1.15 : 1 / 1.15); };
+    el.addEventListener("wheel", h, { passive: false }); return () => el.removeEventListener("wheel", h);
+  }, []);
+  const lookCss = LOOKS.find((l) => l.id === look)!.css;
+  const adjCss = `${adj.brightness !== 100 ? `brightness(${adj.brightness / 100}) ` : ""}${adj.contrast !== 100 ? `contrast(${adj.contrast / 100}) ` : ""}${adj.saturate !== 100 ? `saturate(${adj.saturate / 100})` : ""}`;
+  const filter = `${lookCss} ${adjCss}`.trim() || "none";
+  const changed = filter !== "none";
   const src = orig ? urls.preview(f) : urls.thumb(f, z > 1.4 ? 2048 : 1024);
+  // Saves the picture as shown (filter and rotation applied) as a new file in the browser's downloads; the stored original is never touched.
+  const exportImage = async () => {
+    setSaving(true);
+    try {
+      const img = new Image(); img.src = urls.preview(f); await img.decode();
+      const swap = rot % 180 !== 0; const c = document.createElement("canvas"); c.width = swap ? img.naturalHeight : img.naturalWidth; c.height = swap ? img.naturalWidth : img.naturalHeight;
+      const ctx = c.getContext("2d")!; ctx.filter = filter; ctx.translate(c.width / 2, c.height / 2); ctx.rotate((rot * Math.PI) / 180); ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
+      const png = f.mimeType === "image/png"; const blob = await new Promise<Blob | null>((r) => c.toBlob(r, png ? "image/png" : "image/jpeg", 0.92));
+      if (!blob) throw new Error();
+      const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = f.name.replace(/\.[^.]+$/, "") + (png ? "-filter.png" : "-filter.jpg"); a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
+    } catch { /* too large or blocked: nothing to save */ }
+    setSaving(false);
+  };
+  const dist = () => { const [a, b] = [...pts.current.values()]; return Math.hypot(a!.x - b!.x, a!.y - b!.y); };
   return (
     <div className="flex h-full flex-col">
       <Toolbar>
@@ -29,21 +73,56 @@ export function ImageViewer({ f }: { f: FileEntry }) {
         <IconButton label="Perbesar" onClick={() => zoom(1.25)}><Plus className="size-4" /></IconButton>
         <IconButton label="Pas ke layar" onClick={() => { setZ(1); setPos({ x: 0, y: 0 }); }}><Maximize2 className="size-4" /></IconButton>
         <IconButton label="Putar 90°" onClick={() => setRot((r) => (r + 90) % 360)}><RotateCw className="size-4" /></IconButton>
+        <button type="button" aria-pressed={panel} onClick={() => setPanel((v) => !v)} className={cn("inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[13px] pointer-coarse:h-11", panel || changed ? "bg-primary-soft text-primary-ink" : "text-muted hover:bg-surface-2")}><SlidersHorizontal className="size-4" aria-hidden />Filter{changed && <span className="size-1.5 rounded-full bg-primary" aria-hidden />}</button>
         <span className="flex-1" />
         {f.hasThumbnail && <button className={cn("rounded-md px-2.5 py-1 text-[12px]", orig ? "bg-primary-soft text-primary-ink" : "text-muted hover:bg-surface-2")} onClick={() => { setOrig((o) => !o); setLoaded(false); }}>{orig ? "Resolusi asli" : "Muat resolusi asli"}</button>}
       </Toolbar>
+      {panel && (
+        <div className="shrink-0 space-y-3 border-b border-line bg-surface px-3 py-3" role="group" aria-label="Filter gambar">
+          <div className="scroll-thin flex gap-2 overflow-x-auto pb-1">
+            {LOOKS.map((l) => (
+              <button key={l.id} type="button" aria-pressed={look === l.id} onClick={() => setLook(l.id)} className="group flex w-14 shrink-0 flex-col items-center gap-1 text-[11px] sm:w-[72px] sm:text-[12px]">
+                <span className={cn("block size-14 overflow-hidden rounded-lg border-2 sm:size-[72px]", look === l.id ? "border-primary" : "border-transparent group-hover:border-line-strong")}>
+                  <img src={urls.thumb(f, 256)} alt="" draggable={false} className="size-full object-cover" style={{ filter: l.css || "none" }} />
+                </span>
+                <span className={look === l.id ? "font-semibold text-primary-ink" : "text-muted"}>{l.label}</span>
+              </button>))}
+          </div>
+          <div className="grid gap-x-6 gap-y-1 sm:grid-cols-3">
+            {([["brightness", "Kecerahan"], ["contrast", "Kontras"], ["saturate", "Saturasi"]] as const).map(([k, label]) => (
+              <label key={k} className="flex items-center gap-2 text-[12px] text-muted"><span className="w-16 shrink-0">{label}</span>
+                <input type="range" min={50} max={150} value={adj[k]} onChange={(e) => setAdj((a) => ({ ...a, [k]: Number(e.target.value) }))} className="h-6 min-w-0 flex-1 accent-[var(--color-primary)] pointer-coarse:h-9" />
+                <span className="tnum w-9 text-right">{adj[k]}%</span></label>))}
+          </div>
+          <div className="flex items-center gap-2">
+            <button type="button" disabled={!changed} onClick={() => { setLook("asli"); setAdj(ADJUST); }} className="rounded-md px-2.5 py-1 text-[13px] text-muted hover:bg-surface-2 disabled:opacity-40">Atur ulang</button>
+            <span className="flex-1" />
+            {!inApp() && <button type="button" disabled={saving || (!changed && rot === 0)} onClick={exportImage} className="inline-flex items-center gap-1.5 rounded-md bg-primary-soft px-3 py-1.5 text-[13px] font-medium text-primary-ink disabled:opacity-40"><Download className="size-4" aria-hidden />{saving ? "Menyimpan…" : "Unduh hasil"}</button>}
+          </div>
+          <p className="text-[11px] text-faint max-sm:hidden">Filter hanya mengubah tampilan dan hasil unduhan; berkas asli tidak diubah.</p>
+        </div>)}
       <div
+        ref={stage}
         className={cn("relative min-h-0 flex-1 overflow-hidden bg-[#0d1626] select-none", z > 1 ? "cursor-grab active:cursor-grabbing" : "cursor-zoom-in")} style={{ touchAction: "none" }}
-        onWheel={(e) => zoom(e.deltaY < 0 ? 1.15 : 1 / 1.15)}
         onDoubleClick={() => { if (z > 1) { setZ(1); setPos({ x: 0, y: 0 }); } else setZ(2.5); }}
-        onPointerDown={(e) => { if (z <= 1) return; e.currentTarget.setPointerCapture(e.pointerId); drag.current = { x: e.clientX, y: e.clientY, px: pos.x, py: pos.y }; }}
-        onPointerMove={(e) => { const d = drag.current; if (d) setPos({ x: d.px + e.clientX - d.x, y: d.py + e.clientY - d.y }); }}
-        onPointerUp={() => { drag.current = null; }}
+        onPointerDown={(e) => {
+          pts.current.set(e.pointerId, { x: e.clientX, y: e.clientY }); try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* pointer already gone */ }
+          if (pts.current.size === 2) { pinch.current = { d: dist(), z }; drag.current = null; }
+          else if (z > 1) drag.current = { x: e.clientX, y: e.clientY, px: pos.x, py: pos.y };
+        }}
+        onPointerMove={(e) => {
+          if (pts.current.has(e.pointerId)) pts.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+          const p = pinch.current;
+          if (p && pts.current.size === 2) { const d = dist(); if (p.d > 0) zoomTo(() => p.z * (d / p.d)); return; }
+          const d = drag.current; if (d) setPos({ x: d.px + e.clientX - d.x, y: d.py + e.clientY - d.y });
+        }}
+        onPointerUp={(e) => { pts.current.delete(e.pointerId); if (pts.current.size < 2) pinch.current = null; drag.current = null; }}
+        onPointerCancel={(e) => { pts.current.delete(e.pointerId); pinch.current = null; drag.current = null; }}
       >
-        {f.hasThumbnail && !orig && <img src={urls.thumb(f, 256)} alt="" aria-hidden draggable={false} className="absolute inset-0 m-auto max-h-full max-w-full scale-100 object-contain blur-[2px]" style={{ transform: `rotate(${rot}deg)`, opacity: loaded ? 0 : 1, transition: "opacity 150ms" }} />}
+        {f.hasThumbnail && !orig && <img src={urls.thumb(f, 256)} alt="" aria-hidden draggable={false} className="absolute inset-0 m-auto max-h-full max-w-full scale-100 object-contain blur-[2px]" style={{ transform: `rotate(${rot}deg)`, filter, opacity: loaded ? 0 : 1, transition: "opacity 150ms" }} />}
         {!loaded && <div className="absolute inset-0 grid place-items-center"><Spinner className="size-6 text-white/70" /></div>}
         <img key={f.id + String(orig)} src={src} alt={f.name} decoding="async" draggable={false} onLoad={() => setLoaded(true)} onError={() => { if (!orig) setOrig(true); }}
-          className="absolute inset-0 m-auto max-h-full max-w-full object-contain transition-opacity duration-150" style={{ opacity: loaded ? 1 : 0, transform: `translate(${pos.x}px, ${pos.y}px) rotate(${rot}deg) scale(${z})` }} />
+          className="absolute inset-0 m-auto max-h-full max-w-full object-contain transition-opacity duration-150" style={{ opacity: loaded ? 1 : 0, filter, transform: `translate(${pos.x}px, ${pos.y}px) rotate(${rot}deg) scale(${z})` }} />
       </div>
     </div>
   );
