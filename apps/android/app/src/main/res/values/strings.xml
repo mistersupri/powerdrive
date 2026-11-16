@@ -34,4 +34,12 @@
     <string name="notif_done_title">Unggah dan transfer selesai</string>
     <string name="notif_done_text">%1$d berhasil</string>
     <string name="notif_done_failed">%1$d berhasil, %2$d gagal</string>
+    <string name="lock_title">SuperDrive terkunci</string>
+    <string name="lock_unlock">Buka kunci</string>
+    <string name="lock_prompt_title">Buka SuperDrive</string>
+    <string name="lock_prompt_subtitle">Gunakan sidik jari atau kunci layar</string>
+    <string name="lock_confirm_title">Konfirmasi perubahan kunci aplikasi</string>
+    <string name="lock_cancel">Batal</string>
+    <string name="lock_unavailable">Daftarkan sidik jari atau kunci layar di pengaturan HP terlebih dahulu.</string>
+    <string name="lock_auto_off">Kunci aplikasi dimatikan karena HP tidak lagi punya sidik jari atau kunci layar.</string>
 </resources>

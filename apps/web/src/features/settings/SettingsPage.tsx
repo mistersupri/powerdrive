@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Monitor, Moon, Sun } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { api, getWorkspaceId } from "@/lib/api";
 import { cn } from "@/lib/cn";
@@ -12,15 +12,37 @@ import { Field, Input } from "@/ui/Field";
 import { Card } from "@/ui/misc";
 import { MfaCard } from "./Mfa";
 
-type AndroidBridge = { appVersion?(): string; checkForUpdate?(): void };
-/** Only inside the Android app: shows the installed version and checks for a newer one. */
+type AndroidBridge = { appVersion?(): string; checkForUpdate?(): void; lockState?(): string; setLock?(enabled: boolean, delayMs: number): void };
+interface LockState { enabled: boolean; delay: number; available: boolean }
+const LOCK_DELAYS = [[0, "Setiap kali keluar dari aplikasi"], [60_000, "Setelah 1 menit"], [300_000, "Setelah 5 menit"], [900_000, "Setelah 15 menit"]] as const;
+
+/** Only inside the Android app: installed version, updates, and the fingerprint lock. */
 function AndroidAppCard() {
   const bridge = (window as unknown as { SuperDriveAndroid?: AndroidBridge }).SuperDriveAndroid;
+  const read = (): LockState | null => { try { return bridge?.lockState ? (JSON.parse(bridge.lockState()) as LockState) : null; } catch { return null; } };
+  const [lock, setLockState] = useState<LockState | null>(read);
+  // The app answers after the fingerprint was confirmed (or refused) and tells the page to look again.
+  useEffect(() => { const f = () => setLockState(read()); window.addEventListener("sd-lock-changed", f); return () => window.removeEventListener("sd-lock-changed", f); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   if (!bridge?.checkForUpdate) return null;
   return (
-    <Card className="flex flex-wrap items-center gap-3 p-6">
-      <div className="min-w-0 flex-1"><h2 className="text-[15px] font-semibold">Aplikasi Android</h2><p className="text-[13px] text-muted">Versi {bridge.appVersion?.() ?? "—"}</p></div>
-      <Button onClick={() => bridge.checkForUpdate?.()}>Periksa pembaruan</Button>
+    <Card className="space-y-4 p-6">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="min-w-0 flex-1"><h2 className="text-[15px] font-semibold">Aplikasi Android</h2><p className="text-[13px] text-muted">Versi {bridge.appVersion?.() ?? "—"}</p></div>
+        <Button onClick={() => bridge.checkForUpdate?.()}>Periksa pembaruan</Button>
+      </div>
+      {lock && bridge.setLock && (
+        <div className="space-y-3 border-t border-line pt-4">
+          <label className="flex min-h-11 cursor-pointer items-center gap-3">
+            <input type="checkbox" role="switch" className="size-5 accent-[var(--color-primary)]" checked={lock.enabled} disabled={!lock.available && !lock.enabled} onChange={(e) => bridge.setLock!(e.target.checked, lock.delay)} />
+            <span className="min-w-0 flex-1"><span className="block text-[14px] font-medium">Kunci dengan sidik jari</span><span className="block text-[13px] text-muted">Minta sidik jari (atau kunci layar HP) sebelum SuperDrive terbuka. Berlaku di HP ini saja.</span></span>
+          </label>
+          {!lock.available && !lock.enabled && <p className="text-[13px] text-warn-ink">Daftarkan sidik jari atau kunci layar di pengaturan HP terlebih dahulu.</p>}
+          {lock.enabled && (
+            <label className="flex flex-wrap items-center gap-3 text-[13px] text-muted"><span className="w-28 shrink-0">Kunci ulang</span>
+              <select aria-label="Kunci ulang" value={lock.delay} onChange={(e) => bridge.setLock!(true, Number(e.target.value))} className="h-10 min-w-0 flex-1 rounded-lg border border-line-strong bg-surface px-3 text-[14px] text-ink">
+                {LOCK_DELAYS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select></label>)}
+        </div>)}
     </Card>
   );
 }

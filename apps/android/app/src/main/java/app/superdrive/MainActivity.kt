@@ -62,6 +62,12 @@ class MainActivity : AppCompatActivity() {
     private var customCallback: WebChromeClient.CustomViewCallback? = null
     private var pendingDownload: DownloadRequest? = null
     private lateinit var updater: Updater
+    private lateinit var lock: AppLock
+    private lateinit var lockScreen: View
+    private var unlocked = false
+    private var leftAt: Long? = null
+    /** Set right before a screen that is part of using the app (file picker, permission, settings) so leaving for it does not lock the app. */
+    var externalFlow = false
     private var transfersActive = false
     private var lastDone = 0
     private var lastFailed = 0
@@ -102,6 +108,10 @@ class MainActivity : AppCompatActivity() {
         errorBox = findViewById(R.id.errorBox)
         errorMessage = findViewById(R.id.errorMessage)
         fullscreenHost = findViewById(R.id.fullscreenHost)
+        lockScreen = findViewById(R.id.lockScreen)
+        lock = AppLock(this)
+        findViewById<Button>(R.id.unlock).setOnClickListener { promptUnlock() }
+        if (lock.enabled) setLocked(true) // never flash the app before the lock
         findViewById<Button>(R.id.retry).setOnClickListener { retry() }
         findViewById<Button>(R.id.changeServer).setOnClickListener { changeServer() }
 
@@ -111,6 +121,7 @@ class MainActivity : AppCompatActivity() {
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 when {
+                    lockScreen.visibility == View.VISIBLE -> finish()
                     customView != null -> hideCustomView()
                     web.canGoBack() -> web.goBack()
                     else -> finish()
@@ -130,6 +141,72 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         if (::web.isInitialized) applySystemBars()
+        if (::lock.isInitialized) ensureUnlocked()
+        externalFlow = false
+    }
+
+    override fun onPause() {
+        // Covers the app before Android takes the recent-apps snapshot.
+        if (::lock.isInitialized && lock.enabled && !externalFlow) setLocked(true)
+        super.onPause()
+    }
+
+    override fun onStop() {
+        if (::lock.isInitialized && lock.enabled && !externalFlow) leftAt = System.currentTimeMillis()
+        super.onStop()
+    }
+
+    private fun setLocked(on: Boolean) {
+        lockScreen.visibility = if (on) View.VISIBLE else View.GONE
+        // Screen readers must not read the page hidden underneath.
+        web.importantForAccessibility = if (on) View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS else View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
+    }
+
+    private fun ensureUnlocked() {
+        if (!lock.enabled) { setLocked(false); return }
+        if (lock.unusable()) {
+            lock.enabled = false
+            setLocked(false)
+            Toast.makeText(this, R.string.lock_auto_off, Toast.LENGTH_LONG).show()
+            notifyLockChanged()
+            return
+        }
+        val away = leftAt
+        val needed = !unlocked || (away != null && System.currentTimeMillis() - away >= lock.delayMs)
+        leftAt = null
+        if (!needed) { setLocked(false); return }
+        unlocked = false
+        setLocked(true)
+        promptUnlock()
+    }
+
+    private fun promptUnlock() {
+        lock.authenticate(getString(R.string.lock_prompt_title), getString(R.string.lock_prompt_subtitle).takeIf { Build.VERSION.SDK_INT >= Build.VERSION_CODES.R }) { ok ->
+            if (ok) { unlocked = true; leftAt = null; setLocked(false) }
+        }
+    }
+
+    private fun notifyLockChanged() {
+        web.evaluateJavascript("window.dispatchEvent(new Event('sd-lock-changed'))", null)
+    }
+
+    /** Turn the lock on/off or change its delay from the web app's settings. Any change has to be confirmed with the fingerprint first. */
+    private fun changeLock(enable: Boolean, delayMs: Long) {
+        if (enable && !lock.available()) {
+            Toast.makeText(this, R.string.lock_unavailable, Toast.LENGTH_LONG).show()
+            notifyLockChanged()
+            return
+        }
+        if (!enable && !lock.enabled) { lock.delayMs = delayMs; notifyLockChanged(); return }
+        lock.authenticate(getString(R.string.lock_confirm_title), null) { ok ->
+            if (ok) {
+                lock.enabled = enable
+                lock.delayMs = delayMs
+                unlocked = true
+                leftAt = null
+            }
+            notifyLockChanged()
+        }
     }
 
     override fun onDestroy() {
@@ -156,6 +233,7 @@ class MainActivity : AppCompatActivity() {
                 !getSharedPreferences("superdrive", Context.MODE_PRIVATE).getBoolean("notif_asked", false)
             ) {
                 getSharedPreferences("superdrive", Context.MODE_PRIVATE).edit().putBoolean("notif_asked", true).apply()
+                externalFlow = true
                 askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
             }
             transfersActive = true
@@ -225,6 +303,15 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun appVersion(): String = BuildConfig.VERSION_NAME
 
+        /** {enabled, delay (ms), available (this phone has a fingerprint or screen lock)} */
+        @JavascriptInterface
+        fun lockState(): String = JSONObject().put("enabled", lock.enabled).put("delay", lock.delayMs).put("available", lock.available()).toString()
+
+        @JavascriptInterface
+        fun setLock(enabled: Boolean, delayMs: Long) {
+            runOnUiThread { changeLock(enabled, delayMs) }
+        }
+
         /** The "Periksa pembaruan" button in the web app's settings. */
         @JavascriptInterface
         fun checkForUpdate() {
@@ -250,6 +337,7 @@ class MainActivity : AppCompatActivity() {
             if (scheme == "blob" || scheme == "data" || scheme == "about") return false
             if ((scheme == "http" || scheme == "https") && ServerStore.origin(uri.toString()) == ServerStore.origin(server)) return false
             // Anything else (another website, mailto:, tel:) opens in the app the phone chooses.
+            externalFlow = true
             try { startActivity(Intent(Intent.ACTION_VIEW, uri)) } catch (e: ActivityNotFoundException) { /* nothing can open it */ }
             return true
         }
@@ -288,6 +376,7 @@ class MainActivity : AppCompatActivity() {
                 val types = params.acceptTypes.flatMap { it.split(",") }.map { it.trim() }.filter { it.contains("/") }
                 if (types.isNotEmpty()) intent.putExtra(Intent.EXTRA_MIME_TYPES, types.toTypedArray())
                 if (params.mode == FileChooserParams.MODE_OPEN_MULTIPLE) intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                externalFlow = true
                 pickFiles.launch(Intent.createChooser(intent, null))
                 true
             } catch (e: Exception) {
@@ -378,6 +467,7 @@ class MainActivity : AppCompatActivity() {
             ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED
         ) {
             pendingDownload = request
+            externalFlow = true
             askStorage.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
             return
         }

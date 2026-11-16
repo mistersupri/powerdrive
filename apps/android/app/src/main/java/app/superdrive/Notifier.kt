@@ -33,6 +33,7 @@ object Notifier {
             .setSmallIcon(android.R.drawable.stat_sys_upload)
             .setContentTitle(title)
             .setContentText(text)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE) // file names stay off the lock screen
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setSilent(true)
@@ -48,6 +49,7 @@ object Notifier {
             .setSmallIcon(android.R.drawable.stat_sys_upload_done)
             .setContentTitle(title)
             .setContentText(text)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             .setAutoCancel(true)
             .setContentIntent(openApp(context))
             .build()
