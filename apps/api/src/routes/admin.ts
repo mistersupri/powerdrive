@@ -7,7 +7,7 @@ import { z } from "zod";
 import { clearSessionCache, ok, requireAuth } from "../app.ts";
 import { config } from "../config.ts";
 import { audit } from "../lib/audit.ts";
-import { forbidden, badRequest, notFound } from "../lib/errors.ts";
+import { AppError, forbidden, badRequest, notFound } from "../lib/errors.ts";
 import { sendTestMail } from "../lib/mailer.ts";
 import { sweepRetention } from "../modules/retention.ts";
 import { getSettings, publicBranding, setIconVersion, settingsDto, updateSettings } from "../modules/settings.ts";
@@ -15,7 +15,13 @@ import { getSettings, publicBranding, setIconVersion, settingsDto, updateSetting
 const dir = () => path.join(config.dataDir, "branding");
 const SIZES = [32, 192, 512] as const;
 
+/** The Android app identifies itself in its user agent; system and website settings are for the website only. */
+export const fromAndroidApp = (ua: string | undefined) => /SuperDriveAndroid\//.test(ua ?? "");
+
 export async function adminRoutes(app: FastifyInstance) {
+  app.addHook("onRequest", async (req) => {
+    if (req.url.startsWith("/api/v1/admin/") && fromAndroidApp(req.headers["user-agent"])) throw new AppError(403, "WEB_ONLY", "Pengaturan sistem dan website hanya bisa dibuka lewat situs web, tidak lewat aplikasi Android.");
+  });
   const superAdmin = (req: any) => { const ctx = requireAuth(req); if (!ctx.isSuperAdmin) throw forbidden("Hanya administrator sistem yang bisa mengubah pengaturan ini."); return ctx; };
 
   /* ---- public: what the sign-in page, favicon and install manifest need ---- */

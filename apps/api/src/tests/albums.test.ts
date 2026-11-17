@@ -100,3 +100,53 @@ describe("private albums", () => {
     assert.equal((await t.call("cy", "POST", "/albums-private/unlock", { password: "kedua-2222" })).data.unlocked, true);
   });
 });
+
+describe("highlights (on this day)", () => {
+  it("shows earlier years' photos from today and the next three days, in the caller's own time zone", async () => {
+    const dir = (await t.call("ana", "POST", "/files/folders", { storageId: sid, name: "Kenangan" })).data.id; const abs = path.join(t.root, "s", "Kenangan");
+    // today is 2026-11-14; the window is 11-14 .. 11-17
+    const at: Record<string, string> = {
+      "in-0.jpg": "2023-11-14T10:00:00Z", "in-2.jpg": "2023-11-16T10:00:00Z", "in-3.jpg": "2024-11-17T12:00:00Z", "in-video.mp4": "2022-11-15T09:00:00Z",
+      "out-4.jpg": "2023-11-18T10:00:00Z", "out-before.jpg": "2025-11-13T10:00:00Z", "out-thisyear.jpg": "2026-11-14T08:00:00Z", "tz.jpg": "2023-11-13T20:00:00Z", "note.txt": "2023-11-14T10:00:00Z",
+    };
+    for (const [n, iso] of Object.entries(at)) { const f = path.join(abs, n); fs.writeFileSync(f, "x"); fs.utimesSync(f, new Date(iso), new Date(iso)); }
+    await t.call("ana", "GET", `/files?storageId=${sid}&folderId=${dir}`);
+    const names = (g: any) => g.items.map((i: any) => i.name).sort();
+    const utc = (await t.call("ana", "GET", "/media/highlights?date=2026-11-14&tz=0")).data;
+    assert.equal(utc.from, "2026-11-14"); assert.equal(utc.until, "2026-11-17");
+    const by = Object.fromEntries(utc.groups.map((g: any) => [g.yearsAgo, g]));
+    assert.deepEqual(names(by[3]), ["in-0.jpg", "in-2.jpg"], "2023: the 14th and 16th, not the 18th, and the 13th 20:00Z is still the 13th in UTC");
+    assert.deepEqual(names(by[2]), ["in-3.jpg"]); assert.deepEqual(names(by[4]), ["in-video.mp4"]);
+    assert.ok(!utc.groups.some((g: any) => g.yearsAgo === 0 || g.yearsAgo < 1), "this year's photos are not memories");
+    assert.deepEqual(utc.groups.map((g: any) => g.yearsAgo), [2, 3, 4], "nearest year first");
+    // Jakarta (UTC+7): 20:00Z on the 13th is 03:00 on the 14th there
+    const jkt = (await t.call("ana", "GET", "/media/highlights?date=2026-11-14&tz=420")).data;
+    assert.deepEqual(names(jkt.groups.find((g: any) => g.yearsAgo === 3)), ["in-0.jpg", "in-2.jpg", "tz.jpg"]);
+    // a window that crosses the year end
+    const nye = (await t.call("ana", "GET", "/media/highlights?date=2026-11-30&tz=0")).data; assert.equal(nye.until, "2026-12-03");
+    assert.equal((await t.call("ana", "GET", "/media/highlights?date=nonsense")).status, 400);
+    assert.equal((await t.call("ben", "GET", "/media/highlights?date=2026-11-14")).data.groups.length, 0, "another workspace sees nothing");
+    // photos in a private album are never memories
+    await t.call("ana", "POST", "/albums-private/password", { password: "kenangan-rahasia" }); await t.call("ana", "POST", "/albums-private/unlock", { password: "kenangan-rahasia" });
+    const al = (await t.call("ana", "POST", "/albums", { name: "Pribadi", private: true })).data;
+    const inZero = ((await t.call("ana", "GET", "/media?limit=300")).data.items as any[]).find((i) => i.name === "in-0.jpg");
+    await t.call("ana", "POST", `/albums/${al.id}/items`, { items: [{ storageId: inZero.storageId, fileId: inZero.id }] });
+    assert.deepEqual(names((await t.call("ana", "GET", "/media/highlights?date=2026-11-14&tz=0")).data.groups.find((g: any) => g.yearsAgo === 3)), ["in-2.jpg"]);
+  });
+});
+
+describe("upload dates", () => {
+  it("keep the date a photo was taken, when the sender says so", async () => {
+    const taken = Date.UTC(2021, 5, 15, 12, 0, 0);
+    const c = await t.call("ana", "POST", "/uploads", { storageId: sid, parentId: "root", name: "liburan.jpg", size: 3, lastModified: taken });
+    await t.call("ana", "PATCH", `/uploads/${c.data.id}`, Buffer.from("abc"), { "upload-offset": "0", "content-type": "application/octet-stream" });
+    await t.wait(async () => (await t.call("ana", "GET", `/uploads/${c.data.id}`)).data.status === "DONE");
+    const f = ((await t.call("ana", "GET", `/files?storageId=${sid}&folderId=root`)).data.items as any[]).find((i) => i.name === "liburan.jpg");
+    assert.equal(new Date(f.modifiedAt).getTime(), taken);
+    const d = await t.call("ana", "POST", "/uploads", { storageId: sid, parentId: "root", name: "masa-depan.jpg", size: 1, lastModified: Date.now() + 10 * 86_400_000 });
+    await t.call("ana", "PATCH", `/uploads/${d.data.id}`, Buffer.from("a"), { "upload-offset": "0", "content-type": "application/octet-stream" });
+    await t.wait(async () => (await t.call("ana", "GET", `/uploads/${d.data.id}`)).data.status === "DONE");
+    const g = ((await t.call("ana", "GET", `/files?storageId=${sid}&folderId=root`)).data.items as any[]).find((i) => i.name === "masa-depan.jpg");
+    assert.ok(new Date(g.modifiedAt).getTime() < Date.now() + 60_000, "an implausible date is ignored");
+  });
+});

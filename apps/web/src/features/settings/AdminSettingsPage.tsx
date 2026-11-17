@@ -1,3 +1,5 @@
+import { isAndroidApp } from "@/lib/platform";
+import { Link } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ImageUp, RotateCcw, Send } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -46,9 +48,10 @@ const Num = ({ label, hint, value, onChange, min = 0, max = 3650, unit }: { labe
 );
 
 /** Instance-wide settings. Each card saves on its own so one mistake never blocks the others. */
-export default function AdminSettingsPage() {
+/** "system": registration, guests, security, retention, email. "website": name, colour, icon, theme and sign-in message. Both are website-only. */
+export function AdminSettings({ part }: { part: "system" | "website" }) {
   const { user } = useWorkspace(); const qc = useQueryClient();
-  const q = useQuery({ queryKey: ["admin-settings"], queryFn: () => api<S>("/admin/settings"), enabled: !!user?.isSuperAdmin, retry: false });
+  const q = useQuery({ queryKey: ["admin-settings"], queryFn: () => api<S>("/admin/settings"), enabled: !!user?.isSuperAdmin && !isAndroidApp(), retry: false });
   const [d, setD] = useState<S | null>(null); const [pw, setPw] = useState(""); const [testTo, setTestTo] = useState(user?.email ?? "");
   useEffect(() => { if (q.data) setD(structuredClone(q.data)); }, [q.data]);
   const save = useMutation({
@@ -64,8 +67,9 @@ export default function AdminSettingsPage() {
   const test = useMutation({ mutationFn: () => api("/admin/email/test", { body: { to: testTo } }), onSuccess: () => toast.success(`Email uji dikirim ke ${testTo}`), onError: (e) => toast.error((e as Error).message) });
   const sweep = useMutation({ mutationFn: () => api<Record<string, number>>("/admin/retention/run", { body: {} }), onSuccess: (r) => toast.success(`Dibersihkan: ${r.audit} catatan audit, ${r.activity} aktivitas file, ${r.transfers} riwayat transfer.`), onError: (e) => toast.error((e as Error).message) });
 
-  if (!user?.isSuperAdmin) return <div className="flex min-h-0 flex-1 flex-col"><PageHeader title="Pengaturan sistem" /><EmptyState icon={ShieldAlert} title="Khusus administrator sistem">Hanya akun administrator instalasi yang bisa membuka halaman ini.</EmptyState></div>;
-  if (!d || !q.data) return <div className="flex min-h-0 flex-1 flex-col"><PageHeader title="Pengaturan sistem" /><div className="p-8"><Skeleton className="h-64" /></div></div>;
+  if (isAndroidApp()) return <div className="flex min-h-0 flex-1 flex-col"><PageHeader title={part === "website" ? "Pengaturan website" : "Pengaturan sistem"} /><EmptyState icon={ShieldAlert} title="Hanya tersedia di situs web" action={<Link to="/settings"><Button>Ke profil</Button></Link>}>Pengaturan sistem dan website tidak bisa dibuka dari aplikasi Android. Buka SuperDrive lewat browser untuk mengubahnya.</EmptyState></div>;
+  if (!user?.isSuperAdmin) return <div className="flex min-h-0 flex-1 flex-col"><PageHeader title={part === "website" ? "Pengaturan website" : "Pengaturan sistem"} /><EmptyState icon={ShieldAlert} title="Khusus administrator sistem">Hanya akun administrator instalasi yang bisa membuka halaman ini.</EmptyState></div>;
+  if (!d || !q.data) return <div className="flex min-h-0 flex-1 flex-col"><PageHeader title={part === "website" ? "Pengaturan website" : "Pengaturan sistem"} /><div className="p-8"><Skeleton className="h-64" /></div></div>;
   const o = q.data; const dirty = (k: keyof S) => JSON.stringify(d[k]) !== JSON.stringify(o[k]) || (k === "email" && pw !== "");
   const upd = <K extends keyof S>(k: K, v: Partial<S[K]>) => setD({ ...d, [k]: { ...d[k], ...v } });
   const run = (k: keyof S, extra: object = {}) => save.mutate({ section: k, patch: { [k]: { ...d[k], ...extra } } });
@@ -73,9 +77,10 @@ export default function AdminSettingsPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <PageHeader title="Pengaturan sistem" subtitle="Berlaku untuk seluruh instalasi dan semua workspace." />
+      <PageHeader title={part === "website" ? "Pengaturan website" : "Pengaturan sistem"} subtitle={part === "website" ? "Nama, warna, ikon, dan tampilan situs untuk semua pengguna." : "Berlaku untuk seluruh instalasi dan semua workspace."} actions={<Link to={part === "website" ? "/admin/system" : "/admin/website"} className="inline-flex h-9 items-center rounded-lg px-3 text-[13px] font-medium text-primary-ink hover:bg-primary-soft pointer-coarse:h-11">{part === "website" ? "Pengaturan sistem" : "Pengaturan website"}</Link>} />
       <div className="scroll-thin flex-1 overflow-y-auto p-4 sm:p-8">
         <div className="mx-auto max-w-3xl space-y-5">
+          {part === "website" && (
           <Section id="brand" title="Tampilan dan merek" description="Nama, warna utama, dan ikon aplikasi. Dipakai di halaman masuk, sidebar, tab browser, dan saat aplikasi dipasang di ponsel." saving={save.isPending} dirty={dirty("brand")} disabled={!colorOk} onSave={() => run("brand")}>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Nama aplikasi">{(id) => <Input id={id} maxLength={40} value={d.brand.appName} onChange={(e) => upd("brand", { appName: e.target.value })} />}</Field>
@@ -96,7 +101,9 @@ export default function AdminSettingsPage() {
               {o.brand.iconVersion > 0 && <Button size="sm" type="button" variant="ghost" icon={<RotateCcw className="size-4" />} onClick={() => icon.mutate(null)}>Reset ke bawaan</Button>}
             </div>
           </Section>
+          )}
 
+          {part === "system" && (
           <Section id="reg" title="Pendaftaran dan akses tamu" description="Siapa yang bisa membuat akun, dan apa yang boleh dilakukan orang tanpa akun lewat tautan berbagi." saving={save.isPending} dirty={dirty("registration") || dirty("guest")} onSave={() => save.mutate({ section: "reg", patch: { registration: d.registration, guest: d.guest } })}>
             <Field label="Pendaftaran akun baru">{(id) => <Select id={id} value={d.registration.mode} onChange={(e) => upd("registration", { mode: e.target.value as S["registration"]["mode"] })}><option value="open">Terbuka: siapa pun bisa mendaftar</option><option value="invite">Hanya dengan undangan</option><option value="closed">Tertutup: tidak ada akun baru, undangan pun ditolak</option></Select>}</Field>
             <div className="space-y-4 rounded-xl border border-line p-4">
@@ -109,7 +116,9 @@ export default function AdminSettingsPage() {
               </div>
             </div>
           </Section>
+          )}
 
+          {part === "system" && (
           <Section id="sec" title="Keamanan" description="Verifikasi dua langkah dan batas waktu sesi." saving={save.isPending} dirty={dirty("security")} onSave={() => run("security")}>
             <Field label="Verifikasi dua langkah (TOTP)" hint="Akun yang wajib dan belum mengaktifkannya hanya bisa membuka halaman pengaturan sampai selesai.">{(id) => <Select id={id} value={d.security.mfa} onChange={(e) => upd("security", { mfa: e.target.value as S["security"]["mfa"] })}><option value="off">Opsional: pengguna memilih sendiri</option><option value="admins">Wajib untuk administrator dan pemilik workspace</option><option value="everyone">Wajib untuk semua pengguna</option></Select>}</Field>
             <div className="space-y-3 rounded-lg border border-line p-4">
@@ -122,7 +131,9 @@ export default function AdminSettingsPage() {
               <Num label="Lama sesi maksimal" unit="hari" min={1} max={365} value={d.security.sessionDays} onChange={(v) => upd("security", { sessionDays: v })} />
             </div>
           </Section>
+          )}
 
+          {part === "system" && (
           <Section id="ret" title="Retensi data" description="Berapa lama data disimpan sebelum dibersihkan otomatis (sekali sehari)." saving={save.isPending} dirty={dirty("retention")} onSave={() => run("retention")}
             extra={<Button type="button" size="sm" variant="ghost" loading={sweep.isPending} onClick={() => sweep.mutate()}>Bersihkan sekarang</Button>}>
             <div className="grid gap-4 sm:grid-cols-3">
@@ -131,7 +142,9 @@ export default function AdminSettingsPage() {
               <Num label="Riwayat transfer" hint="0 = simpan selamanya." unit="hari" value={d.retention.transferHistoryDays} onChange={(v) => upd("retention", { transferHistoryDays: v })} />
             </div>
           </Section>
+          )}
 
+          {part === "system" && (
           <Section id="mail" title="Email (SMTP)" description="Untuk mengirim tautan atur ulang kata sandi dan undangan. Tanpa ini, tautan ditampilkan di layar atau dicatat di log server." saving={save.isPending} dirty={dirty("email")} onSave={() => save.mutate({ section: "email", patch: { email: { ...d.email, hasPassword: undefined, ...(pw ? { password: pw } : {}) } } })}
             extra={<form className="flex flex-wrap items-center gap-2" onSubmit={(e) => { e.preventDefault(); test.mutate(); }}><Input aria-label="Kirim email uji ke" type="email" value={testTo} onChange={(e) => setTestTo(e.target.value)} className="h-9 w-56 text-[13px]" /><Button type="submit" size="sm" icon={<Send className="size-3.5" />} loading={test.isPending} disabled={!o.email.enabled || dirty("email")} title={dirty("email") ? "Simpan dulu" : undefined}>Kirim email uji</Button></form>}>
             <Toggle label="Aktifkan pengiriman email" checked={d.email.enabled} onChange={(v) => upd("email", { enabled: v })} />
@@ -144,8 +157,11 @@ export default function AdminSettingsPage() {
               <Field label="Alamat pengirim">{(id) => <Input id={id} type="email" value={d.email.fromAddress} onChange={(e) => upd("email", { fromAddress: e.target.value })} placeholder="drive@contoh.id" />}</Field>
             </div>
           </Section>
+          )}
         </div>
       </div>
     </div>
   );
 }
+
+export default AdminSettings;

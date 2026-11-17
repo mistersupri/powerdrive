@@ -122,6 +122,29 @@ export function removeItems(ctx: AuthCtx, token: string | null | undefined, id: 
   db.tx(() => { for (const it of items.slice(0, 2000)) db.run("DELETE FROM album_items WHERE album_id = ? AND storage_id = ? AND file_id = ?", id, it.storageId, it.fileId); db.run("UPDATE albums SET updated_at = ? WHERE id = ?", now(), id); });
 }
 
+/**
+ * "On this day": photos and videos from earlier years taken today or in the next three days.
+ * [today] is the caller's own date and [tz] their offset from UTC in minutes, so "today" means their today.
+ */
+export function mediaHighlights(ctx: AuthCtx, mediaSql: string, storageIds: string[], today: string, tz: number, perYear = 40) {
+  const base = new Date(`${today}T00:00:00Z`); if (Number.isNaN(base.getTime())) throw badRequest("Tanggal tidak valid.");
+  const days = [0, 1, 2, 3].map((n) => new Date(base.getTime() + n * 86_400_000).toISOString().slice(5, 10)); // "MM-DD"
+  const thisYear = base.getUTCFullYear(); const mod = `${tz >= 0 ? "+" : "-"}${Math.abs(Math.trunc(tz))} minutes`;
+  if (!storageIds.length) return { from: today, until: new Date(base.getTime() + 3 * 86_400_000).toISOString().slice(0, 10), groups: [] as { year: number; yearsAgo: number; total: number; items: FileEntry[] }[] };
+  const hide = notPrivateSql(ctx);
+  const rows = db.all<any>(
+    `SELECT f.*, CAST(strftime('%Y', f.modified_at, ?) AS INTEGER) y, strftime('%m-%d', f.modified_at, ?) md FROM files f
+     WHERE f.storage_id IN (${storageIds.map(() => "?").join(",")}) AND f.is_folder = 0 AND (${mediaSql}) AND f.modified_at IS NOT NULL
+       AND strftime('%m-%d', f.modified_at, ?) IN (${days.map(() => "?").join(",")}) AND CAST(strftime('%Y', f.modified_at, ?) AS INTEGER) < ? AND ${hide.sql}
+     ORDER BY y DESC, md ASC, f.modified_at DESC LIMIT 2000`, mod, mod, ...storageIds, mod, ...days, mod, thisYear, ...hide.args);
+  const groups = new Map<number, { year: number; yearsAgo: number; total: number; items: FileEntry[] }>();
+  for (const r of rows) {
+    const g = groups.get(r.y) ?? { year: r.y as number, yearsAgo: thisYear - r.y, total: 0, items: [] };
+    g.total++; if (g.items.length < perYear) g.items.push(entryOfRow(r)); groups.set(r.y, g);
+  }
+  return { from: today, until: new Date(base.getTime() + 3 * 86_400_000).toISOString().slice(0, 10), groups: [...groups.values()] };
+}
+
 /** Folders that hold photos or videos, newest first: the "Folder" view of the gallery. */
 export function mediaFolders(ctx: AuthCtx, mediaSql: string, storageIds: string[]) {
   if (!storageIds.length) return [];

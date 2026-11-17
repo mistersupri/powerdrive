@@ -1,5 +1,5 @@
 import { issueTicket, readTicket } from "../modules/tickets.ts";
-import { listMedia, listMediaFolders } from "../modules/files.ts";
+import { listMedia, listMediaFolders, listMediaHighlights } from "../modules/files.ts";
 import { albumFor } from "../modules/albums.ts";
 import { markSeen } from "../modules/activity.ts";
 import { addComment, addTag, deleteComment, listActivity, listComments, listTags, removeTag, workspaceTags } from "../modules/activity.ts";
@@ -169,7 +169,7 @@ export async function fileRoutes(app: FastifyInstance) {
 
   /* ---- resumable uploads ---- */
   app.post("/uploads", async (req, reply) => {
-    const b = z.object({ storageId: z.string(), parentId: z.string().default(ROOT), name: z.string(), size: z.number().int().min(0), mimeType: z.string().nullish(), conflictPolicy: conflictPolicy.optional() }).parse(req.body);
+    const b = z.object({ storageId: z.string(), parentId: z.string().default(ROOT), name: z.string(), size: z.number().int().min(0), mimeType: z.string().nullish(), conflictPolicy: conflictPolicy.optional(), lastModified: z.number().optional() }).parse(req.body);
     const { ctx, p } = open(req, "UPLOAD", b.storageId);
     if (!p.capabilities.uploadFile) throw badRequest("Penyimpanan ini tidak mendukung unggah.");
     return reply.status(201).send(ok(req, await createUpload(ctx, b)));
@@ -188,6 +188,10 @@ export async function fileRoutes(app: FastifyInstance) {
   /* ---- search / recent / starred ---- */
   // Photos and videos across storages (the "Media" gallery).
   app.get("/media/folders", async (req) => { const ctx = requireAuth(req); return ok(req, { items: listMediaFolders(ctx, z.object({ storageId: z.string().optional() }).parse(req.query).storageId) }); });
+  app.get("/media/highlights", async (req) => {
+    const ctx = requireAuth(req); const q = z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), tz: z.coerce.number().int().min(-840).max(840).default(0) }).parse(req.query);
+    return ok(req, listMediaHighlights(ctx, q.date, q.tz));
+  });
   app.get("/media", async (req) => {
     const ctx = requireAuth(req);
     const q = z.object({ kind: z.enum(["all", "image", "video"]).optional(), storageId: z.string().optional(), cursor: z.string().max(600).optional(), limit: z.coerce.number().int().optional(), sort: z.enum(["date", "name", "size"]).optional(), dir: z.enum(["asc", "desc"]).optional(), folderId: z.string().max(2000).optional(), albumId: z.string().max(60).optional() }).parse(req.query);

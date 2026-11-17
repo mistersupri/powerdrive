@@ -2,7 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { ChevronRight, Monitor, Moon, Smartphone, Sun } from "lucide-react";
 import { Link } from "react-router";
 import { inAndroidApp } from "./AndroidSettings";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { api, getWorkspaceId } from "@/lib/api";
 import { cn } from "@/lib/cn";
@@ -30,13 +30,20 @@ export default function SettingsPage() {
   const { user, workspace, isAdmin } = useWorkspace(); const { theme } = useTheme(); const qc = useQueryClient();
   const [cur, setCur] = useState(""); const [next, setNext] = useState(""); const [busy, setBusy] = useState(false);
   const [wsName, setWsName] = useState(workspace?.name ?? "");
+  const [name, setName] = useState(user?.name ?? ""); const [saving, setSaving] = useState(false);
+  useEffect(() => setName(user?.name ?? ""), [user?.name]);
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <PageHeader title="Pengaturan" subtitle="Akun, tampilan, dan workspace." />
+      <PageHeader title="Profil" subtitle="Nama, tampilan, kata sandi, dan keamanan akun Anda." />
       <div className="scroll-thin flex-1 overflow-y-auto p-4 sm:p-8">
         <div className="mx-auto max-w-2xl space-y-6">
-          <Card className="space-y-4 p-6"><h2 className="text-[15px] font-semibold">Profil</h2>
-            <div className="grid gap-4 sm:grid-cols-2"><Field label="Nama">{(id) => <Input id={id} readOnly value={user?.name ?? ""} />}</Field><Field label="Email">{(id) => <Input id={id} readOnly value={user?.email ?? ""} />}</Field></div></Card>
+          <Card className="p-6"><h2 className="mb-3 text-[15px] font-semibold">Edit profil</h2>
+            <form className="space-y-4" onSubmit={async (e) => { e.preventDefault(); setSaving(true); try { await api("/auth/profile", { method: "PATCH", body: { name: name.trim() } }); await qc.invalidateQueries({ queryKey: ["me"] }); toast.success("Profil disimpan"); } catch (err) { toast.error((err as Error).message); } setSaving(false); }}>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Nama">{(id) => <Input id={id} required maxLength={100} autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} />}</Field>
+                <Field label="Email" hint="Email dipakai untuk masuk, jadi tidak bisa diubah di sini.">{(id) => <Input id={id} readOnly value={user?.email ?? ""} />}</Field>
+              </div>
+              <Button type="submit" variant="primary" loading={saving} disabled={!name.trim() || name.trim() === (user?.name ?? "")}>Simpan profil</Button></form></Card>
           <Card className="p-6"><h2 className="mb-3 text-[15px] font-semibold">Tampilan</h2>
             <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Tema">
               {([["light", Sun, "Terang"], ["dark", Moon, "Gelap"]] as const).map(([v, I, l]) => (<button key={v} role="radio" aria-checked={theme === v} onClick={() => setTheme(v)} className={cn("flex flex-col items-center gap-2 rounded-xl border p-4 text-[13px] font-medium transition-colors", theme === v ? "border-primary bg-primary-soft text-primary-ink" : "border-line hover:bg-surface-2")}><I className="size-5" aria-hidden />{l}</button>))}

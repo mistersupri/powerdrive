@@ -118,6 +118,13 @@ export async function authRoutes(app: FastifyInstance) {
     return ok(req, {});
   });
 
+  // Edit profile: the display name. (The email is also the sign-in identity, so it is not editable here.)
+  app.patch("/profile", async (req) => {
+    const ctx = requireAuth(req); const b = z.object({ name: z.string().trim().min(1, "Nama tidak boleh kosong.").max(100) }).parse(req.body);
+    db.run("UPDATE users SET name = ? WHERE id = ?", b.name, ctx.userId); dropSession(req.sessionToken!);
+    return ok(req, { name: b.name });
+  });
+
   app.post("/change-password", async (req) => {
     const ctx = requireAuth(req);
     const b = z.object({ currentPassword: z.string(), newPassword: z.string().min(8) }).parse(req.body);

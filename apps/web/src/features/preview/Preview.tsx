@@ -1,4 +1,6 @@
 import { useExit } from "@/ui/Presence";
+import { isAndroidApp } from "@/lib/platform";
+import { MobilePreview } from "./MobilePreview";
 import type { FileEntry } from "@superdrive/shared";
 import { formatBytes } from "@superdrive/shared";
 import { ChevronLeft, ChevronRight, Download, Info, Presentation, Printer, Share2, X } from "lucide-react";
@@ -36,7 +38,14 @@ function Viewer({ f }: { f: FileEntry }) {
  * Preview in a centered window (not full screen), so the page behind stays recognisable and the layout never
  * shifts. Arrow keys move between previewable files, Escape closes.
  */
-export function Preview({ items, index, onIndex, onClose, onShare, canDownload = true, location, storageName, extras = true }: { location?: string; storageName?: string; extras?: boolean; items: FileEntry[]; index: number; onIndex(i: number): void; onClose(): void; onShare?(f: FileEntry): void; canDownload?: boolean }) {
+export interface PreviewProps { location?: string; storageName?: string; extras?: boolean; items: FileEntry[]; index: number; onIndex(i: number): void; onClose(): void; onShare?(f: FileEntry): void; canDownload?: boolean }
+
+/** The Android app opens files full screen, like a gallery; the website opens them in a window over the page. */
+export function Preview(p: PreviewProps) {
+  return isAndroidApp() ? <MobilePreview {...p} viewer={(f) => <Viewer f={f} />} /> : <WindowPreview {...p} />;
+}
+
+function WindowPreview({ items, index, onIndex, onClose, onShare, canDownload = true, location, storageName, extras = true }: PreviewProps) {
   const f = items[index]; const urls = useFileUrls(); const panel = useRef<HTMLDivElement>(null); const exit = useExit(onClose, 130);
   const [info, setInfo] = useState(false); const [show, setShow] = useState(false);
   const images = items.filter((x) => previewKind(x) === "image");

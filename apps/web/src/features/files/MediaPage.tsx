@@ -18,6 +18,7 @@ import { triggerDownload } from "./transferApi";
 import { AddToAlbumDialog, AlbumGrid, FolderGrid, type Album, type MediaFolder } from "./AlbumsUi";
 import { Dialog } from "@/ui/Dialog";
 import { SlidingTabs } from "@/ui/SlidingTabs";
+import { HighlightsStrip } from "./Highlights";
 import { Input } from "@/ui/Field";
 
 type Kind = "all" | "image" | "video";
@@ -41,7 +42,7 @@ type Row = { key: string; kind: "head"; label: string; count: number } | { key: 
 export default function MediaPage() {
   const storages = useStorages().data ?? []; const names = useMemo(() => Object.fromEntries(storages.map((s: StorageConnectionDto) => [s.id, s.isDefault ? "Semua file" : s.name])), [storages]);
   const [kind, setKind] = useState<Kind>("all"); const [storageId, setStorageId] = useState(""); const [open, setOpen] = useState<number | null>(null); const [sel, setSel] = useState<Set<string>>(new Set());
-  const [mode, setMode] = useState<Mode>("all"); const [scope, setScope] = useState<Scope | null>(null); const [addOpen, setAddOpen] = useState(false); const [renaming, setRenaming] = useState<string | null>(null); const [dropAlbum, setDropAlbum] = useState(false);
+  const [mode, setMode] = useState<Mode>("all"); const [scope, setScope] = useState<Scope | null>(null); const [memory, setMemory] = useState<{ items: FileEntry[]; index: number } | null>(null); const [addOpen, setAddOpen] = useState(false); const [renaming, setRenaming] = useState<string | null>(null); const [dropAlbum, setDropAlbum] = useState(false);
   const showGallery = mode === "all" || scope !== null;
   const [sort, setSort] = useState<(typeof SORTS)[number][0]>("date:desc"); const [confirmDelete, setConfirmDelete] = useState(false); const qc = useQueryClient();
   const [sortKey, sortDir] = sort.split(":") as [string, string];
@@ -119,6 +120,7 @@ export default function MediaPage() {
           <Select aria-label="Penyimpanan" value={storageId} onChange={(e) => { setStorageId(e.target.value); setSel(new Set()); }} className="h-9 w-full text-[13px] sm:w-52"><option value="">Semua penyimpanan</option>{storages.filter((s: StorageConnectionDto) => s.status === "CONNECTED").map((s: StorageConnectionDto) => <option key={s.id} value={s.id}>{s.isDefault ? "Semua file" : s.name}</option>)}</Select>)}
       </div>}
       {showGallery && <IndexBanner />}
+      {mode === "all" && !scope && kind === "all" && chosen.length === 0 && <HighlightsStrip onOpen={(its) => setMemory({ items: its, index: 0 })} />}
       {!showGallery && <div className="scroll-thin min-h-0 flex-1 overflow-y-auto px-4 sm:px-8" role="region" aria-label={mode === "folders" ? "Folder berisi media" : "Album"}>
         {mode === "folders" ? <FolderGrid storageId="" onOpen={(f: MediaFolder) => setScope({ kind: "folder", storageId: f.storageId, folderId: f.folderId, name: f.name })} /> : <AlbumGrid onOpen={(a: Album) => setScope({ kind: "album", id: a.id, name: a.name, isPrivate: a.isPrivate })} />}
       </div>}
@@ -144,6 +146,7 @@ export default function MediaPage() {
             </div>)}
         {q.isFetchingNextPage && <p className="py-4 text-center text-[12px] text-muted" role="status">Memuat lebih banyak…</p>}
       </div>
+      {memory && <Preview items={memory.items} index={memory.index} onIndex={(i) => setMemory({ ...memory, index: i })} onClose={() => setMemory(null)} storageName={names[memory.items[0]!.storageId]} location={undefined} />}
       <AddToAlbumDialog open={addOpen} items={chosen} onClose={() => setAddOpen(false)} onDone={() => setSel(new Set())} />
       <Dialog open={renaming !== null} onClose={() => setRenaming(null)} width="max-w-sm" title="Ganti nama album" footer={<><Button onClick={() => setRenaming(null)}>Batal</Button><Button variant="primary" disabled={!renaming?.trim()} onClick={() => void renameAlbum()}>Simpan</Button></>}>
         <form onSubmit={(e) => { e.preventDefault(); void renameAlbum(); }}><Input aria-label="Nama album" autoFocus maxLength={80} value={renaming ?? ""} onChange={(e) => setRenaming(e.target.value)} /></form>

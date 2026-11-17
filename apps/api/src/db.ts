@@ -268,6 +268,9 @@ const MIGRATIONS: string[] = [
   ALTER TABLE users ADD COLUMN album_password_hash TEXT;
   ALTER TABLE sessions ADD COLUMN private_until TEXT;
   `,
+  /* 10 */ `
+  ALTER TABLE uploads ADD COLUMN last_modified INTEGER;
+  `,
 ];
 
 function migrate(d: Database) {

@@ -4,7 +4,7 @@ import type { FileEntry, FileListing } from "@superdrive/shared";
 import { db, now } from "../db.ts";
 import { audit } from "../lib/audit.ts";
 import { badRequest, conflict } from "../lib/errors.ts";
-import { entryOfRow, mediaFolders, notPrivateSql, privateIds } from "./albums.ts";
+import { entryOfRow, mediaFolders, mediaHighlights, notPrivateSql, privateIds } from "./albums.ts";
 import { encodeId, ROOT, type RemoteFile, type StorageProvider } from "../providers/types.ts";
 import { TRASH } from "../providers/pathutil.ts";
 import { type AuthCtx, permissionsFor } from "./permissions.ts";
@@ -249,6 +249,12 @@ export function listMedia(ctx: AuthCtx, q: { kind?: "all" | "image" | "video"; s
   const last = page.at(-1);
   const c = (kind: string) => db.get<{ n: number }>(`SELECT COUNT(*) n FROM files f WHERE ${base.join(" AND ")} AND (${TYPE_FILTERS[kind]})`, ...bargs)!.n;
   return { items, nextCursor: more && last ? `${sortKey === "date" ? last.modified_at ?? "" : sortKey === "name" ? String(last.name).toLowerCase() : last.size ?? 0}\u0001${last.storage_id}\u0001${last.file_id}` : null, counts: { image: c("image"), video: c("video") } };
+}
+
+/** "On this day" for the gallery: see mediaHighlights. */
+export function listMediaHighlights(ctx: AuthCtx, today: string, tz: number) {
+  const storages = db.all<{ id: string }>("SELECT id FROM storages WHERE workspace_id = ? AND status = 'CONNECTED'", ctx.workspaceId).map((r) => r.id).filter((id) => permissionsFor(ctx, id).includes("READ"));
+  return mediaHighlights(ctx, `${TYPE_FILTERS.image} OR ${TYPE_FILTERS.video}`, storages, today, tz);
 }
 
 /** Folders that hold photos or videos (the gallery's "Folder" view). */

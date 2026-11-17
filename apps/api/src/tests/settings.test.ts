@@ -17,6 +17,22 @@ before(async () => {
 after(async () => { await t.app.close(); });
 
 describe("system settings", () => {
+  it("cannot be reached from the Android app, only from the website", async () => {
+    const app = { "user-agent": "Mozilla/5.0 (Linux; Android 14) SuperDriveAndroid/1.0.12" };
+    const r = await t.call("ana", "GET", "/admin/settings", undefined, app); assert.equal(r.status, 403); assert.equal(r.body.error.code, "WEB_ONLY");
+    assert.equal((await t.call("ana", "PATCH", "/admin/settings", { registration: { mode: "open" } }, app)).status, 403);
+    assert.equal((await t.call("ana", "GET", "/admin/settings", undefined, { "user-agent": "Mozilla/5.0 Chrome/120" })).status, 200, "a normal browser is fine");
+    assert.equal((await t.call("", "GET", "/branding", undefined, app)).status, 200, "the public branding the app needs still works");
+  });
+
+  it("lets anyone change their own display name, and nobody else's", async () => {
+    await t.register("pat");
+    assert.equal((await t.call("pat", "PATCH", "/auth/profile", { name: "  Pat Baru  " })).data.name, "Pat Baru");
+    assert.equal((await t.call("pat", "GET", "/auth/me")).data.user.name, "Pat Baru");
+    assert.equal((await t.call("pat", "PATCH", "/auth/profile", { name: "   " })).status, 400);
+    assert.equal((await t.call("", "PATCH", "/auth/profile", { name: "x" })).status, 401);
+  });
+
   it("are for the super admin only, and secrets never come back", async () => {
     await t.register("bo");
     assert.equal((await t.call("bo", "GET", "/admin/settings")).status, 403);

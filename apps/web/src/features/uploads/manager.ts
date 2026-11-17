@@ -103,7 +103,7 @@ async function run(id: string) {
     try { const prev = localStorage.getItem(fingerprint(t)); if (prev) prevUp = await api<UploadDto>(`${prefix(t.shareToken)}/uploads/${prev}`).catch(() => null); } catch { /* storage unavailable */ }
     let up: UploadDto = prevUp && prevUp.status === "RECEIVING"
       ? prevUp
-      : await withRetry(() => api<UploadDto>(`${prefix(t.shareToken)}/uploads`, { body: { ...(t.shareToken ? {} : { storageId: t.storageId }), parentId: parent, name: t.name, size: t.size, mimeType: t.file.type || null, conflictPolicy: t.policy } }));
+      : await withRetry(() => api<UploadDto>(`${prefix(t.shareToken)}/uploads`, { body: { ...(t.shareToken ? {} : { storageId: t.storageId }), parentId: parent, name: t.name, size: t.size, mimeType: t.file.type || null, conflictPolicy: t.policy, ...(t.file.lastModified ? { lastModified: t.file.lastModified } : {}) } }));
     try { localStorage.setItem(fingerprint(t), up.id); } catch { /* ignore */ }
     patch(id, { serverId: up.id, sent: up.offset });
 

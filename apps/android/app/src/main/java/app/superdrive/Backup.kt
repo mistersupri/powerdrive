@@ -119,7 +119,7 @@ object BackupScheduler {
 }
 
 class BackupWorker(private val ctx: Context, params: WorkerParameters) : Worker(ctx, params) {
-    class Item(val kind: String, val id: Long, val uri: Uri, val name: String, val size: Long, val mime: String, val bucket: String)
+    class Item(val kind: String, val id: Long, val uri: Uri, val name: String, val size: Long, val mime: String, val bucket: String, val taken: Long)
     private class SessionExpired : Exception()
 
     private val http = OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS).readTimeout(5, TimeUnit.MINUTES).writeTimeout(5, TimeUnit.MINUTES).build()
@@ -209,7 +209,7 @@ class BackupWorker(private val ctx: Context, params: WorkerParameters) : Worker(
 
     /** Sends one photo or video. True when it is on the server (or was already). */
     private fun send(storageId: String, parent: String, it: Item): Boolean {
-        val created = post("/api/v1/uploads", JSONObject().put("storageId", storageId).put("parentId", parent).put("name", it.name).put("size", it.size).put("mimeType", it.mime).put("conflictPolicy", "SKIP")).getJSONObject("data")
+        val created = post("/api/v1/uploads", JSONObject().put("storageId", storageId).put("parentId", parent).put("name", it.name).put("size", it.size).put("mimeType", it.mime).put("conflictPolicy", "SKIP").apply { if (it.taken > 0) put("lastModified", it.taken) }).getJSONObject("data")
         if (created.optString("status") == "DONE") return true // the same name was already there
         val id = created.getString("id")
         val stream = ctx.contentResolver.openInputStream(it.uri) ?: return false
@@ -232,7 +232,7 @@ class BackupWorker(private val ctx: Context, params: WorkerParameters) : Worker(
 
         private fun scan(c: Context, uri: Uri, kind: String): List<Item> {
             val since = if (BackupStore.existing(c)) 0L else BackupStore.since(c)
-            val cols = arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.SIZE, MediaStore.MediaColumns.MIME_TYPE, MediaStore.MediaColumns.BUCKET_DISPLAY_NAME)
+            val cols = arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.SIZE, MediaStore.MediaColumns.MIME_TYPE, MediaStore.MediaColumns.BUCKET_DISPLAY_NAME, "datetaken", MediaStore.MediaColumns.DATE_MODIFIED)
             val where = StringBuilder("${MediaStore.MediaColumns.SIZE} > 0"); val args = ArrayList<String>()
             if (Build.VERSION.SDK_INT >= 29) where.append(" AND ${MediaStore.MediaColumns.IS_PENDING} = 0")
             if (since > 0) { where.append(" AND ${MediaStore.MediaColumns.DATE_ADDED} >= ?"); args.add(since.toString()) }
@@ -245,7 +245,9 @@ class BackupWorker(private val ctx: Context, params: WorkerParameters) : Worker(
             c.contentResolver.query(uri, cols, where.toString(), args.toTypedArray(), "${MediaStore.MediaColumns.DATE_ADDED} DESC")?.use { cur ->
                 while (cur.moveToNext()) {
                     val id = cur.getLong(0)
-                    out.add(Item(kind, id, ContentUris.withAppendedId(uri, id), cur.getString(1) ?: "$kind-$id", cur.getLong(2), cur.getString(3) ?: "application/octet-stream", cur.getString(4) ?: ""))
+                    out.add(Item(kind, id, ContentUris.withAppendedId(uri, id), cur.getString(1) ?: "$kind-$id", cur.getLong(2), cur.getString(3) ?: "application/octet-stream", cur.getString(4) ?: "",
+                        // when the picture was taken; the file's own change date if the gallery does not know
+                        cur.getLong(5).takeIf { it > 0 } ?: (cur.getLong(6) * 1000)))
                 }
             }
             return out

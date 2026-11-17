@@ -55,7 +55,7 @@ function checkQuotas(ctx: AuthCtx, size: number, shareId?: string) {
   }
 }
 
-export async function createUpload(ctx: AuthCtx, input: { storageId: string; parentId: string; name: string; size: number; mimeType?: string | null; conflictPolicy?: ConflictPolicy }, shareId?: string) {
+export async function createUpload(ctx: AuthCtx, input: { storageId: string; parentId: string; name: string; size: number; mimeType?: string | null; conflictPolicy?: ConflictPolicy; /** when the photo was taken / the file was last changed on the sender's side (ms since 1970) */ lastModified?: number }, shareId?: string) {
   const name = validName(input.name);
   if (!Number.isSafeInteger(input.size) || input.size < 0) throw badRequest("Ukuran file tidak valid.");
   if (config.upload.maxFileSize && input.size > config.upload.maxFileSize) throw new AppError(413, "FILE_TOO_LARGE", "File melebihi ukuran maksimum yang diizinkan.");
@@ -64,8 +64,10 @@ export async function createUpload(ctx: AuthCtx, input: { storageId: string; par
   await fsp.mkdir(config.stagingDir, { recursive: true });
   const staging = path.join(config.stagingDir, `${id}.part`);
   await fsp.writeFile(staging, "", { mode: 0o600 });
-  db.run("INSERT INTO uploads(id,workspace_id,user_id,storage_id,parent_id,name,size,mime_type,conflict_policy,staging_path,share_id,ip) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-    id, ctx.workspaceId, ctx.userId, input.storageId, decodeId(input.parentId), name, input.size, input.mimeType ?? null, input.conflictPolicy ?? "RENAME", staging, shareId ?? null, ctx.ip || null);
+  // The sender's own date (a photo's capture time) is kept when it is plausible; otherwise the file simply gets the time it arrived.
+  const lm = Number.isFinite(input.lastModified) && input.lastModified! > 0 && input.lastModified! <= Date.now() + 86_400_000 ? Math.floor(input.lastModified!) : null;
+  db.run("INSERT INTO uploads(id,workspace_id,user_id,storage_id,parent_id,name,size,mime_type,conflict_policy,staging_path,share_id,ip,last_modified) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+    id, ctx.workspaceId, ctx.userId, input.storageId, decodeId(input.parentId), name, input.size, input.mimeType ?? null, input.conflictPolicy ?? "RENAME", staging, shareId ?? null, ctx.ip || null, lm);
   if (shareId) db.run("UPDATE share_links SET uploaded_bytes = uploaded_bytes + ? WHERE id = ?", input.size, shareId);
   const row = db.get<any>("SELECT * FROM uploads WHERE id = ?", id)!;
   if (input.size === 0) startFinalize(ctx, row);
@@ -151,7 +153,10 @@ async function finalize(ctx: AuthCtx, r: any) {
       if (r.conflict_policy === "RENAME") name = await uniqueName(p, r.parent_id, name);
     }
     let file;
-    if (p instanceof LocalProvider && !(existing && r.conflict_policy === "OVERWRITE")) file = await p.adopt(r.parent_id, name, r.staging_path);
+    if (p instanceof LocalProvider && !(existing && r.conflict_policy === "OVERWRITE")) {
+      if (r.last_modified) { const t = new Date(r.last_modified); await fsp.utimes(r.staging_path, t, t).catch(() => {}); } // the move keeps this date
+      file = await p.adopt(r.parent_id, name, r.staging_path);
+    }
     else {
       // Overwrite on a remote provider: upload under a temporary name, then swap, so a failed upload never destroys the old file.
       const swap = existing && r.conflict_policy === "OVERWRITE";

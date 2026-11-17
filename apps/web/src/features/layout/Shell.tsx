@@ -1,6 +1,6 @@
 import type { NotificationDto, StorageConnectionDto } from "@superdrive/shared";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Activity, ArrowRightLeft, Bell, Check, ChevronRight, ChevronsUpDown, Clock, Columns2, FolderOpen, Images, SlidersHorizontal, HardDrive, LayoutDashboard, Link2, LogOut, Menu as MenuIcon, Moon, Search, Settings, Star, Sun, Trash2, Users, X } from "lucide-react";
+import { Activity, ArrowRightLeft, Bell, Check, ChevronRight, ChevronsUpDown, Clock, Columns2, FolderOpen, Images, SlidersHorizontal, HardDrive, LayoutDashboard, Link2, LogOut, Menu as MenuIcon, Moon, Search, Settings, Star, Sun, Trash2, Users, X, Globe } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { NavLink, Navigate, Outlet, useLocation, useNavigate } from "react-router";
 import { Toaster } from "sonner";
@@ -25,6 +25,7 @@ import { toast } from "sonner";
 import { useTheme } from "./theme";
 import { usePersistentState } from "@/lib/usePersistentState";
 import { Presence } from "@/ui/Presence";
+import { isAndroidApp } from "@/lib/platform";
 import { FolderTree } from "@/features/files/FolderTree";
 import { useFolder } from "@/features/files/useFolder";
 
@@ -99,8 +100,9 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         {isAdmin && <NavItem to="/activity" icon={Activity}>Log aktivitas</NavItem>}
         <Section>Workspace</Section>
         <NavItem to="/members" icon={Users}>Anggota</NavItem>
-        <NavItem to="/settings" icon={Settings}>Pengaturan</NavItem>
-        {useWorkspace().user?.isSuperAdmin && <NavItem to="/admin" icon={SlidersHorizontal}>Pengaturan sistem</NavItem>}
+        <NavItem to="/settings" icon={Settings}>Profil</NavItem>
+        {/* System and website settings exist on the website only: the Android app never shows them. */}
+        {useWorkspace().user?.isSuperAdmin && !isAndroidApp() && <><NavItem to="/admin/system" icon={SlidersHorizontal}>Pengaturan sistem</NavItem><NavItem to="/admin/website" icon={Globe}>Pengaturan website</NavItem></>}
       </div>
     </nav>
   );
@@ -206,7 +208,7 @@ function AccountMenu() {
     <button aria-label="Menu akun" aria-haspopup="menu" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); menu.open(r.right - 200, r.bottom + 6, [
       { label: user?.email ?? "", onSelect: () => {}, disabled: true },
       { label: theme === "dark" ? "Tema terang" : "Tema gelap", icon: theme === "dark" ? <Sun /> : <Moon />, onSelect: toggle, divider: true },
-      { label: "Pengaturan", icon: <Settings />, onSelect: () => nav("/settings") },
+      { label: "Profil", icon: <Settings />, onSelect: () => nav("/settings") },
       { label: "Keluar", icon: <LogOut />, danger: true, divider: true, onSelect: async () => { await api("/auth/logout", { body: {} }).catch(() => {}); disconnectTransfers(); queryClient.clear(); nav("/login", { replace: true }); } },
     ]); }} className="rounded-full transition-transform active:scale-95"><Avatar name={user?.name ?? "?"} /></button>
     {menu.element}

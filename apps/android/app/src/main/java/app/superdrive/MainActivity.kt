@@ -374,6 +374,12 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun appVersion(): String = BuildConfig.VERSION_NAME
 
+        /** The full-screen viewer hides the status and navigation bars together with its own bars. */
+        @JavascriptInterface
+        fun setFullscreen(on: Boolean) {
+            runOnUiThread { if (customView == null) setFullscreenBars(on) }
+        }
+
         /** {enabled, delay (ms), available (this phone has a fingerprint or screen lock)} */
         @JavascriptInterface
         fun lockState(): String = JSONObject().put("enabled", lock.enabled).put("delay", lock.delayMs).put("available", lock.available()).toString()
