@@ -43,4 +43,10 @@
     <string name="lock_unavailable">Daftarkan sidik jari atau kunci layar di pengaturan HP terlebih dahulu.</string>
     <string name="lock_auto_off">Kunci aplikasi dimatikan karena HP tidak lagi punya sidik jari atau kunci layar.</string>
     <string name="google_no_browser">Tidak ada browser untuk membuka halaman masuk Google.</string>
+    <string name="backup_title">Cadangan foto</string>
+    <string name="backup_progress">%1$d dari %2$d</string>
+    <string name="backup_done_title">Cadangan foto selesai</string>
+    <string name="backup_done_text">%1$d foto dan video dicadangkan</string>
+    <string name="backup_signed_out">Masuk lagi ke SuperDrive agar cadangan foto bisa berlanjut.</string>
+    <string name="backup_denied">Izin akses foto diperlukan untuk mencadangkan.</string>
 </resources>

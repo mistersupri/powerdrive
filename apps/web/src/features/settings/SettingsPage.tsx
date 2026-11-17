@@ -12,7 +12,8 @@ import { Field, Input } from "@/ui/Field";
 import { Card } from "@/ui/misc";
 import { MfaCard } from "./Mfa";
 
-type AndroidBridge = { appVersion?(): string; checkForUpdate?(): void; lockState?(): string; setLock?(enabled: boolean, delayMs: number): void };
+type AndroidBridge = { appVersion?(): string; checkForUpdate?(): void; lockState?(): string; setLock?(enabled: boolean, delayMs: number): void; backupState?(): string; setBackup?(json: string): void; backupNow?(): void };
+interface BackupState { enabled: boolean; wifiOnly: boolean; videos: boolean; existing: boolean; permission: boolean; running: boolean; lastRun: number; lastCount: number; error: string | null; pending: number }
 interface LockState { enabled: boolean; delay: number; available: boolean }
 const LOCK_DELAYS = [[0, "Setiap kali keluar dari aplikasi"], [60_000, "Setelah 1 menit"], [300_000, "Setelah 5 menit"], [900_000, "Setelah 15 menit"]] as const;
 
@@ -20,6 +21,11 @@ const LOCK_DELAYS = [[0, "Setiap kali keluar dari aplikasi"], [60_000, "Setelah 
 function AndroidAppCard() {
   const bridge = (window as unknown as { SuperDriveAndroid?: AndroidBridge }).SuperDriveAndroid;
   const read = (): LockState | null => { try { return bridge?.lockState ? (JSON.parse(bridge.lockState()) as LockState) : null; } catch { return null; } };
+  const readBackup = (): BackupState | null => { try { return bridge?.backupState ? (JSON.parse(bridge.backupState()) as BackupState) : null; } catch { return null; } };
+  const [backup, setBackupState] = useState<BackupState | null>(readBackup);
+  const setBackup = (patch: Partial<BackupState>) => { if (backup) bridge?.setBackup?.(JSON.stringify({ ...backup, ...patch })); };
+  // Progress comes from the phone: refresh when it says something changed, and every few seconds while a backup runs.
+  useEffect(() => { const f = () => setBackupState(readBackup()); window.addEventListener("sd-backup-changed", f); const t = setInterval(f, 4000); return () => { window.removeEventListener("sd-backup-changed", f); clearInterval(t); }; }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [lock, setLockState] = useState<LockState | null>(read);
   // The app answers after the fingerprint was confirmed (or refused) and tells the page to look again.
   useEffect(() => { const f = () => setLockState(read()); window.addEventListener("sd-lock-changed", f); return () => window.removeEventListener("sd-lock-changed", f); }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -30,6 +36,26 @@ function AndroidAppCard() {
         <div className="min-w-0 flex-1"><h2 className="text-[15px] font-semibold">Aplikasi Android</h2><p className="text-[13px] text-muted">Versi {bridge.appVersion?.() ?? "—"}</p></div>
         <Button onClick={() => bridge.checkForUpdate?.()}>Periksa pembaruan</Button>
       </div>
+      {backup && bridge.setBackup && (
+        <div className="space-y-3 border-t border-line pt-4">
+          <label className="flex min-h-11 cursor-pointer items-center gap-3">
+            <input type="checkbox" role="switch" className="size-5 accent-[var(--color-primary)]" checked={backup.enabled} onChange={(e) => setBackup({ enabled: e.target.checked })} />
+            <span className="min-w-0 flex-1"><span className="block text-[14px] font-medium">Cadangkan foto otomatis</span><span className="block text-[13px] text-muted">Foto dan video baru di HP ini diunggah ke folder “Cadangan Foto” di Semua file, satu folder per album HP (Camera, Screenshots, …).</span></span>
+          </label>
+          {backup.enabled && (<>
+            <div className="grid gap-1 pl-8">
+              {([["wifiOnly", "Hanya lewat Wi-Fi"], ["videos", "Sertakan video"], ["existing", "Sertakan foto yang sudah ada di HP"]] as const).map(([k, label]) => (
+                <label key={k} className="flex min-h-10 cursor-pointer items-center gap-3 text-[13px]"><input type="checkbox" className="size-4 accent-[var(--color-primary)]" checked={backup[k]} onChange={(e) => setBackup({ [k]: e.target.checked })} />{label}</label>))}
+            </div>
+            <div className="flex flex-wrap items-center gap-3 pl-8 text-[13px] text-muted">
+              <span className="min-w-0 flex-1" role="status">
+                {backup.running ? "Sedang mencadangkan…" : backup.error ? <span className="text-danger-ink">{backup.error}</span> : backup.lastRun ? `Terakhir ${new Date(backup.lastRun).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" })}${backup.lastCount ? ` · ${backup.lastCount} item` : ""}` : "Belum pernah berjalan"}
+                {backup.pending > 0 && !backup.running ? ` · ${backup.pending.toLocaleString("id-ID")} menunggu` : ""}
+              </span>
+              <Button size="sm" disabled={backup.running || !backup.permission} onClick={() => bridge.backupNow?.()}>Cadangkan sekarang</Button>
+            </div>
+          </>)}
+        </div>)}
       {lock && bridge.setLock && (
         <div className="space-y-3 border-t border-line pt-4">
           <label className="flex min-h-11 cursor-pointer items-center gap-3">

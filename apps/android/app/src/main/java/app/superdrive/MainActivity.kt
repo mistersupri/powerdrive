@@ -94,6 +94,28 @@ class MainActivity : AppCompatActivity() {
         if (granted) enqueue(request) else Toast.makeText(this, R.string.download_denied, Toast.LENGTH_LONG).show()
     }
 
+    // Photo backup: the gallery permission has to be granted before it can be turned on.
+    private var pendingBackup: JSONObject? = null
+    private val askMedia = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        val want = pendingBackup; pendingBackup = null
+        if (want != null) {
+            if (BackupStore.hasPermission(this)) applyBackup(want) else { Toast.makeText(this, R.string.backup_denied, Toast.LENGTH_LONG).show(); notifyBackupChanged() }
+        }
+    }
+
+    private fun applyBackup(o: JSONObject) {
+        val was = BackupStore.enabled(this)
+        BackupStore.save(this, o.optBoolean("enabled"), o.optBoolean("wifiOnly", true), o.optBoolean("videos", true), o.optBoolean("existing", true))
+        BackupScheduler.apply(this)
+        if (BackupStore.enabled(this) && !was) BackupScheduler.now(this)
+        notifyBackupChanged()
+    }
+    private fun requestBackup(o: JSONObject) {
+        if (o.optBoolean("enabled") && !BackupStore.hasPermission(this)) { pendingBackup = o; externalFlow = true; askMedia.launch(BackupStore.permissionsToAsk()); return }
+        applyBackup(o)
+    }
+    private fun notifyBackupChanged() { web.evaluateJavascript("window.dispatchEvent(new Event('sd-backup-changed'))", null) }
+
     private val askNotifications = registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* the notification simply stays hidden when refused */ }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -349,6 +371,21 @@ class MainActivity : AppCompatActivity() {
         /** {enabled, delay (ms), available (this phone has a fingerprint or screen lock)} */
         @JavascriptInterface
         fun lockState(): String = JSONObject().put("enabled", lock.enabled).put("delay", lock.delayMs).put("available", lock.available()).toString()
+
+        /** Photo backup: {enabled, wifiOnly, videos, existing, permission, running, lastRun, lastCount, error, pending} */
+        @JavascriptInterface
+        fun backupState(): String = BackupStore.state(this@MainActivity).toString()
+
+        @JavascriptInterface
+        fun setBackup(json: String) {
+            val o = try { JSONObject(json) } catch (e: Exception) { return }
+            runOnUiThread { requestBackup(o) }
+        }
+
+        @JavascriptInterface
+        fun backupNow() {
+            runOnUiThread { if (BackupStore.enabled(this@MainActivity) && BackupStore.hasPermission(this@MainActivity)) BackupScheduler.now(this@MainActivity) }
+        }
 
         @JavascriptInterface
         fun setLock(enabled: Boolean, delayMs: Long) {
