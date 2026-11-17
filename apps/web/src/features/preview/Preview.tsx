@@ -1,3 +1,4 @@
+import { useExit } from "@/ui/Presence";
 import type { FileEntry } from "@superdrive/shared";
 import { formatBytes } from "@superdrive/shared";
 import { ChevronLeft, ChevronRight, Download, Info, Presentation, Printer, Share2, X } from "lucide-react";
@@ -36,14 +37,14 @@ function Viewer({ f }: { f: FileEntry }) {
  * shifts. Arrow keys move between previewable files, Escape closes.
  */
 export function Preview({ items, index, onIndex, onClose, onShare, canDownload = true, location, storageName, extras = true }: { location?: string; storageName?: string; extras?: boolean; items: FileEntry[]; index: number; onIndex(i: number): void; onClose(): void; onShare?(f: FileEntry): void; canDownload?: boolean }) {
-  const f = items[index]; const urls = useFileUrls(); const panel = useRef<HTMLDivElement>(null);
+  const f = items[index]; const urls = useFileUrls(); const panel = useRef<HTMLDivElement>(null); const exit = useExit(onClose, 130);
   const [info, setInfo] = useState(false); const [show, setShow] = useState(false);
   const images = items.filter((x) => previewKind(x) === "image");
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
       const typing = (e.target as HTMLElement)?.closest("input,textarea,select");
       if (show) return;
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") exit.close();
       if (!typing && e.key.toLowerCase() === "i") setInfo((v) => !v);
       if (typing) return;
       if (e.key === "ArrowRight" && index < items.length - 1) onIndex(index + 1);
@@ -63,10 +64,10 @@ export function Preview({ items, index, onIndex, onClose, onShare, canDownload =
     return <button aria-label={dir < 0 ? "Sebelumnya" : "Berikutnya"} onClick={() => onIndex(target)} className={`absolute top-1/2 z-10 grid size-10 -translate-y-1/2 place-items-center rounded-full bg-surface/90 text-ink shadow-float hover:bg-surface ${dir < 0 ? "left-3" : "right-3"}`}>{children}</button>;
   };
   return (
-    <div className="anim-fade fixed inset-0 z-50 grid place-items-center bg-black/55 p-3 sm:p-6" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div ref={panel} tabIndex={-1} role="dialog" aria-modal="true" aria-label={`Pratinjau ${f.name}`} className="anim-pop relative flex h-[min(88vh,860px)] w-[min(1120px,100%)] flex-col overflow-hidden rounded-2xl bg-surface text-ink shadow-float focus:outline-none">
+    <div data-closing={exit.closing || undefined} className="anim-fade fixed inset-0 z-50 grid place-items-center bg-black/55 p-3 sm:p-6" onMouseDown={(e) => { if (e.target === e.currentTarget) exit.close(); }}>
+      <div ref={panel} tabIndex={-1} role="dialog" aria-modal="true" aria-label={`Pratinjau ${f.name}`} data-closing={exit.closing || undefined} style={{ "--pop-origin": "center" } as React.CSSProperties} className="anim-pop relative flex h-[min(88vh,860px)] w-[min(1120px,100%)] flex-col overflow-hidden rounded-2xl bg-surface text-ink shadow-float focus:outline-none">
         <header className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-line px-3 py-2 sm:flex-nowrap sm:gap-3 sm:px-4 sm:py-2.5">
-          <IconButton label="Tutup" className="order-[-1] ml-auto sm:order-last sm:ml-0" onClick={onClose}><X className="size-5" /></IconButton>
+          <IconButton label="Tutup" className="order-[-1] ml-auto sm:order-last sm:ml-0" onClick={exit.close}><X className="size-5" /></IconButton>
           <div className="order-[-2] min-w-0 basis-[calc(100%-52px)] sm:order-none sm:basis-0 sm:flex-1"><p className="line-clamp-2 text-[14px] font-semibold break-all sm:truncate" title={f.name}>{f.name}</p><p className="tnum text-[12px] text-muted">{formatBytes(f.size)} · {index + 1} dari {items.length}</p></div>
           <IconButton label="Detail" aria-pressed={info} className={info ? "bg-surface-2" : ""} onClick={() => setInfo(!info)}><Info className="size-[18px]" /></IconButton>
           {images.length > 0 && <IconButton label="Tayangan slide" onClick={() => setShow(true)}><Presentation className="size-[18px]" /></IconButton>}

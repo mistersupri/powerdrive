@@ -87,18 +87,59 @@ button:disabled { cursor: not-allowed; }
 
 :focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: 6px; }
 
-/* Motion: short, ease-out, and only on things people do rarely (menus, dialogs, toasts). Lists never animate. */
-@keyframes pop-in { from { opacity: 0; transform: translateY(4px) scale(0.98); } to { opacity: 1; transform: none; } }
+/*
+ * Motion. Strong ease-out curves (the built-in ones are too timid), short durations, and an exit for everything that has an entrance:
+ * leaving is faster than arriving. Things people do hundreds of times a day (typing, arrow keys, picking menu items) never animate.
+ * Every animation here is transform + opacity only, so it runs on the compositor and stays smooth while the page is busy.
+ */
+:root { --ease-out: cubic-bezier(0.23, 1, 0.32, 1); --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1); --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1); }
+@keyframes pop-in { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: none; } }
+@keyframes pop-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: scale(0.97); } }
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
-@keyframes slide-up { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@keyframes fade-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes sheet-in { from { transform: translateY(100%); } to { transform: none; } }
+@keyframes sheet-out { from { transform: none; } to { transform: translateY(100%); } }
+@keyframes drawer-in { from { transform: translateX(-100%); } to { transform: none; } }
+@keyframes drawer-out { from { transform: none; } to { transform: translateX(-100%); } }
+@keyframes rise-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes rise-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(8px); } }
+@keyframes page-in { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+@keyframes rows-in { from { grid-template-rows: 0fr; opacity: 0; } to { grid-template-rows: 1fr; opacity: 1; } }
+@keyframes rows-out { from { grid-template-rows: 1fr; opacity: 1; } to { grid-template-rows: 0fr; opacity: 0; } }
 @keyframes shimmer { 100% { transform: translateX(100%); } }
-.anim-pop { animation: pop-in 140ms cubic-bezier(0.2, 0.8, 0.2, 1); transform-origin: top; }
-.anim-fade { animation: fade-in 160ms ease-out; }
-.anim-slide-up { animation: slide-up 220ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+
+/* Popovers, menus and dialogs grow out of where they came from: set --pop-origin (default: top, a dialog sets center). */
+.anim-pop { animation: pop-in 170ms var(--ease-out) both; transform-origin: var(--pop-origin, top); }
+.anim-pop[data-closing] { animation: pop-out 110ms var(--ease-out) forwards; pointer-events: none; }
+.anim-fade { animation: fade-in 180ms ease-out both; }
+.anim-fade[data-closing] { animation: fade-out 140ms ease-out forwards; pointer-events: none; }
+.anim-sheet { animation: sheet-in 320ms var(--ease-drawer) both; }
+.anim-sheet[data-closing] { animation: sheet-out 220ms var(--ease-drawer) forwards; pointer-events: none; }
+.anim-drawer { animation: drawer-in 300ms var(--ease-drawer) both; }
+.anim-drawer[data-closing] { animation: drawer-out 220ms var(--ease-drawer) forwards; }
+.anim-rise { animation: rise-in 240ms var(--ease-out) both; }
+.anim-rise[data-closing] { animation: rise-out 160ms var(--ease-out) forwards; pointer-events: none; }
+.anim-slide-up { animation: rise-in 240ms var(--ease-out) both; }
+.anim-page { animation: page-in 190ms var(--ease-out) both; }
+.anim-rows { display: grid; animation: rows-in 200ms var(--ease-out) both; }
+.anim-rows[data-closing] { animation: rows-out 160ms var(--ease-out) forwards; }
+.anim-rows > * { min-height: 0; overflow: hidden; }
+/* The dim layer behind a native <dialog> fades with it. */
+dialog::backdrop { animation: fade-in 180ms ease-out both; }
+dialog[data-closing]::backdrop { animation: fade-out 140ms ease-out forwards; }
+/* Whatever can be pressed gives a little: the chip dips under the finger, and returns on release. */
+.press { transition: transform 140ms var(--ease-out), background-color 150ms ease, color 150ms ease; }
+.press:active { transform: scale(0.96); }
 .skeleton { position: relative; overflow: hidden; background: var(--surface-2); }
 .skeleton::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%); background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--ink) 6%, transparent), transparent); animation: shimmer 1.4s infinite; }
+/* Reduced motion means gentler, not none: movement and scaling go, short fades stay because they explain what changed. */
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+  *, *::before, *::after { transition-duration: 0.01ms !important; animation-iteration-count: 1 !important; }
+  .anim-pop, .anim-sheet, .anim-drawer, .anim-rise, .anim-slide-up, .anim-page { animation-name: fade-in; animation-duration: 140ms; animation-timing-function: ease-out; }
+  .anim-pop[data-closing], .anim-sheet[data-closing], .anim-drawer[data-closing], .anim-rise[data-closing] { animation-name: fade-out; animation-duration: 100ms; }
+  .anim-rows, .anim-rows[data-closing] { animation: none; }
+  .skeleton::after { animation: none; }
+  .press:active { transform: none; }
 }
 
 .scroll-thin { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }

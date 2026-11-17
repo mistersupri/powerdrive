@@ -24,6 +24,7 @@ import { DRAG_MIME } from "@/features/files/dnd";
 import { toast } from "sonner";
 import { useTheme } from "./theme";
 import { usePersistentState } from "@/lib/usePersistentState";
+import { Presence } from "@/ui/Presence";
 import { FolderTree } from "@/features/files/FolderTree";
 import { useFolder } from "@/features/files/useFolder";
 
@@ -31,7 +32,7 @@ export function useStorages() {
   return useQuery({ queryKey: ["storages"], queryFn: () => api<StorageConnectionDto[]>("/storages"), staleTime: 15_000 });
 }
 
-const item = "group relative flex h-9 items-center pointer-coarse:h-11 gap-3 rounded-lg px-3 text-[13px] font-medium text-muted transition-colors hover:bg-surface-2 hover:text-ink";
+const item = "press group relative flex h-9 items-center pointer-coarse:h-11 gap-3 rounded-lg px-3 text-[13px] font-medium text-muted transition-colors hover:bg-surface-2 hover:text-ink";
 const active = "bg-primary-soft text-primary-ink hover:bg-primary-soft";
 
 function NavItem({ to, icon: Icon, children, badge, end, trailing }: { trailing?: ReactNode; to: string; icon: typeof Search; children: ReactNode; badge?: number; end?: boolean }) {
@@ -115,12 +116,13 @@ function BottomNav() {
     { to: "/shared", label: "Berbagi", icon: Users, on: loc.pathname.startsWith("/shared") || loc.pathname.startsWith("/shares") },
     { to: "/transfers", label: "Transfer", icon: ArrowRightLeft, on: loc.pathname.startsWith("/transfers") || loc.pathname.startsWith("/dual"), badge: active },
   ];
-  const cell = "relative flex min-h-14 flex-col items-center justify-center gap-0.5 px-1 text-[11px] font-medium transition-colors focus-visible:bg-surface-2 focus-visible:outline-none";
+  const cell = "press relative flex min-h-14 flex-col items-center justify-center gap-0.5 px-1 text-[11px] font-medium transition-colors focus-visible:bg-surface-2 focus-visible:outline-none";
   return (
-    <nav aria-label="Navigasi bawah" className="grid shrink-0 grid-cols-5 border-t border-line bg-surface pb-[env(safe-area-inset-bottom)] lg:hidden">
+    <nav aria-label="Navigasi bawah" className="relative grid shrink-0 grid-cols-5 border-t border-line bg-surface pb-[env(safe-area-inset-bottom)] lg:hidden">
+      {/* One indicator that slides to the active tab, instead of one that blinks on and off per tab. */}
+      <span aria-hidden className="pointer-events-none absolute top-0 left-0 h-0.5 w-1/5 transition-[transform,opacity] duration-300 ease-[var(--ease-drawer)]" style={{ transform: `translateX(${Math.max(0, items.findIndex((i) => i.on)) * 100}%)`, opacity: items.some((i) => i.on) ? 1 : 0 }}><span className="mx-auto block h-full w-8 rounded-b bg-primary" /></span>
       {items.map((it) => (
         <NavLink key={it.to} to={it.to} aria-current={it.on ? "page" : undefined} className={cn(cell, it.on ? "text-primary-ink" : "text-muted active:bg-surface-2")}>
-          {it.on && <span className="absolute top-0 h-0.5 w-8 rounded-b bg-primary" aria-hidden />}
           <span className="relative"><it.icon className="size-[22px]" aria-hidden />{!!it.badge && <span className="tnum absolute -top-1.5 -right-2.5 grid min-w-[16px] place-items-center rounded-full bg-primary px-1 text-[10px] leading-4 font-semibold text-white" aria-label={`${it.badge} berjalan`}>{it.badge}</span>}</span>
           <span className="max-w-full truncate">{it.label}</span>
         </NavLink>))}
@@ -186,7 +188,7 @@ function Notifications() {
         {unread > 0 && <span className="absolute top-1.5 right-1.5 size-2 rounded-full bg-danger ring-2 ring-surface-2" aria-hidden />}
       </IconButton>
       {open && (
-        <div role="dialog" aria-label="Notifikasi" className="anim-pop z-50 rounded-xl border border-line bg-surface shadow-float max-sm:fixed max-sm:inset-x-3 max-sm:top-[4.75rem] sm:absolute sm:right-0 sm:mt-2 sm:w-[360px]">
+        <div role="dialog" aria-label="Notifikasi" style={{ "--pop-origin": "top right" } as React.CSSProperties} className="anim-pop z-50 rounded-xl border border-line bg-surface shadow-float max-sm:fixed max-sm:inset-x-3 max-sm:top-[4.75rem] sm:absolute sm:right-0 sm:mt-2 sm:w-[360px]">
           <div className="border-b border-line px-4 py-3 text-[14px] font-semibold">Notifikasi</div>
           <ul className="scroll-thin max-h-[min(420px,calc(100dvh-10rem))] divide-y divide-line overflow-y-auto">
             {q.data?.items.length ? q.data.items.map((n) => (
@@ -230,13 +232,13 @@ export function AppShell() {
     <ShellCtx.Provider value={{ openMenu: () => setDrawer(true) }}>
       <div className="flex h-dvh">
         <aside className="hidden w-60 shrink-0 border-r border-line bg-surface lg:block"><Sidebar /></aside>
-        {drawer && (
+        <Presence show={drawer} exitMs={230}>{(closing) => (
           <div className="fixed inset-0 z-40 lg:hidden" role="dialog" aria-modal="true" aria-label="Menu">
-            <div className="anim-fade absolute inset-0 bg-black/40" onClick={() => setDrawer(false)} />
-            <aside className="anim-slide-up absolute inset-y-0 left-0 w-72 max-w-[85vw] bg-surface shadow-float"><IconButton label="Tutup menu" className="absolute top-4 right-3 z-10" onClick={() => setDrawer(false)}><X className="size-5" /></IconButton><Sidebar onNavigate={() => setDrawer(false)} /></aside>
-          </div>)}
+            <div data-closing={closing || undefined} className="anim-fade absolute inset-0 bg-black/40" onClick={() => setDrawer(false)} />
+            <aside data-closing={closing || undefined} className="anim-drawer absolute inset-y-0 left-0 w-72 max-w-[85vw] bg-surface shadow-float"><IconButton label="Tutup menu" className="absolute top-4 right-3 z-10" onClick={() => setDrawer(false)}><X className="size-5" /></IconButton><Sidebar onNavigate={() => setDrawer(false)} /></aside>
+          </div>)}</Presence>
         <div className="flex min-w-0 flex-1 flex-col">
-          <div className="flex min-h-0 flex-1 flex-col">{mfaGate ? <MfaGate /> : <Outlet />}</div>
+          <div key={loc.pathname} className="anim-page flex min-h-0 flex-1 flex-col">{mfaGate ? <MfaGate /> : <Outlet />}</div>
           {!mfaGate && <BottomNav />}
         </div>
         <FloatingProgress />

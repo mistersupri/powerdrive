@@ -1,3 +1,4 @@
+import { Presence } from "@/ui/Presence";
 import type { FileEntry, FileListing } from "@superdrive/shared";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronRight, Folder, FolderOpen, HardDrive, Loader2 } from "lucide-react";
@@ -54,7 +55,7 @@ function Node({ c, id, name, depth, root, changed }: { c: Ctx; id: string; name:
         {root ? <HardDrive className="mr-1.5 size-4 shrink-0 text-primary-ink" aria-hidden /> : open || active ? <FolderOpen className="mr-1.5 size-4 shrink-0 text-primary-ink" aria-hidden /> : <Folder className="mr-1.5 size-4 shrink-0 text-primary-ink" aria-hidden />}
         <span className="truncate" title={name}>{name}</span>{changed && <span className="ml-1.5 size-2 shrink-0 rounded-full bg-primary" title="Ada perubahan baru"><span className="sr-only">Ada perubahan baru</span></span>}
       </div>
-      {open && q.data && q.data.length > 0 && <ul role="group">{q.data.map((f) => <Node key={f.id} c={c} id={f.id} name={f.name} depth={depth + 1} changed={f.changed} />)}</ul>}
+      <Presence show={open && !!q.data && q.data.length > 0} exitMs={170}>{(closing) => <div data-closing={closing || undefined} className="anim-rows"><ul role="group">{q.data?.map((f) => <Node key={f.id} c={c} id={f.id} name={f.name} depth={depth + 1} changed={f.changed} />)}</ul></div>}</Presence>
     </li>
   );
 }

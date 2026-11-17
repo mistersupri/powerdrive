@@ -156,7 +156,7 @@ export function VideoPlayer({ f }: { f: FileEntry }) {
           <div className="relative">
             <button type="button" aria-haspopup="menu" aria-expanded={menu} className="flex h-11 items-center gap-1 rounded-full px-3 text-[15px] font-medium tabular-nums hover:bg-white/15 focus-visible:outline-2 focus-visible:outline-white" onClick={() => setMenu((m) => !m)}>{rate}x<ChevronDown className="size-4" /></button>
             {menu && (
-              <div role="menu" aria-label="Kecepatan putar" className="anim-pop absolute right-0 bottom-12 z-20 min-w-28 rounded-xl border border-white/10 bg-black/90 p-1 shadow-float backdrop-blur" onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); setMenu(false); } }}>
+              <div role="menu" aria-label="Kecepatan putar" style={{ "--pop-origin": "bottom right" } as React.CSSProperties} className="anim-pop absolute right-0 bottom-12 z-20 min-w-28 rounded-xl border border-white/10 bg-black/90 p-1 shadow-float backdrop-blur" onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); setMenu(false); } }}>
                 {RATES.map((r) => <button key={r} type="button" role="menuitemradio" aria-checked={rate === r} autoFocus={rate === r} onClick={() => pickRate(r)} className="flex h-11 w-full items-center gap-2 rounded-lg px-3 text-left text-[14px] tabular-nums hover:bg-white/15 focus-visible:bg-white/20 focus-visible:outline-none"><span className="grid size-4 place-items-center">{rate === r && <Check className="size-4" />}</span>{r === 1 ? "Normal" : `${r}x`}</button>)}
               </div>
             )}

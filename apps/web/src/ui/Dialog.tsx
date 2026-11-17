@@ -1,5 +1,5 @@
 import { X } from "lucide-react";
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { cn } from "@/lib/cn";
 import { IconButton } from "./Button";
 
@@ -8,12 +8,21 @@ interface Props { open: boolean; onClose: () => void; title: string; description
 /** Built on the native <dialog>: focus trap, Escape and inert background come from the browser. */
 export function Dialog({ open, onClose, title, description, children, footer, width = "max-w-md", bare }: Props) {
   const ref = useRef<HTMLDialogElement>(null);
+  // The dialog outlives `open` just long enough to play its exit.
+  const [mounted, setMounted] = useState(open); const [closing, setClosing] = useState(false);
   useEffect(() => {
-    const d = ref.current; if (!d) return;
-    if (open && !d.open) d.showModal();
-    if (!open && d.open) d.close();
-  }, [open]);
-  if (!open) return null;
+    if (open) { setMounted(true); setClosing(false); return; }
+    if (!mounted) return;
+    setClosing(true); const t = setTimeout(() => { setMounted(false); setClosing(false); }, 130);
+    return () => clearTimeout(t);
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const d = ref.current; if (!mounted || !d || d.open) return;
+    d.showModal();
+    // A dialog with a field starts in the field (the browser would pick the close button).
+    d.querySelector<HTMLElement>("input:not([type=hidden]):not([type=checkbox]):not([type=radio]):not([readonly]), textarea")?.focus();
+  }, [mounted]);
+  if (!mounted) return null;
   return (
     <dialog
       ref={ref}
@@ -21,7 +30,7 @@ export function Dialog({ open, onClose, title, description, children, footer, wi
       onCancel={(e) => { e.preventDefault(); onClose(); }}
       onMouseDown={(e) => { if (e.target === ref.current) onClose(); }}
       className={cn("m-auto w-[calc(100%-2rem)] rounded-2xl bg-surface p-0 text-ink shadow-float backdrop:bg-black/40 backdrop:backdrop-blur-[1px] anim-pop", width)}
-      aria-labelledby="dlg-title"
+      aria-labelledby="dlg-title" data-closing={closing || undefined} style={{ "--pop-origin": "center" } as React.CSSProperties}
     >
       <div className="flex max-h-[min(86vh,760px)] flex-col">
         {!bare && (

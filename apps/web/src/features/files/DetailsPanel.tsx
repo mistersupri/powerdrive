@@ -121,14 +121,14 @@ function CommentsTab({ entry }: { entry: FileEntry }) {
 type Tab = "detail" | "activity" | "comments";
 
 /** Metadata, activity, tags and comments for one file or folder. `extras` is off for visitors of a share link (those need a login). */
-export function DetailsPanel({ entry, storageName, location, onClose, className, stats = true, extras = true }: { entry: FileEntry; storageName?: string; location?: string; onClose?(): void; className?: string; stats?: boolean; extras?: boolean }) {
+export function DetailsPanel({ entry, storageName, location, onClose, className, stats = true, extras = true, closing }: { entry: FileEntry; storageName?: string; location?: string; onClose?(): void; className?: string; stats?: boolean; extras?: boolean; /** Playing its exit: the owner removes it right after. */ closing?: boolean }) {
   const [tab, setTab] = useState<Tab>("detail"); const kind = kindOf(entry); const Icon = KIND_ICON[kind]; const idp = useId();
   const st = useQuery({ queryKey: ["files", entry.storageId, "stats", entry.id], enabled: stats && entry.isFolder, staleTime: 30_000, retry: false, queryFn: () => api<FolderStats>(`/files/${entry.storageId}/${entry.id}/stats`) });
   const cc = useQuery({ queryKey: ["comments", entry.storageId, entry.id], enabled: extras, queryFn: () => api<Comment[]>(`/files/${entry.storageId}/${entry.id}/comments`) });
   const where = location ?? (entry.path ? entry.path : undefined);
   const tabs: [Tab, string][] = [["detail", "Detail"], ["activity", "Aktivitas"], ["comments", `Komentar${cc.data?.length ? ` (${cc.data.length})` : ""}`]];
   return (
-    <aside aria-label="Detail" className={cn("flex min-h-0 flex-col bg-surface", className)}>
+    <aside aria-label="Detail" data-closing={closing || undefined} className={cn("flex min-h-0 flex-col bg-surface", className)}>
       <header className="flex items-center gap-2 border-b border-line px-4 pt-3"><h2 className="min-w-0 flex-1 truncate pb-2 text-[14px] font-semibold" title={entry.name}>{entry.name}</h2>{onClose && <IconButton label="Tutup detail" onClick={onClose} className="mb-1"><X className="size-4" /></IconButton>}</header>
       {extras && (
         <div role="tablist" aria-label="Bagian detail" className="flex gap-1 border-b border-line px-2">

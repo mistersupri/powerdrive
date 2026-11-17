@@ -17,6 +17,7 @@ import { DeleteDialog } from "./dialogs";
 import { triggerDownload } from "./transferApi";
 import { AddToAlbumDialog, AlbumGrid, FolderGrid, type Album, type MediaFolder } from "./AlbumsUi";
 import { Dialog } from "@/ui/Dialog";
+import { SlidingTabs } from "@/ui/SlidingTabs";
 import { Input } from "@/ui/Field";
 
 type Kind = "all" | "image" | "video";
@@ -94,10 +95,7 @@ export default function MediaPage() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <PageHeader title="Media" subtitle="Foto dan video dari semua penyimpanan, terbaru di atas." />
-      <div role="tablist" aria-label="Tampilan media" className="flex items-end gap-1 border-b border-line bg-surface px-4 pt-1.5 sm:px-8">
-        {([["all", "Semua"], ["folders", "Folder"], ["albums", "Album"]] as const).map(([m, l]) => (
-          <button key={m} role="tab" type="button" aria-selected={mode === m} onClick={() => pickMode(m)} className={cn("h-10 border-b-2 px-3.5 text-[13px] font-medium pointer-coarse:h-12", mode === m ? "border-primary text-primary-ink" : "border-transparent text-muted hover:text-ink")}>{l}</button>))}
-      </div>
+      <div className="border-b border-line bg-surface px-4 pt-1.5 sm:px-8"><SlidingTabs label="Tampilan media" value={mode} onChange={pickMode} tabs={[["all", "Semua"], ["folders", "Folder"], ["albums", "Album"]] as const} /></div>
       {scope && (
         <div className="flex flex-wrap items-center gap-1 border-b border-line bg-surface px-4 py-1.5 sm:px-8">
           <Button size="sm" variant="ghost" icon={<ArrowLeft className="size-4" />} onClick={() => { setScope(null); setSel(new Set()); }}>{mode === "albums" ? "Album" : "Folder"}</Button>
