@@ -11,6 +11,12 @@ import { Spinner } from "@/ui/misc";
 // The file manager is the landing experience and ships in the main chunk; the rest load on demand.
 const Dashboard = lazy(() => import("@/features/dashboard/DashboardPage"));
 const Transfers = lazy(() => import("@/features/dashboard/TransfersPage"));
+const AndroidHub = lazy(() => import("@/features/settings/AndroidSettings").then((m) => ({ default: m.AndroidSettingsHub })));
+const AndroidUpdate = lazy(() => import("@/features/settings/AndroidSettings").then((m) => ({ default: m.AndroidUpdatePage })));
+const AndroidLock = lazy(() => import("@/features/settings/AndroidSettings").then((m) => ({ default: m.AndroidLockPage })));
+const AndroidBackup = lazy(() => import("@/features/settings/AndroidSettings").then((m) => ({ default: m.AndroidBackupPage })));
+const AndroidBackupAlbums = lazy(() => import("@/features/settings/AndroidSettings").then((m) => ({ default: m.AndroidBackupAlbumsPage })));
+const AndroidPrivate = lazy(() => import("@/features/settings/AndroidSettings").then((m) => ({ default: m.AndroidPrivatePage })));
 const StorageAdmin = lazy(() => import("@/features/storage/StoragePageAdmin"));
 const Dual = lazy(() => import("@/features/dual/DualPanePage"));
 const Settings = lazy(() => import("@/features/settings/SettingsPage"));
@@ -41,6 +47,8 @@ const router = createBrowserRouter([
       { path: "trash", element: <L><Trash /></L> }, { path: "admin", element: <L><AdminSettings /></L> }, { path: "media", element: <L><Media /></L> }, { path: "shared", element: <L><SharedWithMe /></L> }, { path: "shared/:id", element: <L><DirectShare /></L> }, { path: "shares", element: <L><Shares /></L> },
       { path: "transfers", element: <L><Transfers /></L> }, { path: "storage", element: <L><StorageAdmin /></L> }, { path: "dual", element: <L><Dual /></L> },
       { path: "activity", element: <L><Activity /></L> }, { path: "members", element: <L><Members /></L> }, { path: "settings", element: <L><Settings /></L> },
+      { path: "app", element: <L><AndroidHub /></L> }, { path: "app/update", element: <L><AndroidUpdate /></L> }, { path: "app/lock", element: <L><AndroidLock /></L> },
+      { path: "app/backup", element: <L><AndroidBackup /></L> }, { path: "app/backup/albums", element: <L><AndroidBackupAlbums /></L> }, { path: "app/private", element: <L><AndroidPrivate /></L> },
       { path: "*", element: <Navigate to="/" replace /> },
     ],
   },

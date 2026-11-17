@@ -44,6 +44,9 @@ object BackupStore {
     /** Include what is already on the phone, not only photos taken from now on. */
     fun existing(c: Context) = p(c).getBoolean("bk_existing", true)
     fun since(c: Context) = p(c).getLong("bk_since", 0L)
+    /** Gallery albums (device folders) chosen for backup; null means every album. */
+    fun albums(c: Context): Set<String>? = p(c).getString("bk_albums", null)?.let { raw -> org.json.JSONArray(raw).let { a -> (0 until a.length()).map { a.getString(it) }.toSet() } }
+    fun setAlbums(c: Context, ids: Collection<String>?) { p(c).edit().apply { if (ids == null) remove("bk_albums") else putString("bk_albums", org.json.JSONArray(ids.toList()).toString()) }.apply() }
 
     fun save(c: Context, enabled: Boolean, wifiOnly: Boolean, videos: Boolean, existing: Boolean) {
         val was = enabled(c)
@@ -70,7 +73,7 @@ object BackupStore {
     }
 
     fun state(c: Context): JSONObject = JSONObject()
-        .put("enabled", enabled(c)).put("wifiOnly", wifiOnly(c)).put("videos", videos(c)).put("existing", existing(c))
+        .put("enabled", enabled(c)).put("allAlbums", albums(c) == null).put("albumCount", albums(c)?.size ?: 0).put("wifiOnly", wifiOnly(c)).put("videos", videos(c)).put("existing", existing(c))
         .put("permission", hasPermission(c)).put("running", p(c).getBoolean("bk_running", false))
         .put("lastRun", p(c).getLong("bk_last_run", 0L)).put("lastCount", p(c).getInt("bk_last_count", 0)).put("error", p(c).getString("bk_error", null) ?: JSONObject.NULL)
         .put("pending", if (enabled(c) && hasPermission(c)) try { BackupWorker.pending(c) } catch (e: Exception) { 0 } else 0)
@@ -233,6 +236,11 @@ class BackupWorker(private val ctx: Context, params: WorkerParameters) : Worker(
             val where = StringBuilder("${MediaStore.MediaColumns.SIZE} > 0"); val args = ArrayList<String>()
             if (Build.VERSION.SDK_INT >= 29) where.append(" AND ${MediaStore.MediaColumns.IS_PENDING} = 0")
             if (since > 0) { where.append(" AND ${MediaStore.MediaColumns.DATE_ADDED} >= ?"); args.add(since.toString()) }
+            val chosen = BackupStore.albums(c)
+            if (chosen != null) {
+                if (chosen.isEmpty()) return emptyList()
+                where.append(" AND ${MediaStore.MediaColumns.BUCKET_ID} IN (${chosen.joinToString(",") { "?" }})"); args.addAll(chosen)
+            }
             val out = ArrayList<Item>()
             c.contentResolver.query(uri, cols, where.toString(), args.toTypedArray(), "${MediaStore.MediaColumns.DATE_ADDED} DESC")?.use { cur ->
                 while (cur.moveToNext()) {
@@ -251,5 +259,16 @@ class BackupWorker(private val ctx: Context, params: WorkerParameters) : Worker(
             return all.filter { "${it.kind}:${it.id}" !in done }
         }
         fun pending(c: Context): Int = pendingItems(c).size
+
+        /** The albums (device folders) that hold photos or videos, with how many items each has. */
+        fun albums(c: Context): List<Triple<String, String, Int>> {
+            val names = LinkedHashMap<String, String>(); val counts = HashMap<String, Int>()
+            val cols = arrayOf(MediaStore.MediaColumns.BUCKET_ID, MediaStore.MediaColumns.BUCKET_DISPLAY_NAME)
+            val sources = ArrayList<Uri>().apply { add(MediaStore.Images.Media.EXTERNAL_CONTENT_URI); if (BackupStore.videos(c)) add(MediaStore.Video.Media.EXTERNAL_CONTENT_URI) }
+            for (uri in sources) c.contentResolver.query(uri, cols, "${MediaStore.MediaColumns.SIZE} > 0", null, null)?.use { cur ->
+                while (cur.moveToNext()) { val id = cur.getString(0) ?: continue; names.putIfAbsent(id, cur.getString(1) ?: "Lainnya"); counts[id] = (counts[id] ?: 0) + 1 }
+            }
+            return names.map { Triple(it.key, it.value, counts[it.key] ?: 0) }.sortedByDescending { it.third }
+        }
     }
 }

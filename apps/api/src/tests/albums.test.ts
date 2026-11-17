@@ -60,14 +60,14 @@ describe("albums", () => {
 });
 
 describe("private albums", () => {
-  it("need a PIN, hide their photos everywhere, and open only after unlocking", async () => {
+  it("need a password, hide their photos everywhere, and open only after unlocking", async () => {
     const { by, dirs } = await seed();
-    assert.equal((await t.call("ana", "POST", "/albums", { name: "Rahasia", private: true })).body.error.code, "NO_PIN");
-    assert.equal((await t.call("ana", "POST", "/albums-private/pin", { pin: "12" })).status, 400, "PIN is 4-8 digits");
-    assert.equal((await t.call("ana", "POST", "/albums-private/pin", { pin: "4821" })).status, 200);
-    assert.equal((await t.call("ana", "POST", "/albums", { name: "Rahasia", private: true })).body.error.code, "PRIVATE_LOCKED", "a PIN alone is not an unlock");
-    assert.equal((await t.call("ana", "POST", "/albums-private/unlock", { pin: "0000" })).body.error.code, "WRONG_PIN");
-    assert.equal((await t.call("ana", "POST", "/albums-private/unlock", { pin: "4821" })).data.unlocked, true);
+    assert.equal((await t.call("ana", "POST", "/albums", { name: "Rahasia", private: true })).body.error.code, "NO_PASSWORD");
+    assert.equal((await t.call("ana", "POST", "/albums-private/password", { password: "12" })).status, 400, "at least 6 characters");
+    assert.equal((await t.call("ana", "POST", "/albums-private/password", { password: "rahasia-4821" })).status, 200);
+    assert.equal((await t.call("ana", "POST", "/albums", { name: "Rahasia", private: true })).body.error.code, "PRIVATE_LOCKED", "a password alone is not an unlock");
+    assert.equal((await t.call("ana", "POST", "/albums-private/unlock", { password: "salah-sekali" })).body.error.code, "WRONG_PASSWORD");
+    assert.equal((await t.call("ana", "POST", "/albums-private/unlock", { password: "rahasia-4821" })).data.unlocked, true);
     const al = (await t.call("ana", "POST", "/albums", { name: "Rahasia", private: true })).data; assert.equal(al.isPrivate, true);
     await t.call("ana", "POST", `/albums/${al.id}/items`, { items: [ref(by("b.jpg"))] });
     // unlocked: it is in its album, but still not in the general views
@@ -82,21 +82,21 @@ describe("private albums", () => {
     assert.equal(((await t.call("ana", "GET", "/albums")).data.albums as any[]).some((x) => x.id === al.id), false);
     assert.equal((await t.call("ana", "GET", `/media?albumId=${al.id}`)).body.error.code, "PRIVATE_LOCKED");
     assert.equal((await t.call("ana", "GET", "/albums-private/status")).data.count, 1, "the lock screen can still say there is something");
-    await t.call("ana", "POST", "/albums-private/unlock", { pin: "4821" });
+    await t.call("ana", "POST", "/albums-private/unlock", { password: "rahasia-4821" });
     await t.call("ana", "POST", `/albums/${al.id}/items/remove`, { items: [ref(by("b.jpg"))] });
     assert.ok((await names("")).includes("b.jpg"), "taking it out of the album brings it back");
   });
 
-  it("locks out after five wrong PINs and re-locks when the PIN changes", async () => {
-    for (let i = 0; i < 4; i++) assert.equal((await t.call("ana", "POST", "/albums-private/unlock", { pin: "9999" })).body.error.code, "WRONG_PIN");
-    assert.equal((await t.call("ana", "POST", "/albums-private/unlock", { pin: "9999" })).body.error.code, "PIN_LOCKED");
-    assert.equal((await t.call("ana", "POST", "/albums-private/unlock", { pin: "4821" })).body.error.code, "PIN_LOCKED", "even the right PIN waits");
+  it("locks out after five wrong passwords", async () => {
+    for (let i = 0; i < 4; i++) assert.equal((await t.call("ana", "POST", "/albums-private/unlock", { password: "salah-lagi" })).body.error.code, "WRONG_PASSWORD");
+    assert.equal((await t.call("ana", "POST", "/albums-private/unlock", { password: "salah-lagi" })).body.error.code, "PASSWORD_LOCKED");
+    assert.equal((await t.call("ana", "POST", "/albums-private/unlock", { password: "rahasia-4821" })).body.error.code, "PASSWORD_LOCKED", "even the right password waits");
   });
 
-  it("changing the PIN needs the current one", async () => {
-    await t.register("cy"); assert.equal((await t.call("cy", "POST", "/albums-private/pin", { pin: "1111" })).status, 200);
-    assert.equal((await t.call("cy", "POST", "/albums-private/pin", { pin: "2222" })).status, 401, "no current PIN given");
-    assert.equal((await t.call("cy", "POST", "/albums-private/pin", { pin: "2222", currentPin: "1111" })).status, 200);
-    assert.equal((await t.call("cy", "POST", "/albums-private/unlock", { pin: "2222" })).data.unlocked, true);
+  it("changing the password needs the current one", async () => {
+    await t.register("cy"); assert.equal((await t.call("cy", "POST", "/albums-private/password", { password: "pertama-1111" })).status, 200);
+    assert.equal((await t.call("cy", "POST", "/albums-private/password", { password: "kedua-2222" })).status, 401, "no current password given");
+    assert.equal((await t.call("cy", "POST", "/albums-private/password", { password: "kedua-2222", currentPassword: "pertama-1111" })).status, 200);
+    assert.equal((await t.call("cy", "POST", "/albums-private/unlock", { password: "kedua-2222" })).data.unlocked, true);
   });
 });

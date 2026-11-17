@@ -265,7 +265,7 @@ const MIGRATIONS: string[] = [
     added_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')), PRIMARY KEY (album_id, storage_id, file_id)
   ) WITHOUT ROWID;
   CREATE INDEX idx_album_items_file ON album_items(storage_id, file_id);
-  ALTER TABLE users ADD COLUMN album_pin_hash TEXT;
+  ALTER TABLE users ADD COLUMN album_password_hash TEXT;
   ALTER TABLE sessions ADD COLUMN private_until TEXT;
   `,
 ];

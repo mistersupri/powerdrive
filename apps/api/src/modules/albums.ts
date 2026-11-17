@@ -10,7 +10,7 @@ import { encodeId } from "../providers/types.ts";
 /**
  * Albums are personal collections of photos and videos (references to files, nothing is copied).
  * A private album is hidden: its photos disappear from the gallery, search, recent/starred and folder listings
- * for its owner until they are taken out of the album, and the album itself only opens after the owner entered their album PIN
+ * for its owner until they are taken out of the album, and the album itself only opens after the owner entered their album password
  * (valid ten minutes for that sign-in session). This hides things in the app; it does not encrypt the files.
  */
 const UNLOCK_MS = 10 * 60_000;
@@ -32,38 +32,38 @@ export function privateIds(ctx: AuthCtx, storageId: string): Set<string> {
   return new Set(db.all<{ file_id: string }>("SELECT ai.file_id FROM album_items ai JOIN albums al ON al.id = ai.album_id WHERE al.is_private = 1 AND al.owner_id = ? AND ai.storage_id = ?", ctx.userId, storageId).map((r) => r.file_id));
 }
 
-/* ---- album PIN and unlock state ---- */
-const hasPin = (userId: string) => !!db.get<{ h: string | null }>("SELECT album_pin_hash h FROM users WHERE id = ?", userId)?.h;
+/* ---- album password and unlock state ---- */
+const hasPassword = (userId: string) => !!db.get<{ h: string | null }>("SELECT album_password_hash h FROM users WHERE id = ?", userId)?.h;
 const tries = new Map<string, { n: number; until: number }>();
 export function privateStatus(ctx: AuthCtx, token: string | null | undefined) {
   const until = token ? db.get<{ p: string | null }>("SELECT private_until p FROM sessions WHERE token_hash = ?", sha256(token))?.p ?? null : null;
   const unlocked = !!until && Date.parse(until) > Date.now();
   const count = db.get<{ n: number }>("SELECT COUNT(*) n FROM albums WHERE owner_id = ? AND workspace_id = ? AND is_private = 1", ctx.userId, ctx.workspaceId)!.n;
-  return { hasPin: hasPin(ctx.userId), unlocked, until: unlocked ? until : null, count };
+  return { hasPassword: hasPassword(ctx.userId), unlocked, until: unlocked ? until : null, count };
 }
-const validPin = (pin: string) => { if (!/^\d{4,8}$/.test(pin)) throw badRequest("PIN harus 4 sampai 8 angka."); };
+const validPassword = (pw: string) => { if (pw.length < 6 || pw.length > 200) throw badRequest("Kata sandi album minimal 6 karakter."); };
 
-export async function setPin(ctx: AuthCtx, pin: string, currentPin: string | undefined) {
-  validPin(pin);
-  const row = db.get<{ h: string | null }>("SELECT album_pin_hash h FROM users WHERE id = ?", ctx.userId);
-  if (row?.h) await checkPin(ctx.userId, currentPin ?? "");
-  db.run("UPDATE users SET album_pin_hash = ? WHERE id = ?", await hash(pin, ARGON), ctx.userId);
+export async function setPassword(ctx: AuthCtx, password: string, currentPassword: string | undefined) {
+  validPassword(password);
+  const row = db.get<{ h: string | null }>("SELECT album_password_hash h FROM users WHERE id = ?", ctx.userId);
+  if (row?.h) await checkPassword(ctx.userId, currentPassword ?? "");
+  db.run("UPDATE users SET album_password_hash = ? WHERE id = ?", await hash(password, ARGON), ctx.userId);
   db.run("UPDATE sessions SET private_until = NULL WHERE user_id = ?", ctx.userId); // everything locks again after a change
 }
-async function checkPin(userId: string, pin: string) {
+async function checkPassword(userId: string, password: string) {
   const t = tries.get(userId);
-  if (t && t.until > Date.now()) throw new AppError(429, "PIN_LOCKED", "Terlalu banyak PIN yang salah. Coba lagi dalam beberapa menit.");
-  const h = db.get<{ h: string | null }>("SELECT album_pin_hash h FROM users WHERE id = ?", userId)?.h;
-  if (!h) throw badRequest("PIN album belum dibuat.", "NO_PIN");
-  if (!(await verify(h, pin).catch(() => false))) {
+  if (t && t.until > Date.now()) throw new AppError(429, "PASSWORD_LOCKED", "Terlalu banyak percobaan yang salah. Coba lagi dalam beberapa menit.");
+  const h = db.get<{ h: string | null }>("SELECT album_password_hash h FROM users WHERE id = ?", userId)?.h;
+  if (!h) throw badRequest("Kata sandi album belum dibuat.", "NO_PASSWORD");
+  if (!(await verify(h, password).catch(() => false))) {
     const n = (t?.n ?? 0) + 1; tries.set(userId, { n, until: n >= 5 ? Date.now() + 5 * 60_000 : 0 });
-    if (n >= 5) { tries.set(userId, { n: 0, until: Date.now() + 5 * 60_000 }); throw new AppError(429, "PIN_LOCKED", "Terlalu banyak PIN yang salah. Coba lagi dalam 5 menit."); }
-    throw new AppError(401, "WRONG_PIN", "PIN salah.");
+    if (n >= 5) { tries.set(userId, { n: 0, until: Date.now() + 5 * 60_000 }); throw new AppError(429, "PASSWORD_LOCKED", "Terlalu banyak percobaan yang salah. Coba lagi dalam 5 menit."); }
+    throw new AppError(401, "WRONG_PASSWORD", "Kata sandi album salah.");
   }
   tries.delete(userId);
 }
-export async function unlock(ctx: AuthCtx, token: string, pin: string) {
-  await checkPin(ctx.userId, pin);
+export async function unlock(ctx: AuthCtx, token: string, password: string) {
+  await checkPassword(ctx.userId, password);
   db.run("UPDATE sessions SET private_until = ? WHERE token_hash = ?", new Date(Date.now() + UNLOCK_MS).toISOString(), sha256(token));
 }
 export function lock(token: string) { db.run("UPDATE sessions SET private_until = NULL WHERE token_hash = ?", sha256(token)); }
@@ -88,13 +88,13 @@ export function listAlbums(ctx: AuthCtx, token: string | null | undefined) {
 export function albumFor(ctx: AuthCtx, token: string | null | undefined, id: string) {
   const a = db.get<any>("SELECT * FROM albums WHERE id = ? AND owner_id = ? AND workspace_id = ?", id, ctx.userId, ctx.workspaceId);
   if (!a) throw notFound("Album tidak ditemukan.");
-  if (a.is_private && !privateStatus(ctx, token).unlocked) throw new AppError(403, "PRIVATE_LOCKED", "Album privat terkunci. Masukkan PIN untuk membukanya.");
+  if (a.is_private && !privateStatus(ctx, token).unlocked) throw new AppError(403, "PRIVATE_LOCKED", "Album privat terkunci. Masukkan kata sandi album untuk membukanya.");
   return a;
 }
 const cleanName = (n: string) => { const s = n.trim(); if (!s || s.length > 80) throw badRequest("Nama album 1 sampai 80 karakter."); return s; };
 
 export function createAlbum(ctx: AuthCtx, token: string | null | undefined, name: string, isPrivate: boolean): AlbumDto {
-  if (isPrivate) { const st = privateStatus(ctx, token); if (!st.hasPin) throw badRequest("Buat PIN album dulu.", "NO_PIN"); if (!st.unlocked) throw new AppError(403, "PRIVATE_LOCKED", "Buka kunci album privat dulu."); }
+  if (isPrivate) { const st = privateStatus(ctx, token); if (!st.hasPassword) throw badRequest("Buat kata sandi album dulu.", "NO_PASSWORD"); if (!st.unlocked) throw new AppError(403, "PRIVATE_LOCKED", "Buka kunci album privat dulu."); }
   const id = newId();
   db.run("INSERT INTO albums(id,workspace_id,owner_id,name,is_private) VALUES (?,?,?,?,?)", id, ctx.workspaceId, ctx.userId, cleanName(name), isPrivate ? 1 : 0);
   return dto(db.get("SELECT * FROM albums WHERE id = ?", id));

@@ -67,6 +67,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var updater: Updater
     private lateinit var lock: AppLock
     private lateinit var lockScreen: View
+    private lateinit var vault: AlbumVault
     private var unlocked = false
     private var leftAt: Long? = null
     /** Set right before a screen that is part of using the app (file picker, permission, settings) so leaving for it does not lock the app. */
@@ -114,6 +115,10 @@ class MainActivity : AppCompatActivity() {
         if (o.optBoolean("enabled") && !BackupStore.hasPermission(this)) { pendingBackup = o; externalFlow = true; askMedia.launch(BackupStore.permissionsToAsk()); return }
         applyBackup(o)
     }
+    /** Answers the web page: the password only ever travels from the Keystore into this one event. */
+    private fun sendVault(detail: JSONObject) {
+        web.evaluateJavascript("window.dispatchEvent(new CustomEvent('sd-album-vault',{detail:${detail}}))", null)
+    }
     private fun notifyBackupChanged() { web.evaluateJavascript("window.dispatchEvent(new Event('sd-backup-changed'))", null) }
 
     private val askNotifications = registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* the notification simply stays hidden when refused */ }
@@ -135,6 +140,7 @@ class MainActivity : AppCompatActivity() {
         fullscreenHost = findViewById(R.id.fullscreenHost)
         lockScreen = findViewById(R.id.lockScreen)
         lock = AppLock(this)
+        vault = AlbumVault(this)
         findViewById<Button>(R.id.unlock).setOnClickListener { promptUnlock() }
         if (lock.enabled) setLocked(true) // never flash the app before the lock
         findViewById<Button>(R.id.retry).setOnClickListener { retry() }
@@ -371,6 +377,41 @@ class MainActivity : AppCompatActivity() {
         /** {enabled, delay (ms), available (this phone has a fingerprint or screen lock)} */
         @JavascriptInterface
         fun lockState(): String = JSONObject().put("enabled", lock.enabled).put("delay", lock.delayMs).put("available", lock.available()).toString()
+
+        /** Gallery albums (device folders) for the backup picker: [{id, name, count, selected}] */
+        @JavascriptInterface
+        fun backupAlbums(): String {
+            if (!BackupStore.hasPermission(this@MainActivity)) return "[]"
+            val chosen = BackupStore.albums(this@MainActivity)
+            val arr = org.json.JSONArray()
+            for ((id, name, count) in BackupWorker.albums(this@MainActivity)) arr.put(JSONObject().put("id", id).put("name", name).put("count", count).put("selected", chosen == null || id in chosen))
+            return arr.toString()
+        }
+
+        /** Choose which albums are backed up; an empty or missing list is rejected, "all" is sent as null. */
+        @JavascriptInterface
+        fun setBackupAlbums(json: String) {
+            val ids = if (json == "null") null else try { org.json.JSONArray(json).let { a -> (0 until a.length()).map { a.getString(it) } } } catch (e: Exception) { return }
+            BackupStore.setAlbums(this@MainActivity, ids)
+            runOnUiThread { notifyBackupChanged() }
+        }
+
+        /** Private albums: can the fingerprint open them for this person on this phone? {available, enrolled} */
+        @JavascriptInterface
+        fun albumVaultState(userId: String): String = JSONObject().put("available", vault.available()).put("enrolled", vault.enrolledFor(userId)).toString()
+
+        @JavascriptInterface
+        fun enrollAlbumVault(userId: String, password: String) {
+            runOnUiThread { vault.enroll(userId, password) { ok, why -> sendVault(JSONObject().put("kind", "enroll").put("ok", ok).put("error", why ?: JSONObject.NULL)) } }
+        }
+
+        @JavascriptInterface
+        fun unlockAlbumVault(userId: String) {
+            runOnUiThread { vault.unlock(userId) { password, why -> sendVault(JSONObject().put("kind", "unlock").put("ok", password != null).put("password", password ?: JSONObject.NULL).put("error", why ?: JSONObject.NULL)) } }
+        }
+
+        @JavascriptInterface
+        fun clearAlbumVault() { runOnUiThread { vault.clear(); sendVault(JSONObject().put("kind", "clear").put("ok", true)) } }
 
         /** Photo backup: {enabled, wifiOnly, videos, existing, permission, running, lastRun, lastCount, error, pending} */
         @JavascriptInterface

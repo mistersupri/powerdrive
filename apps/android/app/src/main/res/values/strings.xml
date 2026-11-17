@@ -49,4 +49,6 @@
     <string name="backup_done_text">%1$d foto dan video dicadangkan</string>
     <string name="backup_signed_out">Masuk lagi ke SuperDrive agar cadangan foto bisa berlanjut.</string>
     <string name="backup_denied">Izin akses foto diperlukan untuk mencadangkan.</string>
+    <string name="vault_enroll_title">Aktifkan buka album privat dengan sidik jari</string>
+    <string name="vault_unlock_title">Buka album privat</string>
 </resources>

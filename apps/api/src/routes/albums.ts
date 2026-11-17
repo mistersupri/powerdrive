@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { ok, requireAuth } from "../app.ts";
-import { addItems, albumFor, createAlbum, deleteAlbum, listAlbums, lock, privateStatus, removeItems, renameAlbum, setPin, unlock } from "../modules/albums.ts";
+import { addItems, albumFor, createAlbum, deleteAlbum, listAlbums, lock, privateStatus, removeItems, renameAlbum, setPassword, unlock } from "../modules/albums.ts";
 import { decodeId } from "../providers/types.ts";
 
 const items = z.object({ items: z.array(z.object({ storageId: z.string().max(60), fileId: z.string().max(2000) })).min(1).max(2000) });
@@ -20,9 +20,9 @@ export async function albumRoutes(app: FastifyInstance) {
   app.post("/albums/:id/items", async (req) => { const ctx = requireAuth(req); return ok(req, addItems(ctx, req.sessionToken, (req.params as any).id, raw(items.parse(req.body)))); });
   app.post("/albums/:id/items/remove", async (req) => { const ctx = requireAuth(req); removeItems(ctx, req.sessionToken, (req.params as any).id, raw(items.parse(req.body))); return ok(req, {}); });
 
-  // The PIN that guards private albums.
+  // The password that guards private albums (separate from the sign-in password, so it also works for accounts that sign in with Google).
   app.get("/albums-private/status", async (req) => ok(req, privateStatus(requireAuth(req), req.sessionToken)));
-  app.post("/albums-private/pin", strict, async (req) => { const ctx = requireAuth(req); const b = z.object({ pin: z.string().max(20), currentPin: z.string().max(20).optional() }).parse(req.body); await setPin(ctx, b.pin, b.currentPin); return ok(req, {}); });
-  app.post("/albums-private/unlock", strict, async (req) => { const ctx = requireAuth(req); await unlock(ctx, req.sessionToken!, z.object({ pin: z.string().max(20) }).parse(req.body).pin); return ok(req, privateStatus(ctx, req.sessionToken)); });
+  app.post("/albums-private/password", strict, async (req) => { const ctx = requireAuth(req); const b = z.object({ password: z.string().max(200), currentPassword: z.string().max(200).optional() }).parse(req.body); await setPassword(ctx, b.password, b.currentPassword); return ok(req, {}); });
+  app.post("/albums-private/unlock", strict, async (req) => { const ctx = requireAuth(req); await unlock(ctx, req.sessionToken!, z.object({ password: z.string().max(200) }).parse(req.body).password); return ok(req, privateStatus(ctx, req.sessionToken)); });
   app.post("/albums-private/lock", async (req) => { const ctx = requireAuth(req); lock(req.sessionToken!); return ok(req, privateStatus(ctx, req.sessionToken)); });
 }

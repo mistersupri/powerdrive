@@ -1,9 +1,11 @@
 import type { FileEntry } from "@superdrive/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FolderOpen, Lock, LockOpen, Plus } from "lucide-react";
-import { useState } from "react";
+import { Fingerprint, FolderOpen, Lock, LockOpen, Plus } from "lucide-react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api";
+import { useAlbumVault } from "@/lib/albumVault";
+import { useMe } from "@/features/auth/useAuth";
 import { cn } from "@/lib/cn";
 import { Button } from "@/ui/Button";
 import { Dialog } from "@/ui/Dialog";
@@ -12,7 +14,7 @@ import { EmptyState, Skeleton } from "@/ui/misc";
 import { FileThumb } from "./FileThumb";
 
 export interface Album { id: string; name: string; isPrivate: boolean; count: number; updatedAt: string; cover: FileEntry | null }
-export interface PrivateStatus { hasPin: boolean; unlocked: boolean; until: string | null; count: number }
+export interface PrivateStatus { hasPassword: boolean; unlocked: boolean; until: string | null; count: number }
 export interface MediaFolder { storageId: string; folderId: string; name: string; storageName: string; count: number; cover: FileEntry | null }
 
 /** Albums of the signed-in person. Private ones only appear while unlocked; the unlock lasts ten minutes, so the list refreshes now and then. */
@@ -63,9 +65,9 @@ export function AlbumGrid({ onOpen }: { onOpen(a: Album): void }) {
       <Grid>
         {albums.map((a) => <Card key={a.id} cover={a.cover} title={a.name} sub={count(a.count, "item")} onClick={() => onOpen(a)} badge={a.isPrivate ? <Lock className="size-3.5" aria-label="Privat" /> : undefined} />)}
         {st && !st.unlocked && (
-          <button type="button" onClick={() => setPin(st.hasPin ? "unlock" : "create")} className="group flex min-w-0 flex-col gap-1.5 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
+          <button type="button" onClick={() => setPin(st.hasPassword ? "unlock" : "create")} className="group flex min-w-0 flex-col gap-1.5 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
             <span className="grid aspect-square w-full place-items-center rounded-xl bg-navy text-white ring-1 ring-line"><Lock className="size-9" aria-hidden /></span>
-            <span className="px-0.5"><span className="block text-[13px] font-medium">Album privat</span><span className="block text-[12px] text-muted">{st.hasPin ? (st.count ? `${count(st.count, "album")} · terkunci` : "Terkunci dengan PIN") : "Atur PIN untuk memulai"}</span></span>
+            <span className="px-0.5"><span className="block text-[13px] font-medium">Album privat</span><span className="block text-[12px] text-muted">{st.hasPassword ? (st.count ? `${count(st.count, "album")} · terkunci` : "Terkunci dengan kata sandi") : "Buat kata sandi untuk memulai"}</span></span>
           </button>)}
       </Grid>
       {!albums.length && st?.unlocked && <p className="py-4 text-[13px] text-muted">Belum ada album. Buat album pertama Anda.</p>}
@@ -75,25 +77,41 @@ export function AlbumGrid({ onOpen }: { onOpen(a: Album): void }) {
   );
 }
 
-/** Unlock with the album PIN, or create it the first time. */
+/**
+ * Unlock with the album password, or create it the first time. In the Android app the fingerprint can do the typing:
+ * it is offered as soon as the dialog opens once it has been set up, and offered as a checkbox after the first successful password.
+ */
 export function PinDialog({ mode, onClose, onDone }: { mode: null | "unlock" | "create"; onClose(): void; onDone?(): void }) {
-  const qc = useQueryClient(); const [pin, setPin] = useState(""); const [again, setAgain] = useState(""); const [error, setError] = useState("");
-  const done = async () => { setPin(""); setAgain(""); setError(""); await qc.invalidateQueries({ queryKey: ["albums"] }); onClose(); onDone?.(); };
+  const qc = useQueryClient(); const me = useMe().data?.user.id; const vault = useAlbumVault(me);
+  const [pw, setPw] = useState(""); const [again, setAgain] = useState(""); const [error, setError] = useState(""); const [useFinger, setUseFinger] = useState(true);
+  const v = mode ? vault.state() : { available: false, enrolled: false };
+  const reset = () => { setPw(""); setAgain(""); setError(""); };
+  const done = async () => { reset(); await qc.invalidateQueries({ queryKey: ["albums"] }); onClose(); onDone?.(); };
+  const unlockWith = async (password: string) => { await api("/albums-private/unlock", { body: { password } }); };
   const go = useMutation({
     mutationFn: async () => {
-      if (mode === "create") { if (pin !== again) throw new Error("Kedua PIN tidak sama."); await api("/albums-private/pin", { body: { pin } }); }
-      await api("/albums-private/unlock", { body: { pin } });
+      if (mode === "create") { if (pw !== again) throw new Error("Kedua kata sandi tidak sama."); await api("/albums-private/password", { body: { password: pw } }); }
+      await unlockWith(pw);
+      if (v.available && !v.enrolled && useFinger) await vault.enroll(pw);
     },
-    onSuccess: done, onError: (e) => { setError((e as Error).message); setPin(""); setAgain(""); },
+    onSuccess: done, onError: (e) => { setError((e as Error).message); setPw(""); setAgain(""); },
   });
-  const create = mode === "create";
+  const finger = useMutation({
+    mutationFn: async () => { const saved = await vault.unlock(); if (saved === null) throw new Error("cancel"); try { await unlockWith(saved); } catch (e) { if (e instanceof ApiError && e.code === "WRONG_PASSWORD") { await vault.clear(); throw new Error("Kata sandi album sudah berubah. Masukkan kata sandi yang baru."); } throw e; } },
+    onSuccess: done, onError: (e) => { if ((e as Error).message !== "cancel") setError((e as Error).message); },
+  });
+  // Fingerprint first, as soon as the dialog opens.
+  useEffect(() => { if (mode === "unlock" && v.enrolled && !finger.isPending) finger.mutate(); }, [mode]); // eslint-disable-line react-hooks/exhaustive-deps
+  const create = mode === "create"; const ok = pw.length >= 6 && (!create || again.length > 0);
   return (
-    <Dialog open={mode !== null} onClose={() => { setPin(""); setAgain(""); setError(""); onClose(); }} width="max-w-sm" title={create ? "Buat PIN album privat" : "Buka album privat"}
-      description={create ? "PIN 4 sampai 8 angka. Foto di album privat disembunyikan dari galeri, pencarian, dan daftar folder Anda." : "Masukkan PIN album Anda. Kunci terbuka selama 10 menit."}
-      footer={<><Button onClick={onClose}>Batal</Button><Button variant="primary" loading={go.isPending} disabled={!/^\d{4,8}$/.test(pin) || (create && !again)} onClick={() => go.mutate()}>{create ? "Simpan dan buka" : "Buka"}</Button></>}>
-      <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); if (/^\d{4,8}$/.test(pin)) go.mutate(); }}>
-        <Field label="PIN">{(id) => <Input id={id} type="password" inputMode="numeric" pattern="[0-9]*" autoComplete="off" autoFocus maxLength={8} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))} />}</Field>
-        {create && <Field label="Ulangi PIN">{(id) => <Input id={id} type="password" inputMode="numeric" pattern="[0-9]*" autoComplete="off" maxLength={8} value={again} onChange={(e) => setAgain(e.target.value.replace(/\D/g, ""))} />}</Field>}
+    <Dialog open={mode !== null} onClose={() => { reset(); onClose(); }} width="max-w-sm" title={create ? "Buat kata sandi album privat" : "Buka album privat"}
+      description={create ? "Kata sandi ini khusus untuk album privat (terpisah dari kata sandi masuk). Foto di album privat disembunyikan dari galeri, pencarian, dan daftar folder Anda." : "Masukkan kata sandi album Anda. Kunci terbuka selama 10 menit."}
+      footer={<><Button onClick={() => { reset(); onClose(); }}>Batal</Button><Button variant="primary" loading={go.isPending} disabled={!ok} onClick={() => go.mutate()}>{create ? "Simpan dan buka" : "Buka"}</Button></>}>
+      <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); if (ok) go.mutate(); }}>
+        {mode === "unlock" && v.enrolled && <Button type="button" className="w-full" icon={<Fingerprint className="size-4" />} loading={finger.isPending} onClick={() => finger.mutate()}>Buka dengan sidik jari</Button>}
+        <Field label="Kata sandi album" hint={create ? "Minimal 6 karakter." : undefined}>{(id) => <Input id={id} type="password" autoComplete="off" autoFocus={!v.enrolled} minLength={create ? 6 : undefined} value={pw} onChange={(e) => setPw(e.target.value)} />}</Field>
+        {create && <Field label="Ulangi kata sandi">{(id) => <Input id={id} type="password" autoComplete="off" value={again} onChange={(e) => setAgain(e.target.value)} />}</Field>}
+        {v.available && !v.enrolled && <label className="flex min-h-10 cursor-pointer items-center gap-3 text-[13px]"><input type="checkbox" className="size-4 accent-[var(--color-primary)]" checked={useFinger} onChange={(e) => setUseFinger(e.target.checked)} />Buka dengan sidik jari di HP ini berikutnya</label>}
         {error && <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-[13px] text-danger-ink">{error}</p>}
         <button type="submit" className="sr-only">Lanjut</button>
       </form>
@@ -141,7 +159,7 @@ export function AddToAlbumDialog({ open, items, onClose, onDone }: { open: boole
         </ul>
         {st && !st.unlocked && <button type="button" onClick={() => setPin(true)} className="mt-3 flex min-h-11 w-full items-center gap-2 rounded-lg border border-dashed border-line-strong px-3 text-[13px] text-muted hover:bg-surface-2"><LockOpen className="size-4" aria-hidden />Buka album privat…</button>}
       </Dialog>
-      <PinDialog mode={pin ? (st?.hasPin ? "unlock" : "create") : null} onClose={() => setPin(false)} />
+      <PinDialog mode={pin ? (st?.hasPassword ? "unlock" : "create") : null} onClose={() => setPin(false)} />
     </>
   );
 }
