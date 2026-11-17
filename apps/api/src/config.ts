@@ -53,6 +53,11 @@ export const config = {
   },
   oauth: {
     google: { clientId: env.GOOGLE_CLIENT_ID ?? "", clientSecret: env.GOOGLE_CLIENT_SECRET ?? "", redirectUri: env.GOOGLE_REDIRECT_URI ?? `${(env.APP_URL ?? "http://localhost:5173").replace(/\/$/, "")}/api/v1/storages/google-drive/callback` },
+    /** "Sign in with Google": the same OAuth client as Drive, with one more redirect URI registered in Google Cloud. The URLs are overridable for tests. */
+    googleLogin: {
+      redirectUri: env.GOOGLE_LOGIN_REDIRECT_URI ?? `${(env.APP_URL ?? "http://localhost:5173").replace(/\/$/, "")}/api/v1/auth/google/callback`,
+      authUrl: env.GOOGLE_AUTH_URL ?? "https://accounts.google.com/o/oauth2/v2/auth", tokenUrl: env.GOOGLE_TOKEN_URL ?? "https://oauth2.googleapis.com/token",
+    },
     microsoft: { clientId: env.MICROSOFT_CLIENT_ID ?? "", clientSecret: env.MICROSOFT_CLIENT_SECRET ?? "", redirectUri: env.MICROSOFT_REDIRECT_URI ?? `${(env.APP_URL ?? "http://localhost:5173").replace(/\/$/, "")}/api/v1/storages/onedrive/callback`, tenant: env.MICROSOFT_TENANT ?? "common" },
     dropbox: { clientId: env.DROPBOX_CLIENT_ID ?? "", clientSecret: env.DROPBOX_CLIENT_SECRET ?? "", redirectUri: env.DROPBOX_REDIRECT_URI ?? `${(env.APP_URL ?? "http://localhost:5173").replace(/\/$/, "")}/api/v1/storages/dropbox/callback` },
   },

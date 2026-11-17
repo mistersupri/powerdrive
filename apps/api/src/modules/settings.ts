@@ -9,7 +9,7 @@ export interface AppSettings {
   registration: { mode: "open" | "invite" | "closed" };
   guest: { allowLinks: boolean; allowUploads: boolean; requirePassword: boolean; maxExpiryDays: number; defaultExpiryDays: number };
   retention: { trashDays: number; auditDays: number; transferHistoryDays: number };
-  security: { mfa: "off" | "admins" | "everyone"; idleTimeoutMinutes: number; sessionDays: number };
+  security: { mfa: "off" | "admins" | "everyone"; idleTimeoutMinutes: number; sessionDays: number; googleLogin: boolean; googleDomains: string };
   email: { enabled: boolean; host: string; port: number; secure: boolean; user: string; passwordSealed: string | null; fromName: string; fromAddress: string };
   brand: { appName: string; color: string; defaultTheme: "light" | "dark" | "system"; loginMessage: string; iconVersion: number };
 }
@@ -18,7 +18,7 @@ export const defaults = (): AppSettings => ({
   registration: { mode: config.allowRegistration ? "open" : "invite" },
   guest: { allowLinks: true, allowUploads: true, requirePassword: false, maxExpiryDays: 0, defaultExpiryDays: 0 },
   retention: { trashDays: config.trashRetentionDays, auditDays: 0, transferHistoryDays: 0 },
-  security: { mfa: "off", idleTimeoutMinutes: 0, sessionDays: config.sessionTtlDays },
+  security: { mfa: "off", idleTimeoutMinutes: 0, sessionDays: config.sessionTtlDays, googleLogin: true, googleDomains: "" },
   email: { enabled: false, host: "", port: 587, secure: false, user: "", passwordSealed: null, fromName: "SuperDrive", fromAddress: "" },
   brand: { appName: "SuperDrive", color: "#1769e8", defaultTheme: "light", loginMessage: "", iconVersion: 0 },
 });
@@ -49,7 +49,7 @@ export const patchSchema = z.object({
   registration: z.object({ mode: z.enum(["open", "invite", "closed"]) }).partial(),
   guest: z.object({ allowLinks: z.boolean(), allowUploads: z.boolean(), requirePassword: z.boolean(), maxExpiryDays: int(0, 3650), defaultExpiryDays: int(0, 3650) }).partial(),
   retention: z.object({ trashDays: int(1, 3650), auditDays: int(0, 3650), transferHistoryDays: int(0, 3650) }).partial(),
-  security: z.object({ mfa: z.enum(["off", "admins", "everyone"]), idleTimeoutMinutes: int(0, 10_080), sessionDays: int(1, 365) }).partial(),
+  security: z.object({ mfa: z.enum(["off", "admins", "everyone"]), idleTimeoutMinutes: int(0, 10_080), sessionDays: int(1, 365), googleLogin: z.boolean(), googleDomains: z.string().max(500).regex(/^[a-z0-9.,\s-]*$/i, "Domain hanya boleh berisi huruf, angka, titik, dan tanda hubung.") }).partial(),
   email: z.object({ enabled: z.boolean(), host: z.string().max(200), port: int(1, 65535), secure: z.boolean(), user: z.string().max(200), password: z.string().max(500).nullable(), fromName: z.string().max(80), fromAddress: z.string().max(200) }).partial(),
   brand: z.object({ appName: z.string().trim().min(1).max(40), color: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Warna harus berformat #RRGGBB."), defaultTheme: z.enum(["light", "dark", "system"]), loginMessage: z.string().max(300) }).partial(),
 }).partial().strict();
@@ -68,8 +68,8 @@ export const resetSettingsCache = () => { cache = null; };
 export const smtpPassword = (s: AppSettings) => (s.email.passwordSealed ? open<string>(JSON.parse(s.email.passwordSealed)) : "");
 
 /** What the admin screen gets: never the SMTP password, only whether one is set. */
-export function settingsDto(s = getSettings()) { const { passwordSealed, ...email } = s.email; return { ...s, email: { ...email, hasPassword: !!passwordSealed } }; }
+export function settingsDto(s = getSettings()) { const { passwordSealed, ...email } = s.email; return { ...s, email: { ...email, hasPassword: !!passwordSealed }, googleInfo: { configured: !!config.oauth.google.clientId && !!config.oauth.google.clientSecret, redirectUri: config.oauth.googleLogin.redirectUri } }; }
 /** What anyone may see before signing in. */
 export function publicBranding(s = getSettings()) {
-  return { appName: s.brand.appName, color: s.brand.color, defaultTheme: s.brand.defaultTheme, loginMessage: s.brand.loginMessage, iconUrl: s.brand.iconVersion ? `/api/v1/branding/icon/192?v=${s.brand.iconVersion}` : null, registration: s.registration.mode };
+  return { appName: s.brand.appName, color: s.brand.color, defaultTheme: s.brand.defaultTheme, loginMessage: s.brand.loginMessage, iconUrl: s.brand.iconVersion ? `/api/v1/branding/icon/192?v=${s.brand.iconVersion}` : null, registration: s.registration.mode, google: !!config.oauth.google.clientId && !!config.oauth.google.clientSecret && s.security.googleLogin };
 }

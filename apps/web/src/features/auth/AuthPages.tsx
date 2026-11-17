@@ -1,5 +1,5 @@
 import { ArrowRight, CloudCog, Layers, ShieldCheck } from "lucide-react";
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import { api, ApiError, setWorkspaceId } from "@/lib/api";
 import { queryClient } from "@/lib/query";
@@ -41,6 +41,22 @@ function useSubmit(fn: () => Promise<void>) {
   const [error, setError] = useState(""); const [busy, setBusy] = useState(false);
   return { error, busy, submit: async (e: FormEvent) => { e.preventDefault(); setError(""); setBusy(true); try { await fn(); } catch (err) { setError(err instanceof ApiError ? err.message : "Terjadi kesalahan. Coba lagi."); } finally { setBusy(false); } } };
 }
+const GOOGLE_ERRORS: Record<string, string> = {
+  google_disabled: "Masuk dengan Google belum diaktifkan.", google_state: "Sesi masuk Google sudah berakhir. Coba lagi.", google_failed: "Tidak dapat menyelesaikan masuk dengan Google. Coba lagi.",
+  email_unverified: "Email akun Google ini belum terverifikasi.", domain_not_allowed: "Domain email ini tidak diizinkan untuk masuk.",
+  registration_closed: "Pendaftaran akun baru ditutup. Minta undangan dari administrator.", account_disabled: "Akun ini dinonaktifkan oleh administrator.",
+};
+const GoogleMark = () => <svg viewBox="0 0 48 48" className="size-5" aria-hidden><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.9 2.4 30.4 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.9 6.1C12.4 13.6 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.6c0-1.6-.1-3.1-.4-4.6H24v9h12.4c-.5 2.9-2.1 5.3-4.6 7l7.2 5.6c4.3-3.9 7.1-9.7 7.1-17z"/><path fill="#FBBC05" d="M10.5 28.7a14.5 14.5 0 0 1 0-9.4l-7.9-6.1a24 24 0 0 0 0 21.6l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.2-5.6c-2 1.4-4.9 2.3-8.7 2.3-6.3 0-11.6-4.1-13.5-9.8l-7.9 6.1C6.5 42.6 14.6 48 24 48z"/></svg>;
+/** "Masuk dengan Google" plus a divider; renders nothing when the server has no Google credentials. */
+function GoogleSignIn({ label }: { label: string }) {
+  const brand = useBranding().data; if (!brand?.google) return null;
+  return (
+    <div className="mb-5">
+      <a href="/api/v1/auth/google/start" className="inline-flex h-10 w-full items-center justify-center gap-2.5 rounded-lg border border-line-strong bg-surface text-[14px] font-medium text-ink hover:bg-surface-2 pointer-coarse:h-12"><GoogleMark />{label}</a>
+      <div className="mt-5 flex items-center gap-3 text-[12px] text-muted" aria-hidden><span className="h-px flex-1 bg-line" />atau<span className="h-px flex-1 bg-line" /></div>
+    </div>
+  );
+}
 const Err = ({ msg }: { msg: string }) => msg ? <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-[13px] text-danger-ink">{msg}</p> : null;
 
 async function afterAuth(nav: ReturnType<typeof useNavigate>, to = "/") {
@@ -53,6 +69,14 @@ export function LoginPage() {
   const nav = useNavigate(); const [sp] = useSearchParams(); const brand = useBranding().data;
   const [email, setEmail] = useState(""); const [password, setPassword] = useState("");
   const [challenge, setChallenge] = useState<string | null>(null); const [code, setCode] = useState(""); const [useRecovery, setUseRecovery] = useState(false);
+  // Coming back from Google: either an error code, or a second-factor challenge for an account that has TOTP.
+  const [googleError, setGoogleError] = useState("");
+  useEffect(() => {
+    const e = sp.get("error"); const c = sp.get("challenge");
+    if (e && GOOGLE_ERRORS[e]) setGoogleError(GOOGLE_ERRORS[e]!);
+    if (c) setChallenge(c);
+    if (e || c) window.history.replaceState(null, "", window.location.pathname);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const { error, busy, submit } = useSubmit(async () => {
     const r = await api<{ mfaRequired?: boolean; challenge?: string }>("/auth/login", { body: { email, password } });
     if (r.mfaRequired && r.challenge) { setChallenge(r.challenge); return; }
@@ -77,6 +101,8 @@ export function LoginPage() {
   );
   return (
     <AuthLayout title="Selamat datang kembali" subtitle={sp.get("expired") ? "Sesi Anda berakhir karena tidak ada aktivitas. Masuk lagi untuk melanjutkan." : brand?.loginMessage || "Masuk untuk membuka penyimpanan Anda."} footer={canRegister ? <>Belum punya akun? <Link className="font-medium text-primary-ink hover:underline" to="/register">Daftar</Link></> : <>Akun baru dibuat lewat undangan administrator.</>}>
+      <GoogleSignIn label="Masuk dengan Google" />
+      {googleError && <div className="mb-4"><Err msg={googleError} /></div>}
       <form onSubmit={submit} className="space-y-4">
         <Field label="Email">{(id) => <Input id={id} type="email" autoComplete="username" required autoFocus value={email} onChange={(e) => setEmail(e.target.value)} placeholder="nama@instansi.id" />}</Field>
         <Field label="Kata sandi">{(id) => <Input id={id} type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />}</Field>
@@ -96,6 +122,8 @@ export function RegisterPage() {
   const { error, busy, submit } = useSubmit(async () => { await api("/auth/register", { body: { name, email, password, invitationToken: invitation } }); await afterAuth(nav); });
   return (
     <AuthLayout title={invitation ? "Terima undangan" : "Buat akun"} subtitle={invitation ? "Lengkapi data untuk bergabung ke workspace." : "Akun pertama menjadi administrator instalasi."} footer={<>Sudah punya akun? <Link className="font-medium text-primary-ink hover:underline" to="/login">Masuk</Link></>}>
+      {!blocked && <GoogleSignIn label={invitation ? "Gabung dengan Google" : "Daftar dengan Google"} />}
+      {!blocked && invitation && <p className="-mt-2 mb-4 text-[12px] text-muted">Gunakan akun Google dengan email yang sama dengan undangan ini.</p>}
       {blocked ? <p role="status" className="rounded-lg bg-warn-soft px-3 py-3 text-[14px] text-warn-ink">Pendaftaran terbuka dinonaktifkan. Minta administrator mengirim undangan ke email Anda, lalu buka tautannya.</p> : <form onSubmit={submit} className="space-y-4">
         <Field label="Nama lengkap">{(id) => <Input id={id} required autoComplete="name" autoFocus value={name} onChange={(e) => setName(e.target.value)} />}</Field>
         <Field label="Email">{(id) => <Input id={id} type="email" required autoComplete="username" value={email} readOnly={!!invitation} onChange={(e) => setEmail(e.target.value)} />}</Field>

@@ -16,9 +16,10 @@ interface S {
   registration: { mode: "open" | "invite" | "closed" };
   guest: { allowLinks: boolean; allowUploads: boolean; requirePassword: boolean; maxExpiryDays: number; defaultExpiryDays: number };
   retention: { trashDays: number; auditDays: number; transferHistoryDays: number };
-  security: { mfa: "off" | "admins" | "everyone"; idleTimeoutMinutes: number; sessionDays: number };
+  security: { mfa: "off" | "admins" | "everyone"; idleTimeoutMinutes: number; sessionDays: number; googleLogin: boolean; googleDomains: string };
   email: { enabled: boolean; host: string; port: number; secure: boolean; user: string; hasPassword: boolean; fromName: string; fromAddress: string };
   brand: { appName: string; color: string; defaultTheme: "light" | "dark" | "system"; loginMessage: string; iconVersion: number };
+  googleInfo?: { configured: boolean; redirectUri: string };
 }
 
 function Section({ id, title, description, children, onSave, saving, dirty, extra, disabled }: { id: string; title: string; description: string; children: ReactNode; onSave(): void; saving: boolean; dirty: boolean; extra?: ReactNode; disabled?: boolean }) {
@@ -111,6 +112,11 @@ export default function AdminSettingsPage() {
 
           <Section id="sec" title="Keamanan" description="Verifikasi dua langkah dan batas waktu sesi." saving={save.isPending} dirty={dirty("security")} onSave={() => run("security")}>
             <Field label="Verifikasi dua langkah (TOTP)" hint="Akun yang wajib dan belum mengaktifkannya hanya bisa membuka halaman pengaturan sampai selesai.">{(id) => <Select id={id} value={d.security.mfa} onChange={(e) => upd("security", { mfa: e.target.value as S["security"]["mfa"] })}><option value="off">Opsional: pengguna memilih sendiri</option><option value="admins">Wajib untuk administrator dan pemilik workspace</option><option value="everyone">Wajib untuk semua pengguna</option></Select>}</Field>
+            <div className="space-y-3 rounded-lg border border-line p-4">
+              <Toggle label="Izinkan masuk dengan Google" hint={d.googleInfo?.configured ? "Tombol “Masuk dengan Google” muncul di halaman masuk. Akun dicocokkan lewat email Google yang sudah terverifikasi." : "Belum aktif: isi GOOGLE_CLIENT_ID dan GOOGLE_CLIENT_SECRET di server (klien OAuth yang sama dengan Google Drive)."} checked={d.security.googleLogin} onChange={(v) => upd("security", { googleLogin: v })} />
+              <Field label="Batasi ke domain email (opsional)" hint="Pisahkan dengan koma, misalnya kampus.ac.id, mitra.co.id. Kosong = semua akun Google.">{(id) => <Input id={id} value={d.security.googleDomains} placeholder="contoh.id" onChange={(e) => upd("security", { googleDomains: e.target.value })} />}</Field>
+              <p className="text-[12px] text-muted">Daftarkan alamat ini sebagai “Authorized redirect URI” pada klien OAuth di Google Cloud Console: <code className="rounded bg-surface-2 px-1.5 py-0.5 break-all">{d.googleInfo?.redirectUri}</code></p>
+            </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <Num label="Keluar otomatis bila tidak aktif" hint="0 = tidak pernah. Pengguna diberi peringatan 1 menit sebelumnya." unit="menit" max={10080} value={d.security.idleTimeoutMinutes} onChange={(v) => upd("security", { idleTimeoutMinutes: v })} />
               <Num label="Lama sesi maksimal" unit="hari" min={1} max={365} value={d.security.sessionDays} onChange={(v) => upd("security", { sessionDays: v })} />

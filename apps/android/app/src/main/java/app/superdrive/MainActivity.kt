@@ -9,6 +9,9 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.net.Uri
+import android.util.Base64
+import java.security.MessageDigest
+import java.security.SecureRandom
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
@@ -129,8 +132,48 @@ class MainActivity : AppCompatActivity() {
             }
         })
 
-        if (savedInstanceState != null) web.restoreState(savedInstanceState) else web.loadUrl(server)
+        if (savedInstanceState != null) web.restoreState(savedInstanceState) else if (!handleLoginLink(intent)) web.loadUrl(server)
         if (savedInstanceState == null) updater.check(manual = false)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (::web.isInitialized) handleLoginLink(intent)
+    }
+
+    // ---- Sign in with Google ----
+    // Google refuses to sign people in inside an embedded WebView, so the page is opened in the phone's browser. The browser comes back with
+    // app.superdrive://login?code=...; the code only works together with the secret verifier generated here, which never leaves the app.
+    private fun startGoogle(start: Uri) {
+        val raw = ByteArray(32).also { SecureRandom().nextBytes(it) }
+        val flags = Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP
+        val verifier = Base64.encodeToString(raw, flags)
+        getSharedPreferences("superdrive", Context.MODE_PRIVATE).edit().putString("google_verifier", verifier).apply()
+        val challenge = Base64.encodeToString(MessageDigest.getInstance("SHA-256").digest(verifier.toByteArray()), flags)
+        val target = start.buildUpon().appendQueryParameter("app", "1").appendQueryParameter("cc", challenge).build()
+        externalFlow = true
+        try { startActivity(Intent(Intent.ACTION_VIEW, target)) } catch (e: ActivityNotFoundException) { Toast.makeText(this, R.string.google_no_browser, Toast.LENGTH_LONG).show() }
+    }
+
+    /** True when [intent] was the browser returning from Google, and the page was pointed at the right place. */
+    private fun handleLoginLink(intent: Intent?): Boolean {
+        val d = intent?.data ?: return false
+        if (d.scheme != "app.superdrive" || d.host != "login") return false
+        val prefs = getSharedPreferences("superdrive", Context.MODE_PRIVATE)
+        val code = d.getQueryParameter("code")
+        val challenge = d.getQueryParameter("challenge")
+        val error = d.getQueryParameter("error")
+        val verifier = prefs.getString("google_verifier", null)
+        val url = when {
+            code != null && verifier != null -> "$server/api/v1/auth/google/exchange?code=${Uri.encode(code)}&verifier=${Uri.encode(verifier)}"
+            challenge != null -> "$server/login?challenge=${Uri.encode(challenge)}"
+            else -> "$server/login?error=${Uri.encode(error ?: "google_failed")}"
+        }
+        prefs.edit().remove("google_verifier").apply()
+        failed = false
+        web.loadUrl(url)
+        return true
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -335,7 +378,10 @@ class MainActivity : AppCompatActivity() {
             val uri = request.url
             val scheme = uri.scheme ?: return false
             if (scheme == "blob" || scheme == "data" || scheme == "about") return false
-            if ((scheme == "http" || scheme == "https") && ServerStore.origin(uri.toString()) == ServerStore.origin(server)) return false
+            if ((scheme == "http" || scheme == "https") && ServerStore.origin(uri.toString()) == ServerStore.origin(server)) {
+                if (uri.path == "/api/v1/auth/google/start") { startGoogle(uri); return true }
+                return false
+            }
             // Anything else (another website, mailto:, tel:) opens in the app the phone chooses.
             externalFlow = true
             try { startActivity(Intent(Intent.ACTION_VIEW, uri)) } catch (e: ActivityNotFoundException) { /* nothing can open it */ }

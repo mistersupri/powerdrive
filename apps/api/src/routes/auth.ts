@@ -4,10 +4,11 @@ import { config } from "../config.ts";
 import { db } from "../db.ts";
 import { COOKIE, dropSession, ok, requireAuth } from "../app.ts";
 import { changePassword, issueSession, login, logout, register, registerSchema, requestPasswordReset, resetPassword } from "../modules/auth.ts";
-import { beginSetup, confirmSetup, disable as mfaDisable, finishChallenge, mfaStatus } from "../modules/mfa.ts";
+import { beginSetup, confirmSetup, disable as mfaDisable, finishChallenge, hasMfa, mfaStatus, startChallenge } from "../modules/mfa.ts";
 import { getSettings } from "../modules/settings.ts";
 import { audit } from "../lib/audit.ts";
 import { mailEnabled } from "../lib/mailer.ts";
+import { beginGoogle, completeGoogle, errorCodeOf, grantForApp, redeemAppGrant, userForGoogle } from "../modules/googleLogin.ts";
 
 const cookieOpts = (expires?: Date) => ({ httpOnly: true, sameSite: "lax" as const, secure: config.isProd, path: "/", ...(expires ? { expires } : {}) });
 
@@ -30,6 +31,49 @@ export async function authRoutes(app: FastifyInstance) {
     if (s.mfa) return ok(req, { mfaRequired: true, challenge: s.challenge });
     reply.setCookie(COOKIE, s.token, cookieOpts(s.expires));
     return ok(req, { user: s.user, mfaSetupRequired: s.mfaSetupRequired });
+  });
+
+  // ---- Sign in with Google ----
+  const STATE_COOKIE = "sd_oauth";
+  const toLogin = (reply: any, params: Record<string, string>) => reply.redirect(`/login?${new URLSearchParams(params)}`);
+  // Opens a page that hands the Android app its one-time code (a custom-scheme redirect straight from a 302 is blocked by some browsers).
+  const handToApp = (reply: any, params: Record<string, string>) => {
+    const target = `app.superdrive://login?${new URLSearchParams(params)}`;
+    return reply.type("text/html; charset=utf-8").send(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Kembali ke SuperDrive</title><meta http-equiv="refresh" content="0;url=${target}"><body style="font:16px system-ui;text-align:center;padding:48px 24px"><p>Membuka SuperDrive…</p><p><a href="${target}" style="display:inline-block;padding:14px 22px;border-radius:10px;background:#1769e8;color:#fff;text-decoration:none;font-weight:600">Buka SuperDrive</a></p><script>location.replace(${JSON.stringify(target)})</script>`);
+  };
+  app.get("/google/start", strict, async (req, reply) => {
+    const q = z.object({ app: z.string().optional(), cc: z.string().max(100).optional(), invitation: z.string().max(200).optional() }).parse(req.query);
+    try {
+      const { url, state } = beginGoogle({ app: q.app === "1", cc: q.cc ?? "", invitation: q.invitation ?? "" });
+      reply.setCookie(STATE_COOKIE, state, { ...cookieOpts(new Date(Date.now() + 10 * 60_000)), path: "/api/v1/auth/google" });
+      return reply.redirect(url);
+    } catch (e) { return toLogin(reply, { error: errorCodeOf(e) }); }
+  });
+  app.get("/google/callback", strict, async (req, reply) => {
+    const q = z.object({ code: z.string().max(2000).optional(), state: z.string().max(200).optional(), error: z.string().max(100).optional() }).parse(req.query);
+    reply.clearCookie(STATE_COOKIE, { ...cookieOpts(), path: "/api/v1/auth/google" });
+    let app_ = false; let cc = "";
+    try {
+      if (!q.code || !q.state) throw new Error("Google did not return a code"); // e.g. the person pressed Cancel
+      const g = await completeGoogle(q.code, q.state, req.cookies[STATE_COOKIE]); app_ = g.app; cc = g.cc;
+      const u = await userForGoogle(g, req.ip);
+      const ua = req.headers["user-agent"] ?? "";
+      // Someone who set up a second factor is still asked for it: Google proves the email, not that the owner of the TOTP is here.
+      if (hasMfa(u.id)) { const challenge = startChallenge(u.id, req.ip, ua); return app_ ? handToApp(reply, { challenge }) : toLogin(reply, { challenge }); }
+      if (app_) return handToApp(reply, { code: grantForApp(u.id, cc) });
+      const s = issueSession(u, req.ip, ua);
+      reply.setCookie(COOKIE, s.token, cookieOpts(s.expires));
+      return reply.redirect("/");
+    } catch (e) { const error = errorCodeOf(e); return app_ ? handToApp(reply, { error }) : toLogin(reply, { error }); }
+  });
+  // Android only: the app redeems the one-time code (with the verifier only it knows) so the session cookie lands in its own WebView.
+  app.get("/google/exchange", strict, async (req, reply) => {
+    const q = z.object({ code: z.string().max(100), verifier: z.string().max(100) }).parse(req.query);
+    const u = redeemAppGrant(q.code, q.verifier);
+    if (!u) return toLogin(reply, { error: "google_state" });
+    const s = issueSession(u, req.ip, req.headers["user-agent"] ?? "");
+    reply.setCookie(COOKIE, s.token, cookieOpts(s.expires));
+    return reply.redirect("/");
   });
 
   // Second step of a sign-in for accounts with two-step verification.

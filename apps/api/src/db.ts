@@ -246,6 +246,13 @@ const MIGRATIONS: string[] = [
   CREATE TABLE user_mfa (user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, secret_enc TEXT NOT NULL, confirmed_at TEXT, recovery TEXT NOT NULL DEFAULT '[]', last_step INTEGER NOT NULL DEFAULT 0);
   CREATE TABLE mfa_challenges (token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, expires_at TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, ip TEXT, user_agent TEXT);
   `,
+  /* 8 */ `
+  CREATE TABLE user_identities (
+    provider TEXT NOT NULL, subject TEXT NOT NULL, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, email TEXT,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')), PRIMARY KEY (provider, subject)
+  ) WITHOUT ROWID;
+  CREATE INDEX idx_identity_user ON user_identities(user_id);
+  `,
 ];
 
 function migrate(d: Database) {

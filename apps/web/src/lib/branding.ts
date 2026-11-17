@@ -2,8 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { api } from "@/lib/api";
 
-export interface Branding { appName: string; color: string; defaultTheme: "light" | "dark" | "system"; loginMessage: string; iconUrl: string | null; registration: "open" | "invite" | "closed" }
-export const DEFAULT_BRANDING: Branding = { appName: "SuperDrive", color: "#1769e8", defaultTheme: "light", loginMessage: "", iconUrl: null, registration: "open" };
+export interface Branding { appName: string; color: string; defaultTheme: "light" | "dark" | "system"; loginMessage: string; iconUrl: string | null; registration: "open" | "invite" | "closed"; google: boolean }
+export const DEFAULT_BRANDING: Branding = { appName: "SuperDrive", color: "#1769e8", defaultTheme: "light", loginMessage: "", iconUrl: null, registration: "open", google: false };
 
 export const useBranding = () => useQuery({ queryKey: ["branding"], queryFn: () => api<Branding>("/branding"), staleTime: 5 * 60_000, retry: 1 });
 
