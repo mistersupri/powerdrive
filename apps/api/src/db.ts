@@ -253,6 +253,21 @@ const MIGRATIONS: string[] = [
   ) WITHOUT ROWID;
   CREATE INDEX idx_identity_user ON user_identities(user_id);
   `,
+  /* 9 */ `
+  CREATE TABLE albums (
+    id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE, owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL, is_private INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')), updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+  );
+  CREATE INDEX idx_albums_owner ON albums(owner_id, workspace_id);
+  CREATE TABLE album_items (
+    album_id TEXT NOT NULL REFERENCES albums(id) ON DELETE CASCADE, storage_id TEXT NOT NULL, file_id TEXT NOT NULL,
+    added_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')), PRIMARY KEY (album_id, storage_id, file_id)
+  ) WITHOUT ROWID;
+  CREATE INDEX idx_album_items_file ON album_items(storage_id, file_id);
+  ALTER TABLE users ADD COLUMN album_pin_hash TEXT;
+  ALTER TABLE sessions ADD COLUMN private_until TEXT;
+  `,
 ];
 
 function migrate(d: Database) {

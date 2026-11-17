@@ -4,6 +4,7 @@ import type { FileEntry, FileListing } from "@superdrive/shared";
 import { db, now } from "../db.ts";
 import { audit } from "../lib/audit.ts";
 import { badRequest, conflict } from "../lib/errors.ts";
+import { entryOfRow, mediaFolders, notPrivateSql, privateIds } from "./albums.ts";
 import { encodeId, ROOT, type RemoteFile, type StorageProvider } from "../providers/types.ts";
 import { TRASH } from "../providers/pathutil.ts";
 import { type AuthCtx, permissionsFor } from "./permissions.ts";
@@ -80,6 +81,8 @@ export async function listFolder(ctx: AuthCtx, storageId: string, p: StorageProv
     // Only a full single-page listing can prune the index; paged ones just upsert.
     if (folderId === ROOT) res.items = res.items.filter((i) => i.name !== TRASH);
     indexItems(storageId, folderId, res.items, { complete: !pageToken && !res.nextPageToken });
+    const hidden = privateIds(ctx, storageId);
+    if (hidden.size) res.items = res.items.filter((i) => !hidden.has(i.id));
     const stars = starredSet(ctx.userId, storageId, res.items.map((i) => i.id));
     // Badges for folders that someone else changed since this user last opened them. Visitors of a share link never see them,
     // and a hover prefetch (peek) must not count as opening the folder.
@@ -185,6 +188,7 @@ export function searchIndex(ctx: AuthCtx, s: SearchParams) {
   if (s.modifiedAfter) { where.push("f.modified_at >= ?"); args.push(s.modifiedAfter); }
   if (s.modifiedBefore) { where.push("f.modified_at <= ?"); args.push(s.modifiedBefore); }
   if (s.recent) where.push("f.is_folder = 0");
+  { const hide = notPrivateSql(ctx); where.push(hide.sql); args.push(...hide.args); }
   let from = "files f";
   if (s.starred) { from = "files f JOIN stars st ON st.storage_id = f.storage_id AND st.file_id = f.file_id AND st.user_id = ?"; args.unshift(ctx.userId); }
   const order = { name: "f.name_lower ASC", size: "f.size DESC", modified: "f.modified_at DESC", type: "f.ext ASC, f.name_lower ASC" }[s.sort ?? (s.recent ? "modified" : "name")] ?? "f.name_lower ASC";
@@ -220,10 +224,14 @@ export function searchIndex(ctx: AuthCtx, s: SearchParams) {
  */
 /** Gallery order: what the rows are sorted on, expressed so a cursor can resume exactly after the last row. */
 const MEDIA_SORT = { date: "COALESCE(f.modified_at, '')", name: "LOWER(f.name)", size: "COALESCE(f.size, 0)" } as const;
-export function listMedia(ctx: AuthCtx, q: { kind?: "all" | "image" | "video"; storageId?: string; cursor?: string; limit?: number; sort?: keyof typeof MEDIA_SORT; dir?: "asc" | "desc" }) {
+export function listMedia(ctx: AuthCtx, q: { kind?: "all" | "image" | "video"; storageId?: string; cursor?: string; limit?: number; sort?: keyof typeof MEDIA_SORT; dir?: "asc" | "desc"; /** raw provider id of a folder (needs storageId) */ folderId?: string; /** only the items of this album (the caller has already checked it) */ albumId?: string }) {
   const storages = db.all<{ id: string }>("SELECT id FROM storages WHERE workspace_id = ? AND status = 'CONNECTED'", ctx.workspaceId).map((r) => r.id).filter((id) => permissionsFor(ctx, id).includes("READ") && (!q.storageId || q.storageId === id));
   if (!storages.length) return { items: [] as FileEntry[], nextCursor: null as string | null, counts: { image: 0, video: 0 } };
   const base: string[] = [`f.storage_id IN (${storages.map(() => "?").join(",")})`, "f.is_folder = 0"]; const bargs: (string | number)[] = [...storages];
+  // Photos kept in a private album stay out of every general view; inside the album itself they are listed.
+  if (q.albumId) { base.push("EXISTS (SELECT 1 FROM album_items ai WHERE ai.album_id = ? AND ai.storage_id = f.storage_id AND ai.file_id = f.file_id)"); bargs.push(q.albumId); }
+  else { const hide = notPrivateSql(ctx); base.push(hide.sql); bargs.push(...hide.args); }
+  if (q.folderId && q.storageId) { base.push("f.parent_id = ?"); bargs.push(q.folderId); }
   const kinds = q.kind === "image" ? [TYPE_FILTERS.image!] : q.kind === "video" ? [TYPE_FILTERS.video!] : [TYPE_FILTERS.image!, TYPE_FILTERS.video!];
   const where = [...base, `(${kinds.join(" OR ")})`]; const args = [...bargs];
   const sortKey = q.sort ?? "date"; const expr = MEDIA_SORT[sortKey]; const dir = q.dir === "asc" ? "ASC" : "DESC";
@@ -237,11 +245,14 @@ export function listMedia(ctx: AuthCtx, q: { kind?: "all" | "image" | "video"; s
   const limit = Math.min(Math.max(q.limit ?? 120, 1), 300);
   const rows = db.all<any>(`SELECT f.* FROM files f WHERE ${where.join(" AND ")} ORDER BY ${expr} ${dir}, f.storage_id, f.file_id LIMIT ?`, ...args, limit + 1);
   const more = rows.length > limit; const page = more ? rows.slice(0, limit) : rows;
-  const items: FileEntry[] = page.map((r) => ({
-    id: encodeId(r.file_id), storageId: r.storage_id, parentId: r.parent_id ? encodeId(r.parent_id) : null, name: r.name, isFolder: false, mimeType: r.mime_type, size: r.size,
-    modifiedAt: r.modified_at, createdAt: r.created_at_remote, checksum: r.checksum, hasThumbnail: !!r.has_thumbnail, version: r.version, starred: false,
-  }));
+  const items: FileEntry[] = page.map(entryOfRow);
   const last = page.at(-1);
   const c = (kind: string) => db.get<{ n: number }>(`SELECT COUNT(*) n FROM files f WHERE ${base.join(" AND ")} AND (${TYPE_FILTERS[kind]})`, ...bargs)!.n;
   return { items, nextCursor: more && last ? `${sortKey === "date" ? last.modified_at ?? "" : sortKey === "name" ? String(last.name).toLowerCase() : last.size ?? 0}\u0001${last.storage_id}\u0001${last.file_id}` : null, counts: { image: c("image"), video: c("video") } };
+}
+
+/** Folders that hold photos or videos (the gallery's "Folder" view). */
+export function listMediaFolders(ctx: AuthCtx, storageId?: string) {
+  const storages = db.all<{ id: string }>("SELECT id FROM storages WHERE workspace_id = ? AND status = 'CONNECTED'", ctx.workspaceId).map((r) => r.id).filter((id) => permissionsFor(ctx, id).includes("READ") && (!storageId || storageId === id));
+  return mediaFolders(ctx, `${TYPE_FILTERS.image} OR ${TYPE_FILTERS.video}`, storages);
 }

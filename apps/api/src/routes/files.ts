@@ -1,5 +1,6 @@
 import { issueTicket, readTicket } from "../modules/tickets.ts";
-import { listMedia } from "../modules/files.ts";
+import { listMedia, listMediaFolders } from "../modules/files.ts";
+import { albumFor } from "../modules/albums.ts";
 import { markSeen } from "../modules/activity.ts";
 import { addComment, addTag, deleteComment, listActivity, listComments, listTags, removeTag, workspaceTags } from "../modules/activity.ts";
 import { fileMetadata } from "../modules/metadata.ts";
@@ -186,10 +187,12 @@ export async function fileRoutes(app: FastifyInstance) {
 
   /* ---- search / recent / starred ---- */
   // Photos and videos across storages (the "Media" gallery).
+  app.get("/media/folders", async (req) => { const ctx = requireAuth(req); return ok(req, { items: listMediaFolders(ctx, z.object({ storageId: z.string().optional() }).parse(req.query).storageId) }); });
   app.get("/media", async (req) => {
     const ctx = requireAuth(req);
-    const q = z.object({ kind: z.enum(["all", "image", "video"]).optional(), storageId: z.string().optional(), cursor: z.string().max(600).optional(), limit: z.coerce.number().int().optional(), sort: z.enum(["date", "name", "size"]).optional(), dir: z.enum(["asc", "desc"]).optional() }).parse(req.query);
-    return ok(req, listMedia(ctx, q));
+    const q = z.object({ kind: z.enum(["all", "image", "video"]).optional(), storageId: z.string().optional(), cursor: z.string().max(600).optional(), limit: z.coerce.number().int().optional(), sort: z.enum(["date", "name", "size"]).optional(), dir: z.enum(["asc", "desc"]).optional(), folderId: z.string().max(2000).optional(), albumId: z.string().max(60).optional() }).parse(req.query);
+    if (q.albumId) albumFor(ctx, req.sessionToken, q.albumId); // owner only; a private album only while unlocked
+    return ok(req, listMedia(ctx, { ...q, folderId: q.folderId ? decodeId(q.folderId) : undefined }));
   });
   app.get("/search", async (req) => {
     const ctx = requireAuth(req);

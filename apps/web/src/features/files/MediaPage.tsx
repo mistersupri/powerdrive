@@ -1,7 +1,7 @@
 import type { FileEntry, StorageConnectionDto } from "@superdrive/shared";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Check, Download, Images, Play, Trash2, X } from "lucide-react";
+import { ArrowLeft, Check, Download, FolderMinus, FolderPlus, Images, Lock, Pencil, Play, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
@@ -15,8 +15,13 @@ import { IndexBanner } from "./FilesPages";
 import { toast } from "sonner";
 import { DeleteDialog } from "./dialogs";
 import { triggerDownload } from "./transferApi";
+import { AddToAlbumDialog, AlbumGrid, FolderGrid, type Album, type MediaFolder } from "./AlbumsUi";
+import { Dialog } from "@/ui/Dialog";
+import { Input } from "@/ui/Field";
 
 type Kind = "all" | "image" | "video";
+type Mode = "all" | "folders" | "albums";
+type Scope = { kind: "folder"; storageId: string; folderId: string; name: string } | { kind: "album"; id: string; name: string; isPrivate: boolean };
 interface Page { items: FileEntry[]; nextCursor: string | null; counts: { image: number; video: number } }
 const GAP = 4;
 const SORTS = [["date:desc", "Terbaru"], ["date:asc", "Terlama"], ["name:asc", "Nama A–Z"], ["name:desc", "Nama Z–A"], ["size:desc", "Terbesar"], ["size:asc", "Terkecil"]] as const;
@@ -35,11 +40,13 @@ type Row = { key: string; kind: "head"; label: string; count: number } | { key: 
 export default function MediaPage() {
   const storages = useStorages().data ?? []; const names = useMemo(() => Object.fromEntries(storages.map((s: StorageConnectionDto) => [s.id, s.isDefault ? "Semua file" : s.name])), [storages]);
   const [kind, setKind] = useState<Kind>("all"); const [storageId, setStorageId] = useState(""); const [open, setOpen] = useState<number | null>(null); const [sel, setSel] = useState<Set<string>>(new Set());
+  const [mode, setMode] = useState<Mode>("all"); const [scope, setScope] = useState<Scope | null>(null); const [addOpen, setAddOpen] = useState(false); const [renaming, setRenaming] = useState<string | null>(null); const [dropAlbum, setDropAlbum] = useState(false);
+  const showGallery = mode === "all" || scope !== null;
   const [sort, setSort] = useState<(typeof SORTS)[number][0]>("date:desc"); const [confirmDelete, setConfirmDelete] = useState(false); const qc = useQueryClient();
   const [sortKey, sortDir] = sort.split(":") as [string, string];
   const q = useInfiniteQuery({
-    queryKey: ["media", kind, storageId, sort], initialPageParam: "", getNextPageParam: (p: Page) => p.nextCursor ?? undefined, staleTime: 30_000,
-    queryFn: ({ pageParam }) => api<Page>(`/media?kind=${kind}&limit=150&sort=${sortKey}&dir=${sortDir}${storageId ? `&storageId=${storageId}` : ""}${pageParam ? `&cursor=${encodeURIComponent(pageParam)}` : ""}`),
+    enabled: showGallery, queryKey: ["media", kind, storageId, sort, scope?.kind === "album" ? scope.id : scope ? `${scope.storageId}/${scope.folderId}` : ""], initialPageParam: "", getNextPageParam: (p: Page) => p.nextCursor ?? undefined, staleTime: 30_000,
+    queryFn: ({ pageParam }) => api<Page>(`/media?kind=${kind}&limit=150&sort=${sortKey}&dir=${sortDir}${scope?.kind === "folder" ? `&storageId=${scope.storageId}&folderId=${encodeURIComponent(scope.folderId)}` : storageId ? `&storageId=${storageId}` : ""}${scope?.kind === "album" ? `&albumId=${scope.id}` : ""}${pageParam ? `&cursor=${encodeURIComponent(pageParam)}` : ""}`),
   });
   const items = useMemo(() => q.data?.pages.flatMap((p) => p.items) ?? [], [q.data]); const counts = q.data?.pages[0]?.counts;
   const key = (e: FileEntry) => `${e.storageId}:${e.id}`;
@@ -72,25 +79,52 @@ export default function MediaPage() {
     if (failed < chosen.length) toast.success(`${chosen.length - failed} item dipindahkan ke sampah`);
     setSel(new Set()); setOpen(null); await qc.invalidateQueries({ queryKey: ["media"] });
   };
+  const leaveAlbum = async () => {
+    if (scope?.kind !== "album") return;
+    try { await api(`/albums/${scope.id}/items/remove`, { body: { items: chosen.map((e) => ({ storageId: e.storageId, fileId: e.id })) } }); toast.success(`${chosen.length} item dikeluarkan dari album`); }
+    catch (e) { toast.error((e as Error).message); }
+    setSel(new Set()); await qc.invalidateQueries({ queryKey: ["media"] }); await qc.invalidateQueries({ queryKey: ["albums"] });
+  };
+  const removeAlbum = async () => { if (scope?.kind !== "album") return; try { await api(`/albums/${scope.id}`, { method: "DELETE" }); toast.success("Album dihapus. Foto di dalamnya tidak ikut terhapus."); setScope(null); setDropAlbum(false); await qc.invalidateQueries({ queryKey: ["albums"] }); await qc.invalidateQueries({ queryKey: ["media"] }); } catch (e) { toast.error((e as Error).message); } };
+  const renameAlbum = async () => { if (scope?.kind !== "album" || renaming === null || !renaming.trim()) return; try { await api(`/albums/${scope.id}`, { method: "PATCH", body: { name: renaming } }); setScope({ ...scope, name: renaming.trim() }); setRenaming(null); await qc.invalidateQueries({ queryKey: ["albums"] }); } catch (e) { toast.error((e as Error).message); } };
+  const pickMode = (m: Mode) => { setMode(m); setScope(null); setSel(new Set()); };
   const empty = !q.isLoading && !items.length;
   const chip = (k: Kind, label: string, n?: number) => <button key={k} type="button" aria-pressed={kind === k} onClick={() => { setKind(k); setSel(new Set()); }} className={cn("h-9 rounded-full px-3.5 text-[13px] font-medium pointer-coarse:h-11", kind === k ? "bg-primary-soft text-primary-ink" : "text-muted hover:bg-surface-2")}>{label}{n !== undefined ? <span className="tnum ml-1.5 text-[12px] opacity-70">{n.toLocaleString("id-ID")}</span> : null}</button>;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <PageHeader title="Media" subtitle="Foto dan video dari semua penyimpanan, terbaru di atas." />
-      <div className="flex flex-wrap items-center gap-2 border-b border-line bg-surface px-4 py-2 sm:px-8">
+      <div role="tablist" aria-label="Tampilan media" className="flex items-end gap-1 border-b border-line bg-surface px-4 pt-1.5 sm:px-8">
+        {([["all", "Semua"], ["folders", "Folder"], ["albums", "Album"]] as const).map(([m, l]) => (
+          <button key={m} role="tab" type="button" aria-selected={mode === m} onClick={() => pickMode(m)} className={cn("h-10 border-b-2 px-3.5 text-[13px] font-medium pointer-coarse:h-12", mode === m ? "border-primary text-primary-ink" : "border-transparent text-muted hover:text-ink")}>{l}</button>))}
+      </div>
+      {scope && (
+        <div className="flex flex-wrap items-center gap-1 border-b border-line bg-surface px-4 py-1.5 sm:px-8">
+          <Button size="sm" variant="ghost" icon={<ArrowLeft className="size-4" />} onClick={() => { setScope(null); setSel(new Set()); }}>{mode === "albums" ? "Album" : "Folder"}</Button>
+          <h2 className="flex min-w-0 flex-1 items-center gap-1.5 truncate text-[14px] font-semibold">{scope.kind === "album" && scope.isPrivate && <Lock className="size-4 shrink-0 text-muted" aria-label="Privat" />}<span className="truncate">{scope.name}</span></h2>
+          {scope.kind === "album" && <>
+            <Button size="sm" variant="ghost" iconOnlyMobile aria-label="Ganti nama album" icon={<Pencil className="size-4" />} onClick={() => setRenaming(scope.name)}>Ganti nama</Button>
+            <Button size="sm" variant="ghost" iconOnlyMobile aria-label="Hapus album" className="text-danger-ink hover:bg-danger-soft hover:text-danger-ink" icon={<Trash2 className="size-4" />} onClick={() => setDropAlbum(true)}>Hapus album</Button>
+          </>}
+        </div>)}
+      {showGallery && <div className="flex flex-wrap items-center gap-2 border-b border-line bg-surface px-4 py-2 sm:px-8">
         {kindChips(chip, counts)}
         <span className="flex-1" />
         <Select aria-label="Urutkan" value={sort} onChange={(e) => { setSort(e.target.value as typeof sort); setSel(new Set()); }} className="h-9 w-32 text-[13px] sm:w-36">{SORTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</Select>
         {chosen.length > 0 ? (<>
           <span className="tnum inline-flex items-center gap-1 rounded-lg bg-primary-soft py-1 pr-1 pl-2.5 text-[13px] font-medium text-primary-ink">{chosen.length} dipilih<IconButton label="Batal pilih" className="size-6" onClick={() => setSel(new Set())}><X className="size-3.5" /></IconButton></span>
           <Button size="sm" icon={<Download className="size-4" />} disabled={!oneStorage} title={oneStorage ? undefined : "Pilih dari satu penyimpanan untuk mengunduh sekaligus"} onClick={() => triggerDownload(chosen[0]!.storageId, chosen.map((e) => e.id), chosen.length === 1 ? chosen[0]!.name : undefined)}>Unduh{chosen.length > 1 ? " ZIP" : ""}</Button>
+          <Button size="sm" iconOnlyMobile aria-label="Tambah ke album" title="Tambah ke album" icon={<FolderPlus className="size-4" />} onClick={() => setAddOpen(true)}>Album</Button>
+          {scope?.kind === "album" && <Button size="sm" iconOnlyMobile aria-label="Keluarkan dari album" title="Keluarkan dari album" icon={<FolderMinus className="size-4" />} onClick={() => void leaveAlbum()}>Keluarkan</Button>}
           <Button size="sm" iconOnlyMobile aria-label="Hapus" title="Hapus" className="text-danger-ink hover:bg-danger-soft hover:text-danger-ink" icon={<Trash2 className="size-4" />} onClick={() => setConfirmDelete(true)}>Hapus</Button>
         </>) : (
           <Select aria-label="Penyimpanan" value={storageId} onChange={(e) => { setStorageId(e.target.value); setSel(new Set()); }} className="h-9 w-full text-[13px] sm:w-52"><option value="">Semua penyimpanan</option>{storages.filter((s: StorageConnectionDto) => s.status === "CONNECTED").map((s: StorageConnectionDto) => <option key={s.id} value={s.id}>{s.isDefault ? "Semua file" : s.name}</option>)}</Select>)}
-      </div>
-      <IndexBanner />
-      <div ref={box} className="scroll-thin relative min-h-0 flex-1 overflow-y-auto px-4 pb-24 sm:px-8" role="region" aria-label="Galeri media">
+      </div>}
+      {showGallery && <IndexBanner />}
+      {!showGallery && <div className="scroll-thin min-h-0 flex-1 overflow-y-auto px-4 sm:px-8" role="region" aria-label={mode === "folders" ? "Folder berisi media" : "Album"}>
+        {mode === "folders" ? <FolderGrid storageId="" onOpen={(f: MediaFolder) => setScope({ kind: "folder", storageId: f.storageId, folderId: f.folderId, name: f.name })} /> : <AlbumGrid onOpen={(a: Album) => setScope({ kind: "album", id: a.id, name: a.name, isPrivate: a.isPrivate })} />}
+      </div>}
+      <div ref={box} className={cn("scroll-thin relative min-h-0 flex-1 overflow-y-auto px-4 pb-24 sm:px-8", !showGallery && "hidden")} role="region" aria-label="Galeri media">
         {q.isLoading ? <div className="grid grid-cols-3 gap-1 pt-4 sm:grid-cols-5">{Array.from({ length: 15 }, (_, i) => <Skeleton key={i} className="aspect-square" />)}</div>
           : q.error ? <EmptyState icon={Images} title="Tidak dapat memuat media">{(q.error as Error).message}</EmptyState>
           : empty ? <EmptyState icon={Images} title="Belum ada foto atau video">Foto dan video muncul setelah penyimpanan Anda selesai diindeks. Penyimpanan cloud butuh beberapa saat; progresnya terlihat di banner di atas.</EmptyState> : (
@@ -112,6 +146,13 @@ export default function MediaPage() {
             </div>)}
         {q.isFetchingNextPage && <p className="py-4 text-center text-[12px] text-muted" role="status">Memuat lebih banyak…</p>}
       </div>
+      <AddToAlbumDialog open={addOpen} items={chosen} onClose={() => setAddOpen(false)} onDone={() => setSel(new Set())} />
+      <Dialog open={renaming !== null} onClose={() => setRenaming(null)} width="max-w-sm" title="Ganti nama album" footer={<><Button onClick={() => setRenaming(null)}>Batal</Button><Button variant="primary" disabled={!renaming?.trim()} onClick={() => void renameAlbum()}>Simpan</Button></>}>
+        <form onSubmit={(e) => { e.preventDefault(); void renameAlbum(); }}><Input aria-label="Nama album" autoFocus maxLength={80} value={renaming ?? ""} onChange={(e) => setRenaming(e.target.value)} /></form>
+      </Dialog>
+      <Dialog open={dropAlbum} onClose={() => setDropAlbum(false)} width="max-w-sm" title={`Hapus album “${scope?.kind === "album" ? scope.name : ""}”?`} footer={<><Button onClick={() => setDropAlbum(false)}>Batal</Button><Button variant="danger" onClick={() => void removeAlbum()}>Hapus album</Button></>}>
+        <p className="text-[14px] text-muted">Hanya albumnya yang dihapus. Foto dan video di dalamnya tetap ada di penyimpanan{scope?.kind === "album" && scope.isPrivate ? " dan muncul kembali di galeri" : ""}.</p>
+      </Dialog>
       <DeleteDialog open={confirmDelete} entries={chosen} onClose={() => setConfirmDelete(false)} onConfirm={removeChosen} />
       {open !== null && items[open] && (
         <Preview items={items} index={open} onIndex={(i) => { setOpen(i); if (i > items.length - 12 && q.hasNextPage) void q.fetchNextPage(); }} onClose={() => setOpen(null)} storageName={names[items[open]!.storageId]} location={undefined} />)}
