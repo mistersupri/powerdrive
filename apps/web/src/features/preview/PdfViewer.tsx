@@ -51,7 +51,7 @@ export default function PdfViewer({ f }: { f: FileEntry }) {
   useEffect(() => {
     const el = box.current; if (!el) return;
     const ro = new ResizeObserver(([e]) => setWidth(Math.floor(e!.contentRect.width))); ro.observe(el); return () => ro.disconnect();
-  }, []);
+  }, [doc]); // the scroll box only exists once the document has loaded; observing before that left the width stuck at its default
   // Jump to a page: type a number and press Enter (G focuses the box; Home/End go to the first/last page).
   const goTo = (n: number, total: number) => { const t = Math.min(total, Math.max(1, Math.round(n) || 1)); box.current?.querySelector<HTMLElement>(`[data-page="${t}"]`)?.scrollIntoView({ block: "start" }); setPage(t); setDraft(null); };
   useEffect(() => {
@@ -97,15 +97,14 @@ export default function PdfViewer({ f }: { f: FileEntry }) {
   const z = scale === "fit" ? undefined : scale;
   return (
     <div className="flex h-full flex-col">
-      <div className="flex shrink-0 items-center gap-1.5 border-b border-line bg-surface px-3 py-2 text-[13px]">
+      <div className="flex shrink-0 flex-wrap items-center gap-x-1.5 gap-y-1 border-b border-line bg-surface px-3 py-1.5 text-[13px]">
         <IconButton label="Perkecil" onClick={() => setScale(Math.max(0.4, (typeof scale === "number" ? scale : 1) / 1.2))}><Minus className="size-4" /></IconButton>
         <span className="tnum w-12 text-center text-muted">{scale === "fit" ? "Pas" : `${Math.round(scale * 100)}%`}</span>
         <IconButton label="Perbesar" onClick={() => setScale(Math.min(4, (typeof scale === "number" ? scale : 1) * 1.2))}><Plus className="size-4" /></IconButton>
         <IconButton label="Pas lebar" onClick={() => setScale("fit")}><Maximize2 className="size-4" /></IconButton>
         <button type="button" aria-pressed={ocrOn} title="Kenali teks pada halaman hasil pindai secara otomatis" onClick={() => setOcrOn(!ocrOn)} className={cn("ml-1 inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 pointer-coarse:h-11", ocrOn ? "bg-primary-soft text-primary-ink" : "text-muted hover:bg-surface-2")}><ScanText className="size-4" aria-hidden /><span className="max-sm:sr-only">OCR otomatis</span></button>
         <IconButton label="Salin teks halaman" onClick={() => void copyPage()}><Copy className="size-4" /></IconButton>
-        <span className="flex-1" />
-        <form className="flex items-center gap-1.5 text-muted" onSubmit={(e) => { e.preventDefault(); goTo(Number(draft ?? page), doc.numPages); pageInput.current?.blur(); }}>
+        <form className="ml-auto flex items-center gap-1.5 text-muted" onSubmit={(e) => { e.preventDefault(); goTo(Number(draft ?? page), doc.numPages); pageInput.current?.blur(); }}>
           <label htmlFor="pdf-page" className="sr-only">Pergi ke halaman</label>Halaman
           <input id="pdf-page" ref={pageInput} inputMode="numeric" pattern="[0-9]*" value={draft ?? String(page)} onFocus={(e) => { setDraft(String(page)); e.currentTarget.select(); }} onChange={(e) => setDraft(e.target.value.replace(/\D/g, "").slice(0, 5))} onBlur={() => setDraft(null)}
             className="tnum h-8 w-14 rounded-md border border-line-strong bg-surface px-1 text-center text-[16px] text-ink focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/25 sm:text-[13px]" />

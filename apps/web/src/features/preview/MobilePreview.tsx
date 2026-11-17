@@ -108,6 +108,9 @@ export function MobilePreview({ items, index, onIndex, onClose, onShare, canDown
   };
   const wheel = (e: React.WheelEvent) => { if (!gestures || !(e.ctrlKey || e.metaKey)) return; zoomTo(clamp(z.current.s * Math.exp(-e.deltaY * 0.01), 1, 6), e.clientX, e.clientY, false); };
 
+  const Nav = ({ dir, label, light, children }: { dir: -1 | 1; label: string; light?: boolean; children: ReactNode }) => items[index + dir] ? <button type="button" aria-label={label} onClick={() => go(index + dir)} className={"pointer-events-auto grid size-11 place-items-center rounded-full " + (light ? "text-ink active:bg-surface-2" : "active:bg-white/15")}>{children}</button> : null;
+  const meta = (it: FileEntry) => `${index + 1} dari ${items.length}${it.size !== null ? ` · ${formatBytes(it.size)}` : ""}`;
+
   const slide = (i: number) => {
     const it = items[i]; if (!it) return null; const cur = i === index; const k = previewKind(it);
     return (
@@ -117,14 +120,21 @@ export function MobilePreview({ items, index, onIndex, onClose, onShare, canDown
             className="absolute inset-0 size-full object-contain will-change-transform select-none" style={{ transformOrigin: "50% 50%" }} />
         ) : cur ? (
           k === "video" ? <div className="absolute inset-0 bg-black">{viewer(it)}</div>
-            : <div className="absolute inset-0 overflow-hidden bg-surface pt-14 text-ink">{viewer(it)}</div>
+            : (
+              <div className="absolute inset-0 flex flex-col overflow-hidden bg-surface text-ink">
+                <header className="flex shrink-0 items-center gap-1 border-b border-line px-2 py-1.5">
+                  <button type="button" aria-label="Kembali" onClick={() => closeRef.current()} className="grid size-11 shrink-0 place-items-center rounded-full text-ink active:bg-surface-2"><ArrowLeft className="size-6" /></button>
+                  <div className="min-w-0 flex-1 px-1"><p className="truncate text-[15px] font-semibold">{it.name}</p><p className="tnum truncate text-[12px] text-muted">{meta(it)}</p></div>
+                  <Nav dir={-1} label="Sebelumnya" light><ChevronLeft className="size-6" /></Nav><Nav dir={1} label="Berikutnya" light><ChevronRight className="size-6" /></Nav>
+                </header>
+                <div className="relative min-h-0 flex-1">{viewer(it)}</div>
+              </div>)
         ) : null}
       </div>
     );
   };
   const bar = "pointer-events-none absolute inset-x-0 z-10 flex items-center gap-1 px-2 transition-[opacity,transform] duration-200 ease-out";
   const showTop = chrome || !gestures; const doc = kind !== "image" && kind !== "video";
-  const Nav = ({ dir, label, children }: { dir: -1 | 1; label: string; children: ReactNode }) => items[index + dir] ? <button type="button" aria-label={label} onClick={() => go(index + dir)} className="pointer-events-auto grid size-11 place-items-center rounded-full active:bg-white/15">{children}</button> : null;
   const act = "pointer-events-auto flex min-w-16 flex-col items-center gap-1 rounded-xl px-3 py-2 text-[11px] font-medium active:bg-white/15";
 
   return (
@@ -133,11 +143,11 @@ export function MobilePreview({ items, index, onIndex, onClose, onShare, canDown
       <div ref={bg} className="absolute inset-0 bg-black" />
       <div ref={track} className="absolute inset-0 will-change-transform">{slide(index - 1)}{slide(index)}{slide(index + 1)}</div>
 
-      <div className={bar + " top-0 pt-2 pb-8 " + (doc ? "bg-black/85 pb-2" : "bg-gradient-to-b from-black/70 to-transparent")} style={{ opacity: showTop ? 1 : 0, transform: showTop ? "none" : "translateY(-12px)" }}>
+      {!doc && <div className={bar + " top-0 bg-gradient-to-b from-black/70 to-transparent pt-2 pb-8"} style={{ opacity: showTop ? 1 : 0, transform: showTop ? "none" : "translateY(-12px)" }}>
         <button type="button" aria-label="Kembali" onClick={() => closeRef.current()} className="pointer-events-auto grid size-11 place-items-center rounded-full active:bg-white/15"><ArrowLeft className="size-6" /></button>
-        <div className="min-w-0 flex-1 px-1"><p className="truncate text-[15px] font-semibold">{f.name}</p><p className="tnum truncate text-[12px] text-white/70">{index + 1} dari {items.length}{f.size !== null ? ` · ${formatBytes(f.size)}` : ""}</p></div>
+        <div className="min-w-0 flex-1 px-1"><p className="truncate text-[15px] font-semibold">{f.name}</p><p className="tnum truncate text-[12px] text-white/70">{meta(f)}</p></div>
         {!gestures && <><Nav dir={-1} label="Sebelumnya"><ChevronLeft className="size-6" /></Nav><Nav dir={1} label="Berikutnya"><ChevronRight className="size-6" /></Nav></>}
-      </div>
+      </div>}
 
       {gestures && (
         <div className={bar + " bottom-0 justify-around pt-8 pb-3 bg-gradient-to-t from-black/70 to-transparent"} style={{ opacity: chrome ? 1 : 0, transform: chrome ? "none" : "translateY(12px)" }}>
