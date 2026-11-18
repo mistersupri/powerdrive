@@ -2,10 +2,10 @@ package app.superdrive.ui.auth
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import app.superdrive.data.Api
-import app.superdrive.data.ApiException
-import app.superdrive.data.LoginResult
-import app.superdrive.data.Me
+import app.superdrive.core.Api
+import app.superdrive.core.ApiException
+import app.superdrive.core.LoginResult
+import app.superdrive.core.Me
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch

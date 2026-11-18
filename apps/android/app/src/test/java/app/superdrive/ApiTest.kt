@@ -1,10 +1,10 @@
 package app.superdrive
 
-import app.superdrive.data.Api
-import app.superdrive.data.ApiException
-import app.superdrive.data.CookieStore
-import app.superdrive.data.FileListing
-import app.superdrive.data.Me
+import app.superdrive.core.Api
+import app.superdrive.core.ApiException
+import app.superdrive.core.CookieStore
+import app.superdrive.core.FileListing
+import app.superdrive.core.Me
 import kotlinx.coroutines.runBlocking
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer

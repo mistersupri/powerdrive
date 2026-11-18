@@ -5,7 +5,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import app.superdrive.data.Session
+import app.superdrive.core.Session
 import app.superdrive.ui.NativeApp
 import app.superdrive.ui.theme.SuperDriveTheme
 

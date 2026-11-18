@@ -1,6 +1,6 @@
 package app.superdrive
 
-import app.superdrive.data.FileEntry
+import app.superdrive.core.FileEntry
 import app.superdrive.ui.files.sortedForDisplay
 import org.junit.Assert.assertEquals
 import org.junit.Test

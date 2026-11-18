@@ -2,11 +2,11 @@ package app.superdrive.ui.files
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import app.superdrive.data.Api
-import app.superdrive.data.ApiException
-import app.superdrive.data.FileEntry
-import app.superdrive.data.FileListing
-import app.superdrive.data.Storage
+import app.superdrive.core.Api
+import app.superdrive.core.ApiException
+import app.superdrive.core.FileEntry
+import app.superdrive.core.FileListing
+import app.superdrive.core.Storage
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow

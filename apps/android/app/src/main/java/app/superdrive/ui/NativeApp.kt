@@ -37,7 +37,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import app.superdrive.R
-import app.superdrive.data.Session
+import app.superdrive.core.Session
 import app.superdrive.ui.auth.AuthState
 import app.superdrive.ui.auth.AuthViewModel
 import app.superdrive.ui.auth.LoginScreen

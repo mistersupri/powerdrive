@@ -57,8 +57,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.superdrive.R
-import app.superdrive.data.Api
-import app.superdrive.data.FileEntry
+import app.superdrive.core.Api
+import app.superdrive.core.FileEntry
 import coil3.ImageLoader
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
