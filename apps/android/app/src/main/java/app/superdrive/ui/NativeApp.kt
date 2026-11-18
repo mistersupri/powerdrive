@@ -85,6 +85,8 @@ private fun Shell(session: Session, onClassic: () -> Unit, onLogout: () -> Unit)
     val imageLoader = remember { ImageLoader.Builder(context).components { add(OkHttpNetworkFetcherFactory(callFactory = { api.http })) }.build() }
     val files: FilesViewModel = viewModel(factory = viewModelFactory { initializer { FilesViewModel(api, uploader = app.superdrive.core.Uploader(context.applicationContext, api)) } })
     val media: MediaViewModel = viewModel(factory = viewModelFactory { initializer { MediaViewModel(api) } })
+    val home: app.superdrive.ui.home.HomeViewModel = viewModel(factory = viewModelFactory { initializer { app.superdrive.ui.home.HomeViewModel(api) } })
+    val transfers: app.superdrive.ui.transfers.TransfersViewModel = viewModel(factory = viewModelFactory { initializer { app.superdrive.ui.transfers.TransfersViewModel(api) } })
     var fullscreen by remember { mutableStateOf(false) } // the media viewer covers the bottom bar
 
     Scaffold(
@@ -111,7 +113,9 @@ private fun Shell(session: Session, onClassic: () -> Unit, onLogout: () -> Unit)
         ) { i ->
             Box(Modifier.fillMaxSize().then(Modifier).padding(pad)) {
                 val t = TABS[i]
-                if (i == 1) FilesScreen(files, api, imageLoader, onClassic = onClassic, onLogout = onLogout)
+                if (i == 0) app.superdrive.ui.home.HomeScreen(home, onOpenFiles = { tab = 1 }, onOpenTransfers = { tab = 4 })
+                else if (i == 4) app.superdrive.ui.transfers.TransfersScreen(transfers)
+                else if (i == 1) FilesScreen(files, api, imageLoader, onClassic = onClassic, onLogout = onLogout)
                 else if (i == 2) MediaScreen(media, api, imageLoader, onFullscreen = { fullscreen = it })
                 else WebTab(t.path!!, session.server!!, webs)
             }

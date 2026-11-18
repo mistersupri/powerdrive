@@ -1,0 +1,41 @@
+package app.superdrive.core
+
+import kotlinx.serialization.Serializable
+
+@Serializable data class Quota(val used: Long? = null, val total: Long? = null)
+@Serializable data class StorageInfo(val id: String, val name: String, val provider: String = "", val status: String = "CONNECTED", val quota: Quota? = null)
+@Serializable data class TransferCounts(val active: Int = 0, val completed: Int = 0, val failed: Int = 0)
+@Serializable data class AuditEntry(val id: String, val action: String, val userName: String? = null, val createdAt: String = "")
+@Serializable data class Dashboard(
+    val storages: Int = 0, val providers: Int = 0, val knownCapacity: Long = 0, val knownUsage: Long = 0,
+    val transfers: TransferCounts = TransferCounts(), val recentActivity: List<AuditEntry> = emptyList(), val storageList: List<StorageInfo> = emptyList(),
+)
+
+@Serializable data class TransferJob(
+    val id: String, val type: String = "COPY", val status: String, val title: String = "",
+    val sourceStorageName: String = "", val destinationStorageName: String = "",
+    val totalFiles: Int = 0, val completedFiles: Int = 0, val skippedFiles: Int = 0,
+    val totalBytes: Long? = null, val transferredBytes: Long = 0, val errorMessage: String? = null, val createdAt: String = "",
+) {
+    val active get() = status in ACTIVE
+    val paused get() = status == "PAUSED"
+    /** 0..100, from bytes when the total is known, else from finished files. */
+    val percent: Int get() = when {
+        totalBytes != null && totalBytes > 0 -> (transferredBytes * 100 / totalBytes).toInt()
+        totalFiles > 0 -> (completedFiles + skippedFiles) * 100 / totalFiles
+        else -> 0
+    }.coerceIn(0, 100)
+    companion object { val ACTIVE = setOf("QUEUED", "VALIDATING", "RUNNING", "RETRYING", "VERIFYING") }
+}
+@Serializable data class TransferPage(val items: List<TransferJob> = emptyList(), val total: Int = 0)
+
+@Serializable data class AppNotification(val id: String, val type: String = "", val title: String, val message: String = "", val readAt: String? = null, val createdAt: String = "")
+@Serializable data class Notifications(val items: List<AppNotification> = emptyList(), val unread: Int = 0)
+@Serializable data class SearchResult(val items: List<FileEntry> = emptyList(), val total: Int = 0)
+
+/** Short label for an audit action such as "file.upload". */
+fun auditLabel(action: String): String = when (action) {
+    "file.upload", "upload" -> "mengunggah file"; "file.rename" -> "mengganti nama"; "file.delete", "file.trash" -> "menghapus file"
+    "file.move" -> "memindahkan file"; "file.copy" -> "menyalin file"; "share.create" -> "membuat tautan berbagi"; "auth.login" -> "masuk"
+    else -> action.replace('.', ' ').replace('_', ' ')
+}
