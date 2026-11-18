@@ -19,6 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Badge
 import androidx.compose.material3.Card
@@ -107,7 +108,7 @@ private enum class Page { Home, Notifications, Search }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen(vm: HomeViewModel, onOpenFiles: () -> Unit, onOpenTransfers: () -> Unit) {
+fun HomeScreen(vm: HomeViewModel, onOpenFiles: () -> Unit, onOpenTransfers: () -> Unit, onSettings: () -> Unit) {
     val s by vm.state.collectAsStateWithLifecycle()
     var page by remember { mutableStateOf(Page.Home) }
     val context = LocalContext.current
@@ -129,6 +130,7 @@ fun HomeScreen(vm: HomeViewModel, onOpenFiles: () -> Unit, onOpenTransfers: () -
                 },
                 actions = {
                     if (page == Page.Home) {
+                        IconButton(onClick = onSettings) { Icon(Icons.Default.Settings, contentDescription = "Pengaturan") }
                         IconButton(onClick = { page = Page.Search }) { Icon(Icons.Default.Search, contentDescription = "Cari") }
                         IconButton(onClick = { page = Page.Notifications }) {
                             BadgedBox(badge = { if (s.notifications.unread > 0) Badge { Text("${s.notifications.unread}") } }) { Icon(Icons.Default.Notifications, contentDescription = "Notifikasi") }

@@ -71,12 +71,12 @@ fun NativeApp(session: Session, onClassic: () -> Unit) {
     when (val s = state) {
         AuthState.Checking -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
         is AuthState.SignedOut, is AuthState.Mfa -> LoginScreen(s, onLogin = auth::login, onVerify = auth::verify, onBackToPassword = auth::check, server = api.server)
-        is AuthState.SignedIn -> Shell(session, onClassic, onLogout = auth::logout)
+        is AuthState.SignedIn -> Shell(session, s.me, onClassic, onLogout = auth::logout)
     }
 }
 
 @Composable
-private fun Shell(session: Session, onClassic: () -> Unit, onLogout: () -> Unit) {
+private fun Shell(session: Session, me: app.superdrive.core.Me, onClassic: () -> Unit, onLogout: () -> Unit) {
     val api = session.api!!
     var tab by rememberSaveable { mutableIntStateOf(1) }
     val webs = remember { mutableMapOf<String, WebView>() }
@@ -88,8 +88,10 @@ private fun Shell(session: Session, onClassic: () -> Unit, onLogout: () -> Unit)
     val home: app.superdrive.ui.home.HomeViewModel = viewModel(factory = viewModelFactory { initializer { app.superdrive.ui.home.HomeViewModel(api) } })
     val transfers: app.superdrive.ui.transfers.TransfersViewModel = viewModel(factory = viewModelFactory { initializer { app.superdrive.ui.transfers.TransfersViewModel(api) } })
     val shared: app.superdrive.ui.shared.SharedViewModel = viewModel(factory = viewModelFactory { initializer { app.superdrive.ui.shared.SharedViewModel(api) } })
+    var settings by remember { mutableStateOf(false) }
     var fullscreen by remember { mutableStateOf(false) } // the media viewer covers the bottom bar
 
+    if (settings) { app.superdrive.ui.settings.SettingsScreen(api, me, onBack = { settings = false }, onClassic = onClassic, onLogout = onLogout); return }
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         containerColor = MaterialTheme.colorScheme.background,
@@ -114,7 +116,7 @@ private fun Shell(session: Session, onClassic: () -> Unit, onLogout: () -> Unit)
         ) { i ->
             Box(Modifier.fillMaxSize().then(Modifier).padding(pad)) {
                 val t = TABS[i]
-                if (i == 0) app.superdrive.ui.home.HomeScreen(home, onOpenFiles = { tab = 1 }, onOpenTransfers = { tab = 4 })
+                if (i == 0) app.superdrive.ui.home.HomeScreen(home, onOpenFiles = { tab = 1 }, onOpenTransfers = { tab = 4 }, onSettings = { settings = true })
                 else if (i == 3) app.superdrive.ui.shared.SharedScreen(shared, session.server!!)
                 else if (i == 4) app.superdrive.ui.transfers.TransfersScreen(transfers)
                 else if (i == 1) FilesScreen(files, api, imageLoader, onClassic = onClassic, onLogout = onLogout)
