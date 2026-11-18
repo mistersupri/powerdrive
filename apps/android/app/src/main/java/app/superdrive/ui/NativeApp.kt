@@ -83,7 +83,7 @@ private fun Shell(session: Session, onClassic: () -> Unit, onLogout: () -> Unit)
     DisposableEffect(Unit) { onDispose { webs.values.forEach { it.destroy() }; webs.clear() } }
     val context = LocalContext.current
     val imageLoader = remember { ImageLoader.Builder(context).components { add(OkHttpNetworkFetcherFactory(callFactory = { api.http })) }.build() }
-    val files: FilesViewModel = viewModel(factory = viewModelFactory { initializer { FilesViewModel(api) } })
+    val files: FilesViewModel = viewModel(factory = viewModelFactory { initializer { FilesViewModel(api, uploader = app.superdrive.core.Uploader(context.applicationContext, api)) } })
     val media: MediaViewModel = viewModel(factory = viewModelFactory { initializer { MediaViewModel(api) } })
     var fullscreen by remember { mutableStateOf(false) } // the media viewer covers the bottom bar
 

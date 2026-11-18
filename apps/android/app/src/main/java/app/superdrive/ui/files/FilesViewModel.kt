@@ -4,7 +4,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.superdrive.core.Api
 import app.superdrive.core.ApiException
+import android.net.Uri
 import app.superdrive.core.FileEntry
+import app.superdrive.core.FileOps
+import app.superdrive.core.ShareLink
+import app.superdrive.core.UploadProgress
+import app.superdrive.core.Uploader
 import app.superdrive.core.FileListing
 import app.superdrive.core.Storage
 import kotlinx.coroutines.Job
@@ -25,6 +30,12 @@ data class FilesState(
     val refreshing: Boolean = false,
     val loadingMore: Boolean = false,
     val error: String? = null,
+    /** Ids picked in selection mode; empty means normal browsing. */
+    val selection: Set<String> = emptySet(),
+    /** One-line message shown as a snackbar, cleared once shown. */
+    val notice: String? = null,
+    val upload: UploadProgress? = null,
+    val share: ShareLink? = null,
 )
 
 /** Folders first, then by name the way a person reads it ("file 2" before "file 10"). */
@@ -49,7 +60,7 @@ internal fun naturalCompare(a: String, b: String): Int {
     return (a.length - i).compareTo(b.length - j)
 }
 
-class FilesViewModel(private val api: Api) : ViewModel() {
+class FilesViewModel(private val api: Api, private val ops: FileOps = FileOps(api), private val uploader: Uploader? = null) : ViewModel() {
     private val _state = MutableStateFlow(FilesState())
     val state: StateFlow<FilesState> = _state
     private var job: Job? = null
@@ -101,4 +112,54 @@ class FilesViewModel(private val api: Api) : ViewModel() {
     fun switchStorage(s: Storage) { _state.update { it.copy(storage = s, stack = emptyList(), items = emptyList(), folderName = storageTitle(s)) }; load(refresh = false) }
 
     private fun storageTitle(s: Storage) = if (s.isDefault) "Semua file" else s.name
+
+    // ---- selection ----
+    fun toggle(f: FileEntry) = _state.update { it.copy(selection = if (f.id in it.selection) it.selection - f.id else it.selection + f.id) }
+    fun selectAll() = _state.update { it.copy(selection = it.items.map { f -> f.id }.toSet()) }
+    fun clearSelection() = _state.update { it.copy(selection = emptySet()) }
+    fun noticeShown() = _state.update { it.copy(notice = null) }
+    fun shareShown() = _state.update { it.copy(share = null) }
+    private fun picked(): List<FileEntry> = _state.value.let { s -> s.items.filter { it.id in s.selection } }
+
+    /** Runs one action, reports the outcome as a notice and reloads the listing. */
+    private fun act(done: String, block: suspend () -> Unit) {
+        viewModelScope.launch {
+            try { block(); _state.update { it.copy(notice = done, selection = emptySet()) }; load(refresh = true) }
+            catch (e: ApiException) { _state.update { it.copy(notice = e.message ?: "Gagal.") } }
+        }
+    }
+
+    fun rename(f: FileEntry, name: String) { if (name.isNotBlank() && name != f.name) act("Nama diubah") { ops.rename(f, name.trim()) } }
+    fun star(f: FileEntry) = act(if (f.starred) "Bintang dilepas" else "Diberi bintang") { ops.star(f, !f.starred) }
+    fun trash(items: List<FileEntry> = picked()) { if (items.isNotEmpty()) act(if (items.size == 1) "Dipindahkan ke sampah" else "${items.size} item dipindahkan ke sampah") { items.forEach { ops.trash(it) } } }
+    fun newFolder(name: String) {
+        val s = _state.value; val st = s.storage ?: return
+        if (name.isNotBlank()) act("Folder dibuat") { ops.newFolder(st.id, folderId(s), name.trim()) }
+    }
+    /** type is COPY or MOVE; the work runs on the server and shows on the Transfer tab. */
+    fun transfer(type: String, items: List<FileEntry>, destStorageId: String, destFolderId: String) {
+        if (items.isNotEmpty()) act(if (type == "MOVE") "Pemindahan dimulai" else "Penyalinan dimulai") { ops.transfer(type, items, destStorageId, destFolderId) }
+    }
+    fun createShare(items: List<FileEntry>, role: String, days: Int?, password: String?, title: String?) {
+        viewModelScope.launch {
+            try { val link = ops.createShare(items, role, days, password, title); _state.update { it.copy(share = link, selection = emptySet()) } }
+            catch (e: ApiException) { _state.update { it.copy(notice = e.message ?: "Gagal membuat tautan.") } }
+        }
+    }
+
+    fun upload(uris: List<Uri>) {
+        val s = _state.value; val st = s.storage ?: return; val up = uploader ?: return
+        if (uris.isEmpty() || s.upload != null) return
+        viewModelScope.launch {
+            try {
+                val n = up.upload(st.id, folderId(s), uris) { p -> _state.update { it.copy(upload = p) } }
+                _state.update { it.copy(upload = null, notice = if (n == 1) "1 file terunggah" else "$n file terunggah") }
+                load(refresh = true)
+            } catch (e: ApiException) { _state.update { it.copy(upload = null, notice = e.message ?: "Unggahan gagal.") } }
+        }
+    }
+
+    // ---- details ----
+    fun ops(): FileOps = ops
+    fun currentFolder(): Pair<String, String>? = _state.value.let { s -> s.storage?.let { it.id to folderId(s) } }
 }
