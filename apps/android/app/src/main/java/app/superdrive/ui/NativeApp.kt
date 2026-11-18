@@ -119,7 +119,7 @@ private fun Shell(session: Session, me: app.superdrive.core.Me, onClassic: () ->
                 if (i == 0) app.superdrive.ui.home.HomeScreen(home, onOpenFiles = { tab = 1 }, onOpenTransfers = { tab = 4 }, onSettings = { settings = true })
                 else if (i == 3) app.superdrive.ui.shared.SharedScreen(shared, session.server!!)
                 else if (i == 4) app.superdrive.ui.transfers.TransfersScreen(transfers)
-                else if (i == 1) FilesScreen(files, api, imageLoader, onClassic = onClassic, onLogout = onLogout)
+                else if (i == 1) FilesScreen(files, api, imageLoader, onClassic = onClassic, onLogout = onLogout, onFullscreen = { fullscreen = it })
                 else if (i == 2) MediaScreen(media, api, imageLoader, onFullscreen = { fullscreen = it })
                 else WebTab(t.path!!, session.server!!, webs)
             }

@@ -89,7 +89,7 @@ private fun dateOf(iso: String?): String? {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FilesScreen(vm: FilesViewModel, api: Api, imageLoader: ImageLoader, onClassic: () -> Unit, onLogout: () -> Unit) {
+fun FilesScreen(vm: FilesViewModel, api: Api, imageLoader: ImageLoader, onClassic: () -> Unit, onLogout: () -> Unit, onFullscreen: (Boolean) -> Unit = {}) {
     val s by vm.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var menu by remember { mutableStateOf(false) }
@@ -100,7 +100,12 @@ fun FilesScreen(vm: FilesViewModel, api: Api, imageLoader: ImageLoader, onClassi
     var fabMenu by remember { mutableStateOf(false) }
     val snack = remember { SnackbarHostState() }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris -> vm.upload(uris) }
+    var viewing by remember { mutableStateOf<FileEntry?>(null) }
+    var gallery by remember { mutableStateOf<Pair<List<FileEntry>, Int>?>(null) }
     val selecting = s.selection.isNotEmpty()
+    androidx.compose.runtime.DisposableEffect(viewing, gallery) { onFullscreen(viewing != null || gallery != null); onDispose { onFullscreen(false) } }
+    gallery?.let { (items, idx) -> app.superdrive.ui.media.MediaViewer(items, idx, api, imageLoader, onClose = { gallery = null }); return }
+    viewing?.let { v -> DocumentViewer(v, api, onClose = { viewing = null }, onDownload = { enqueueDownload(context, api.download(v), v.name, v.mimeType) }); return }
     val chosen = s.items.filter { it.id in s.selection }
     BackHandler(enabled = selecting) { vm.clearSelection() }
     BackHandler(enabled = !selecting && s.stack.isNotEmpty()) { vm.up() }
@@ -184,7 +189,7 @@ fun FilesScreen(vm: FilesViewModel, api: Api, imageLoader: ImageLoader, onClassi
                         if (index >= s.items.size - 12 && s.nextPage != null) LaunchedEffect(s.items.size) { vm.loadMore() }
                         Box {
                             FileRow(f, api, imageLoader, selecting = selecting, checked = f.id in s.selection,
-                                onClick = { if (selecting) vm.toggle(f) else if (f.isFolder) vm.open(f) else selected = f },
+                                onClick = { if (selecting) vm.toggle(f) else if (f.isFolder) vm.open(f) else open(f, s.items) { g -> gallery = g } ?: run { viewing = f } },
                                 onLongClick = { vm.toggle(f) }, onMore = { rowMenu = f })
                             DropdownMenu(expanded = rowMenu?.id == f.id, onDismissRequest = { rowMenu = null }) {
                                 DropdownMenuItem(text = { Text("Detail") }, onClick = { rowMenu = null; dialog = Dialog.Details(f) })
@@ -264,4 +269,12 @@ private sealed interface Dialog {
     data class Pick(val type: String, val items: List<FileEntry>) : Dialog
     data class Share(val items: List<FileEntry>) : Dialog
     data class Details(val f: FileEntry) : Dialog
+}
+
+/** Images and videos open in the gallery viewer (swipe through the folder's media); returns null for anything else so the caller shows the document previewer. */
+private fun open(f: FileEntry, siblings: List<FileEntry>, show: (Pair<List<FileEntry>, Int>) -> Unit): Unit? {
+    val kind = app.superdrive.core.docKind(f.name, f.mimeType)
+    if (kind != app.superdrive.core.DocKind.Image && kind != app.superdrive.core.DocKind.Video) return null
+    val media = siblings.filter { app.superdrive.core.docKind(it.name, it.mimeType).let { k -> k == app.superdrive.core.DocKind.Image || k == app.superdrive.core.DocKind.Video } }
+    show(media to media.indexOfFirst { it.id == f.id }.coerceAtLeast(0)); return Unit
 }
