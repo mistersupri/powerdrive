@@ -73,11 +73,6 @@ export function AndroidSettingsHub() {
         <Row to="/app/backup" icon={Images} title="Cadangan foto dan video" summary={!backup ? "—" : backup.enabled ? (backup.running ? "Sedang mencadangkan…" : backup.allAlbums ? "Aktif · semua album" : `Aktif · ${backup.albumCount} album`) : "Nonaktif"} />
         <Row to="/app/lock" icon={Fingerprint} title="Kunci aplikasi" summary={!lock ? "—" : lock.enabled ? "Aktif · sidik jari atau kunci layar" : "Nonaktif"} />
         <Row to="/app/private" icon={Lock} title="Album privat" summary="Buka dengan sidik jari" />
-        <button type="button" onClick={() => b?.setNativeUi?.(true)} className="press flex min-h-16 w-full items-center gap-3 rounded-xl border border-line bg-surface px-4 py-3 text-left transition-colors hover:bg-surface-2">
-          <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-primary-soft text-primary-ink"><Smartphone className="size-5" aria-hidden /></span>
-          <span className="min-w-0 flex-1"><span className="block text-[14px] font-medium">Antarmuka native (beta)</span><span className="block text-[13px] text-muted">Tampilan baru yang ditulis ulang native. File sudah native; layar lain masih memakai halaman web. Bisa dikembalikan dari menu ⋮ di layar File.</span></span>
-          <ChevronRight className="size-4 shrink-0 text-faint" aria-hidden />
-        </button>
         <Row to="/app/update" icon={RefreshCw} title="Pembaruan aplikasi" summary={`Versi ${b?.appVersion?.() ?? "—"}`} />
       </div>
     </Page>
