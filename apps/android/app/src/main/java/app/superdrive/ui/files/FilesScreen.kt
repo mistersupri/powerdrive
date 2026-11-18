@@ -89,7 +89,7 @@ private fun dateOf(iso: String?): String? {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FilesScreen(vm: FilesViewModel, api: Api, imageLoader: ImageLoader, onClassic: () -> Unit, onLogout: () -> Unit, onFullscreen: (Boolean) -> Unit = {}) {
+fun FilesScreen(vm: FilesViewModel, api: Api, imageLoader: ImageLoader, onLogout: () -> Unit, onFullscreen: (Boolean) -> Unit = {}) {
     val s by vm.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var menu by remember { mutableStateOf(false) }
@@ -161,7 +161,6 @@ fun FilesScreen(vm: FilesViewModel, api: Api, imageLoader: ImageLoader, onClassi
                         IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, contentDescription = "Lainnya") }
                         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                             DropdownMenuItem(text = { Text("Muat ulang") }, onClick = { menu = false; vm.refresh() })
-                            DropdownMenuItem(text = { Text("Tampilan klasik") }, onClick = { menu = false; onClassic() })
                             DropdownMenuItem(text = { Text("Keluar") }, onClick = { menu = false; onLogout() })
                         }
                     }

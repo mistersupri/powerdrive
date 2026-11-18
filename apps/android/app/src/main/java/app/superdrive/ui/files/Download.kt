@@ -4,7 +4,6 @@ import android.app.DownloadManager
 import android.content.Context
 import android.net.Uri
 import android.os.Environment
-import android.webkit.CookieManager
 import android.webkit.URLUtil
 import android.widget.Toast
 
@@ -17,7 +16,7 @@ fun enqueueDownload(context: Context, url: String, name: String, mime: String? =
             .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, name.ifBlank { URLUtil.guessFileName(url, null, mime) })
         mime?.let { job.setMimeType(it) }
         userAgent?.let { job.addRequestHeader("User-Agent", it) }
-        CookieManager.getInstance().getCookie(url)?.let { job.addRequestHeader("Cookie", it) }
+        app.superdrive.core.PrefsCookies(context).get(url)?.let { job.addRequestHeader("Cookie", it) }
         dm.enqueue(job)
         Toast.makeText(context, "Mengunduh $name", Toast.LENGTH_SHORT).show()
     } catch (e: Exception) {

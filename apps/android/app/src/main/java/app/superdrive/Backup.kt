@@ -11,7 +11,6 @@ import android.database.sqlite.SQLiteOpenHelper
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
-import android.webkit.CookieManager
 import androidx.core.content.ContextCompat
 import androidx.work.Constraints
 import androidx.work.Data
@@ -140,7 +139,7 @@ class BackupWorker(private val ctx: Context, params: WorkerParameters) : Worker(
         var uploaded = 0
         try {
             base = ServerStore.url(ctx) ?: return Result.success()
-            cookie = CookieManager.getInstance().getCookie(base) ?: throw SessionExpired()
+            cookie = app.superdrive.core.PrefsCookies(ctx).get(base) ?: throw SessionExpired()
             val me = get("/api/v1/auth/me"); workspace = me.getJSONObject("data").optString("activeWorkspaceId")
             val storages = get("/api/v1/storages").getJSONArray("data")
             var storageId = ""

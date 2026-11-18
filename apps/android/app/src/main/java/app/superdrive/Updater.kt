@@ -93,7 +93,7 @@ class Updater(private val activity: AppCompatActivity) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !activity.packageManager.canRequestPackageInstalls()) {
             AlertDialog.Builder(activity).setMessage(R.string.update_permission)
                 .setPositiveButton(R.string.ok) { _, _ ->
-                    (activity as? MainActivity)?.externalFlow = true
+                    (activity as? NativeActivity)?.externalFlow = true
                     activity.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${activity.packageName}")))
                 }.show()
             return

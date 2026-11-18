@@ -39,7 +39,7 @@ import androidx.compose.ui.unit.dp
 import app.superdrive.R
 
 @Composable
-fun LoginScreen(state: AuthState, onLogin: (String, String) -> Unit, onVerify: (String, Boolean) -> Unit, onBackToPassword: () -> Unit, server: String) {
+fun LoginScreen(state: AuthState, onLogin: (String, String) -> Unit, onVerify: (String, Boolean) -> Unit, onBackToPassword: () -> Unit, server: String, google: Boolean = false, onGoogle: () -> Unit = {}) {
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(Modifier.fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 32.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
             Image(painterResource(R.drawable.ic_logo_cube), contentDescription = null, modifier = Modifier.size(56.dp))
@@ -47,7 +47,7 @@ fun LoginScreen(state: AuthState, onLogin: (String, String) -> Unit, onVerify: (
             Column(Modifier.widthIn(max = 420.dp).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                 when (state) {
                     is AuthState.Mfa -> MfaStep(state, onVerify, onBackToPassword)
-                    is AuthState.SignedOut -> PasswordStep(state, onLogin, server)
+                    is AuthState.SignedOut -> PasswordStep(state, onLogin, server, google, onGoogle)
                     else -> CircularProgressIndicator()
                 }
             }
@@ -56,7 +56,7 @@ fun LoginScreen(state: AuthState, onLogin: (String, String) -> Unit, onVerify: (
 }
 
 @Composable
-private fun PasswordStep(state: AuthState.SignedOut, onLogin: (String, String) -> Unit, server: String) {
+private fun PasswordStep(state: AuthState.SignedOut, onLogin: (String, String) -> Unit, server: String, google: Boolean, onGoogle: () -> Unit) {
     var email by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
     Text("Selamat datang kembali", style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
@@ -72,7 +72,7 @@ private fun PasswordStep(state: AuthState.SignedOut, onLogin: (String, String) -
     Button(onClick = { onLogin(email, password) }, enabled = !state.busy && email.isNotBlank() && password.isNotEmpty(), modifier = Modifier.fillMaxWidth().height(52.dp)) {
         if (state.busy) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary) else Text("Masuk")
     }
-    Text("Masuk dengan Google tersedia di tampilan klasik. Setelah masuk di sana, sesi ini ikut berlaku.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 20.dp))
+    if (google) androidx.compose.material3.OutlinedButton(onClick = onGoogle, enabled = !state.busy, modifier = Modifier.fillMaxWidth().height(52.dp).padding(top = 0.dp)) { Text("Masuk dengan Google") }
 }
 
 @Composable

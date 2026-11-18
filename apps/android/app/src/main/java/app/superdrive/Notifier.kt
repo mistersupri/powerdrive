@@ -24,7 +24,7 @@ object Notifier {
     }
 
     private fun openApp(context: Context): PendingIntent =
-        PendingIntent.getActivity(context, 0, Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        PendingIntent.getActivity(context, 0, Intent(context, NativeActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
 
     /** [percent] below 0 shows an indeterminate bar. */
     fun progress(context: Context, title: String, text: String, percent: Int): Notification {

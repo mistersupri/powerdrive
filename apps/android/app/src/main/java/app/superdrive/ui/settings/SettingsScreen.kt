@@ -80,7 +80,7 @@ private fun android.content.Context.activity(): AppCompatActivity? { var c = thi
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(api: Api, me: Me, onBack: () -> Unit, onClassic: () -> Unit, onLogout: () -> Unit) {
+fun SettingsScreen(api: Api, me: Me, onBack: () -> Unit, onLogout: () -> Unit) {
     var sub by remember { mutableStateOf(Sub.Hub) }
     val snack = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -104,7 +104,7 @@ fun SettingsScreen(api: Api, me: Me, onBack: () -> Unit, onClassic: () -> Unit, 
                 Sub.Profile -> ProfilePage(api, me, say, onLogout)
                 Sub.Security -> SecurityPage(api, say)
                 Sub.Private -> PrivatePage(api, me, say)
-                Sub.App -> AppPage(say, onClassic)
+                Sub.App -> AppPage(say)
                 Sub.Storage -> StoragePage(api)
                 Sub.Members -> MembersPage(api, me)
             }
@@ -191,7 +191,7 @@ private fun PrivatePage(api: Api, me: Me, say: (String) -> Unit) {
 }
 
 @Composable
-private fun AppPage(say: (String) -> Unit, onClassic: () -> Unit) {
+private fun AppPage(say: (String) -> Unit) {
     val context = LocalContext.current; val activity = context.activity()
     val lock = remember { activity?.let { AppLock(it) } }
     var lockOn by remember { mutableStateOf(lock?.enabled == true) }
@@ -220,7 +220,6 @@ private fun AppPage(say: (String) -> Unit, onClassic: () -> Unit) {
         HorizontalDivider()
         Text("Versi ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodyMedium)
         if (activity != null) OutlinedButton(onClick = { Updater(activity).check(true) }, modifier = Modifier.fillMaxWidth()) { Text("Periksa pembaruan") }
-        OutlinedButton(onClick = onClassic, modifier = Modifier.fillMaxWidth()) { Text("Kembali ke tampilan klasik") }
     }
 }
 

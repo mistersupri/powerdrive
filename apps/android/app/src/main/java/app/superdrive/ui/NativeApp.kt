@@ -1,6 +1,5 @@
 package app.superdrive.ui
 
-import android.webkit.WebView
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
@@ -25,6 +24,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -53,34 +53,35 @@ import app.superdrive.ui.theme.Motion
 import coil3.ImageLoader
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 
-private class Tab(val label: String, val icon: Int, val path: String?)
+private class Tab(val label: String, val icon: Int)
 private val TABS = listOf(
-    Tab("Beranda", R.drawable.ic_nav_home, "/"),
-    Tab("File", R.drawable.ic_nav_files, null), // native
-    Tab("Media", R.drawable.ic_nav_media, null), // native
-    Tab("Berbagi", R.drawable.ic_nav_shared, "/shared"),
-    Tab("Transfer", R.drawable.ic_nav_transfers, "/transfers"),
+    Tab("Beranda", R.drawable.ic_nav_home),
+    Tab("File", R.drawable.ic_nav_files),
+    Tab("Media", R.drawable.ic_nav_media),
+    Tab("Berbagi", R.drawable.ic_nav_shared),
+    Tab("Transfer", R.drawable.ic_nav_transfers),
 )
 
 /** The whole native interface: sign-in, then five tabs. Tabs that are not native yet show the website's page. */
 @Composable
-fun NativeApp(session: Session, onClassic: () -> Unit) {
+fun NativeApp(session: Session, loginLink: android.net.Uri?, onLoginLinkHandled: () -> Unit) {
     val api = session.api ?: return
     val auth: AuthViewModel = viewModel(factory = viewModelFactory { initializer { AuthViewModel(api) { session.workspaceId = it } } })
     val state by auth.state.collectAsStateWithLifecycle()
+    val google by auth.google.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    LaunchedEffect(loginLink) { loginLink?.let { auth.onLoginLink(context, it); onLoginLinkHandled() } }
     when (val s = state) {
         AuthState.Checking -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-        is AuthState.SignedOut, is AuthState.Mfa -> LoginScreen(s, onLogin = auth::login, onVerify = auth::verify, onBackToPassword = auth::check, server = api.server)
-        is AuthState.SignedIn -> Shell(session, s.me, onClassic, onLogout = auth::logout)
+        is AuthState.SignedOut, is AuthState.Mfa -> LoginScreen(s, onLogin = auth::login, onVerify = auth::verify, onBackToPassword = auth::check, server = api.server, google = google, onGoogle = { auth.startGoogle(context) })
+        is AuthState.SignedIn -> Shell(session, s.me, onLogout = auth::logout)
     }
 }
 
 @Composable
-private fun Shell(session: Session, me: app.superdrive.core.Me, onClassic: () -> Unit, onLogout: () -> Unit) {
+private fun Shell(session: Session, me: app.superdrive.core.Me, onLogout: () -> Unit) {
     val api = session.api!!
     var tab by rememberSaveable { mutableIntStateOf(1) }
-    val webs = remember { mutableMapOf<String, WebView>() }
-    DisposableEffect(Unit) { onDispose { webs.values.forEach { it.destroy() }; webs.clear() } }
     val context = LocalContext.current
     val imageLoader = remember { ImageLoader.Builder(context).components { add(OkHttpNetworkFetcherFactory(callFactory = { api.http })) }.build() }
     val files: FilesViewModel = viewModel(factory = viewModelFactory { initializer { FilesViewModel(api, uploader = app.superdrive.core.Uploader(context.applicationContext, api)) } })
@@ -91,7 +92,7 @@ private fun Shell(session: Session, me: app.superdrive.core.Me, onClassic: () ->
     var settings by remember { mutableStateOf(false) }
     var fullscreen by remember { mutableStateOf(false) } // the media viewer covers the bottom bar
 
-    if (settings) { app.superdrive.ui.settings.SettingsScreen(api, me, onBack = { settings = false }, onClassic = onClassic, onLogout = onLogout); return }
+    if (settings) { app.superdrive.ui.settings.SettingsScreen(api, me, onBack = { settings = false }, onLogout = onLogout); return }
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         containerColor = MaterialTheme.colorScheme.background,
@@ -115,13 +116,11 @@ private fun Shell(session: Session, me: app.superdrive.core.Me, onClassic: () ->
             },
         ) { i ->
             Box(Modifier.fillMaxSize().then(Modifier).padding(pad)) {
-                val t = TABS[i]
                 if (i == 0) app.superdrive.ui.home.HomeScreen(home, onOpenFiles = { tab = 1 }, onOpenTransfers = { tab = 4 }, onSettings = { settings = true })
                 else if (i == 3) app.superdrive.ui.shared.SharedScreen(shared, session.server!!)
                 else if (i == 4) app.superdrive.ui.transfers.TransfersScreen(transfers)
-                else if (i == 1) FilesScreen(files, api, imageLoader, onClassic = onClassic, onLogout = onLogout, onFullscreen = { fullscreen = it })
+                else if (i == 1) FilesScreen(files, api, imageLoader, onLogout = onLogout, onFullscreen = { fullscreen = it })
                 else if (i == 2) MediaScreen(media, api, imageLoader, onFullscreen = { fullscreen = it })
-                else WebTab(t.path!!, session.server!!, webs)
             }
         }
     }

@@ -29,7 +29,23 @@ class Uploader(private val context: Context, private val api: Api) {
     }
 
     /** Returns how many files went up. A failure stops the batch and is thrown with a message for the person. */
-    suspend fun upload(storageId: String, parentId: String, uris: List<Uri>, onProgress: (UploadProgress) -> Unit): Int = withContext(Dispatchers.IO) {
+    suspend fun upload(storageId: String, parentId: String, uris: List<Uri>, onProgress: (UploadProgress) -> Unit): Int {
+        // A foreground service keeps the app alive and shows progress in the notification shade while files go up.
+        try { androidx.core.content.ContextCompat.startForegroundService(context, android.content.Intent(context, app.superdrive.TransferService::class.java).putExtra("title", "Mengunggah").putExtra("text", "").putExtra("percent", -1)) } catch (_: Exception) {}
+        var last = -1
+        val nm = context.getSystemService(android.app.NotificationManager::class.java)
+        try {
+            val n = run(storageId, parentId, uris) { p ->
+                onProgress(p)
+                val shown = p.done * 100 + p.percent
+                if (shown != last) { last = shown; try { nm.notify(app.superdrive.Notifier.PROGRESS_ID, app.superdrive.Notifier.progress(context, "Mengunggah ${p.done + 1}/${p.total}", p.name, p.percent)) } catch (_: Exception) {} }
+            }
+            try { nm.notify(app.superdrive.Notifier.DONE_ID, app.superdrive.Notifier.done(context, "Unggahan selesai", if (n == 1) "1 file terunggah" else "$n file terunggah")) } catch (_: Exception) {}
+            return n
+        } finally { context.stopService(android.content.Intent(context, app.superdrive.TransferService::class.java)) }
+    }
+
+    private suspend fun run(storageId: String, parentId: String, uris: List<Uri>, onProgress: (UploadProgress) -> Unit): Int = withContext(Dispatchers.IO) {
         var done = 0
         for ((i, uri) in uris.withIndex()) {
             val src = describe(uri)

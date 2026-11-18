@@ -1,7 +1,6 @@
 package app.superdrive.core
 
 import android.content.Context
-import android.webkit.CookieManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -22,32 +21,48 @@ import java.util.concurrent.TimeUnit
 /** An error the server explained (or a network failure, status 0). The message is meant for the person. */
 class ApiException(val status: Int, val code: String, message: String) : Exception(message)
 
-/** Where the session cookie lives. The native screens and the embedded web pages share it, so signing in once covers both. */
+/** Where the session cookie lives. */
 interface CookieStore { fun get(url: String): String?; fun put(url: String, setCookie: String) }
 
-class WebViewCookies : CookieStore {
-    override fun get(url: String): String? = CookieManager.getInstance().getCookie(url)
-    override fun put(url: String, setCookie: String) { CookieManager.getInstance().setCookie(url, setCookie); CookieManager.getInstance().flush() }
+/** The session cookie, kept in the app's private storage so the app, the photo backup and downloads all share one sign-in. */
+class PrefsCookies(context: Context) : CookieStore {
+    private val prefs = context.applicationContext.getSharedPreferences("superdrive_session", Context.MODE_PRIVATE)
+    private fun all(): MutableMap<String, String> = (prefs.getString("cookies", "") ?: "").split("; ").filter { it.contains('=') }.associate { it.substringBefore('=') to it.substringAfter('=') }.toMutableMap()
+    override fun get(url: String): String? = all().takeIf { it.isNotEmpty() }?.entries?.joinToString("; ") { "${it.key}=${it.value}" }
+    @Synchronized override fun put(url: String, setCookie: String) {
+        val parts = setCookie.split(";").map { it.trim() }
+        val name = parts[0].substringBefore('='); val value = parts[0].substringAfter('=', "")
+        val gone = value.isEmpty() || parts.any { it.equals("max-age=0", true) || it.startsWith("max-age=-", true) }
+        val m = all(); if (gone) m.remove(name) else m[name] = value
+        prefs.edit().putString("cookies", m.entries.joinToString("; ") { "${it.key}=${it.value}" }).apply()
+    }
 }
 
 /**
  * The server's REST API, as the website uses it: JSON in an envelope `{success, data | error}`, cookie session,
  * `x-requested-with` on every call and `x-workspace-id` once a workspace is chosen.
  */
-class Api(val server: String, private val cookies: CookieStore = WebViewCookies(), private val workspace: () -> String? = { null }) {
+class Api(val server: String, private val cookies: CookieStore, private val workspace: () -> String? = { null }) {
     @PublishedApi internal val json = Json { ignoreUnknownKeys = true; coerceInputValues = true; explicitNulls = false }
     private val jsonType = "application/json; charset=utf-8".toMediaType()
 
     val http: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).writeTimeout(60, TimeUnit.SECONDS)
         .addInterceptor(Interceptor { chain ->
-            val req = chain.request().newBuilder().header("x-requested-with", "superdrive")
+            val req = chain.request().newBuilder().header("x-requested-with", "superdrive").header("User-Agent", "SuperDriveAndroid/" + app.superdrive.BuildConfig.VERSION_NAME + " (native)")
             cookies.get(server)?.let { req.header("Cookie", it) }
             workspace()?.let { req.header("x-workspace-id", it) }
             val res = chain.proceed(req.build())
             res.headers("Set-Cookie").forEach { cookies.put(server, it) }
             res
         }).build()
+
+    /** Follows a link that answers with a session cookie and a redirect (the Google hand-off); true when a cookie came back. */
+    suspend fun redeem(path: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            http.newBuilder().followRedirects(false).build().newCall(Request.Builder().url(url(path)).get().build()).execute().use { res -> res.headers("Set-Cookie").isNotEmpty() }
+        } catch (e: IOException) { throw ApiException(0, "NETWORK", "Tidak dapat menghubungi server. Periksa koneksi Anda.") }
+    }
 
     fun url(path: String) = server.trimEnd('/') + "/api/v1" + path
 
@@ -88,5 +103,5 @@ class Session(context: Context) {
     var workspaceId: String?
         get() = prefs.getString("workspace_id", null)
         set(v) { prefs.edit().putString("workspace_id", v).apply() }
-    val api: Api? = server?.let { Api(it, WebViewCookies()) { workspaceId } }
+    val api: Api? = server?.let { Api(it, PrefsCookies(context)) { workspaceId } }
 }

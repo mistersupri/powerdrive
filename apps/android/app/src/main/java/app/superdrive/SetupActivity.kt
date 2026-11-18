@@ -56,7 +56,7 @@ class SetupActivity : AppCompatActivity() {
                     showError(problem)
                 } else {
                     ServerStore.save(this, url)
-                    startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
+                    startActivity(Intent(this, NativeActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
                     finish()
                 }
             }
