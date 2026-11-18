@@ -95,7 +95,7 @@ fun SettingsScreen(api: Api, me: Me, onBack: () -> Unit, onLogout: () -> Unit) {
             when (sub) {
                 Sub.Hub -> Column(Modifier.verticalScroll(rememberScrollState())) {
                     Sub.entries.filter { it != Sub.Hub }.forEach { s ->
-                        ListItem(headlineContent = { Text(s.title) }, supportingContent = { Text(when (s) { Sub.Profile -> me.user.name + " · " + me.user.email; Sub.Security -> "Kata sandi dan verifikasi dua langkah"; Sub.Private -> "Kata sandi dan sidik jari"; Sub.App -> "Kunci, cadangan foto, pembaruan"; Sub.Storage -> "Kapasitas tiap penyimpanan"; else -> "Anggota ruang kerja"; Sub.Hub -> "" }) },
+                        ListItem(headlineContent = { Text(s.title) }, supportingContent = { Text(when (s) { Sub.Profile -> me.user.name + " · " + me.user.email; Sub.Security -> "Kata sandi dan verifikasi dua langkah"; Sub.Private -> "Kata sandi dan sidik jari"; Sub.App -> "Kunci, cadangan foto, pembaruan"; Sub.Storage -> "Kapasitas tiap penyimpanan"; Sub.Members -> "Anggota ruang kerja"; Sub.Hub -> "" }) },
                             modifier = Modifier.clickable { sub = s }, colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface))
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     }
