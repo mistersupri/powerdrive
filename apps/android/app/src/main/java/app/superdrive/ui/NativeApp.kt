@@ -87,6 +87,7 @@ private fun Shell(session: Session, onClassic: () -> Unit, onLogout: () -> Unit)
     val media: MediaViewModel = viewModel(factory = viewModelFactory { initializer { MediaViewModel(api) } })
     val home: app.superdrive.ui.home.HomeViewModel = viewModel(factory = viewModelFactory { initializer { app.superdrive.ui.home.HomeViewModel(api) } })
     val transfers: app.superdrive.ui.transfers.TransfersViewModel = viewModel(factory = viewModelFactory { initializer { app.superdrive.ui.transfers.TransfersViewModel(api) } })
+    val shared: app.superdrive.ui.shared.SharedViewModel = viewModel(factory = viewModelFactory { initializer { app.superdrive.ui.shared.SharedViewModel(api) } })
     var fullscreen by remember { mutableStateOf(false) } // the media viewer covers the bottom bar
 
     Scaffold(
@@ -114,6 +115,7 @@ private fun Shell(session: Session, onClassic: () -> Unit, onLogout: () -> Unit)
             Box(Modifier.fillMaxSize().then(Modifier).padding(pad)) {
                 val t = TABS[i]
                 if (i == 0) app.superdrive.ui.home.HomeScreen(home, onOpenFiles = { tab = 1 }, onOpenTransfers = { tab = 4 })
+                else if (i == 3) app.superdrive.ui.shared.SharedScreen(shared, session.server!!)
                 else if (i == 4) app.superdrive.ui.transfers.TransfersScreen(transfers)
                 else if (i == 1) FilesScreen(files, api, imageLoader, onClassic = onClassic, onLogout = onLogout)
                 else if (i == 2) MediaScreen(media, api, imageLoader, onFullscreen = { fullscreen = it })

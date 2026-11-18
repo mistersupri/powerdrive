@@ -39,3 +39,10 @@ fun auditLabel(action: String): String = when (action) {
     "file.move" -> "memindahkan file"; "file.copy" -> "menyalin file"; "share.create" -> "membuat tautan berbagi"; "auth.login" -> "masuk"
     else -> action.replace('.', ' ').replace('_', ' ')
 }
+
+@Serializable data class ShareItem(
+    val id: String, val title: String? = null, val kind: String = "single", val itemCount: Int = 1, val storageId: String = "", val storageName: String = "",
+    val fileId: String = "", val name: String = "", val isFolder: Boolean = false, val role: String = "VIEWER", val url: String = "",
+    val hasPassword: Boolean = false, val expiresAt: String? = null, val accessCount: Int = 0, val createdAt: String = "", val createdByName: String? = null, val expired: Boolean = false,
+)
+@Serializable data class SharePage(val items: List<ShareItem> = emptyList(), val total: Int = 0)
