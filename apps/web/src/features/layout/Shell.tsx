@@ -110,6 +110,8 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
 
 /** The handful of places people go to all day, one thumb away. Everything else is in the drawer opened from the header. */
 function BottomNav() {
+  // The Android app has its own native bottom bar.
+  if (isAndroidApp()) return null;
   const loc = useLocation(); const active = transferStore.use((s) => s.jobs.filter((j) => ["QUEUED", "VALIDATING", "RUNNING", "RETRYING", "VERIFYING"].includes(j.status)).length);
   const items: { to: string; label: string; icon: typeof Search; on: boolean; badge?: number }[] = [
     { to: "/", label: "Beranda", icon: LayoutDashboard, on: loc.pathname === "/" },
@@ -244,7 +246,7 @@ export function AppShell() {
           {!mfaGate && <BottomNav />}
         </div>
         <FloatingProgress />
-        <Toaster position="bottom-left" mobileOffset={{ bottom: 76 }} toastOptions={{ classNames: { toast: "!rounded-xl !border-line !bg-surface !text-ink !shadow-float" } }} />
+        <Toaster position="bottom-left" mobileOffset={{ bottom: isAndroidApp() ? 16 : 76 }} toastOptions={{ classNames: { toast: "!rounded-xl !border-line !bg-surface !text-ink !shadow-float" } }} />
       </div>
     </ShellCtx.Provider>
   );

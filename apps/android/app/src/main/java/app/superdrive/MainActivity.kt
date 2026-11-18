@@ -68,6 +68,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var lock: AppLock
     private lateinit var lockScreen: View
     private lateinit var vault: AlbumVault
+    private lateinit var content: FrameLayout
+    private lateinit var nav: NativeNav
+    private var currentPath = ""
+    private var viewerOpen = false
+    private var keyboardOpen = false
     private var unlocked = false
     private var leftAt: Long? = null
     /** Set right before a screen that is part of using the app (file picker, permission, settings) so leaving for it does not lock the app. */
@@ -141,6 +146,10 @@ class MainActivity : AppCompatActivity() {
         lockScreen = findViewById(R.id.lockScreen)
         lock = AppLock(this)
         vault = AlbumVault(this)
+        content = findViewById(R.id.content)
+        nav = findViewById(R.id.nav)
+        nav.onSelect = { index, same -> selectTab(index, same) }
+        watchKeyboard()
         findViewById<Button>(R.id.unlock).setOnClickListener { promptUnlock() }
         if (lock.enabled) setLocked(true) // never flash the app before the lock
         findViewById<Button>(R.id.retry).setOnClickListener { retry() }
@@ -149,16 +158,7 @@ class MainActivity : AppCompatActivity() {
         updater = Updater(this)
         configureWebView()
 
-        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() {
-                when {
-                    lockScreen.visibility == View.VISIBLE -> finish()
-                    customView != null -> hideCustomView()
-                    web.canGoBack() -> web.goBack()
-                    else -> finish()
-                }
-            }
-        })
+        onBackPressedDispatcher.addCallback(this, backCallback)
 
         if (savedInstanceState != null) web.restoreState(savedInstanceState) else if (!handleLoginLink(intent)) web.loadUrl(server)
         if (savedInstanceState == null) updater.check(manual = false)
@@ -225,6 +225,62 @@ class MainActivity : AppCompatActivity() {
     override fun onStop() {
         if (::lock.isInitialized && lock.enabled && !externalFlow) leftAt = System.currentTimeMillis()
         super.onStop()
+    }
+
+    /* ---- native shell: bottom bar, tab transitions, back gesture ---- */
+
+    // Pages that are not part of the signed-in app (sign-in, share links) have no bottom bar.
+    private fun pathHasNav(p: String) = p.isNotEmpty() && !(p.startsWith("/login") || p.startsWith("/register") || p.startsWith("/forgot-password") || p.startsWith("/reset-password") || p.startsWith("/share/"))
+
+    private fun updateNav() { nav.setShown(pathHasNav(currentPath) && !viewerOpen && !keyboardOpen) }
+
+    /** The keyboard pushes the page up; the bar must not ride on top of it. */
+    private fun watchKeyboard() {
+        val root = findViewById<View>(android.R.id.content)
+        root.viewTreeObserver.addOnGlobalLayoutListener {
+            val r = android.graphics.Rect(); root.getWindowVisibleDisplayFrame(r)
+            val screen = resources.displayMetrics.heightPixels
+            val open = screen - r.bottom > screen * 0.25
+            if (open != keyboardOpen) { keyboardOpen = open; updateNav() }
+        }
+    }
+
+    /** A tab was tapped: slide the page in from the side the tab is on, and tell the web app where to go. */
+    private fun selectTab(index: Int, same: Boolean) {
+        val path = nav.pathOf(index)
+        if (!same) {
+            val dir = if (nav.activeIndex < 0 || index > nav.activeIndex) 1 else -1
+            nav.setActive(index) // the bar answers at once; the page follows
+            content.animate().cancel()
+            content.translationX = dir * 28f * resources.displayMetrics.density; content.alpha = 0.35f
+            content.animate().translationX(0f).alpha(1f).setDuration(300).setInterpolator(android.view.animation.PathInterpolator(0.23f, 1f, 0.32f, 1f)).start()
+        }
+        web.evaluateJavascript("window.__sdNavigate && window.__sdNavigate('$path')", null)
+    }
+
+    /** Back: whatever is on top first, then earlier pages, then home, then the app closes. */
+    private fun goBack() {
+        when {
+            lockScreen.visibility == View.VISIBLE -> finish()
+            customView != null -> hideCustomView()
+            errorBox.visibility == View.VISIBLE -> if (web.canGoBack()) web.goBack() else finish()
+            else -> web.evaluateJavascript("(function(){return window.__sdBack ? window.__sdBack() : null})()") { r ->
+                when (r) { "true" -> Unit; "null" -> if (web.canGoBack()) web.goBack() else finish(); else -> finish() }
+            }
+        }
+    }
+
+    private val backCallback = object : OnBackPressedCallback(true) {
+        // Android 14 shows the page shrinking away under the finger; older versions just go back.
+        override fun handleOnBackStarted(backEvent: androidx.activity.BackEventCompat) { content.animate().cancel() }
+        override fun handleOnBackProgressed(backEvent: androidx.activity.BackEventCompat) {
+            val p = backEvent.progress; val d = resources.displayMetrics.density
+            content.scaleX = 1f - 0.07f * p; content.scaleY = 1f - 0.07f * p; content.alpha = 1f - 0.18f * p
+            content.translationX = (if (backEvent.swipeEdge == androidx.activity.BackEventCompat.EDGE_LEFT) 1 else -1) * 16f * d * p
+        }
+        override fun handleOnBackCancelled() { settle() }
+        override fun handleOnBackPressed() { settle(); goBack() }
+        private fun settle() { content.animate().scaleX(1f).scaleY(1f).alpha(1f).translationX(0f).setDuration(220).setInterpolator(android.view.animation.PathInterpolator(0.32f, 0.72f, 0f, 1f)).start() }
     }
 
     private fun setLocked(on: Boolean) {
@@ -373,6 +429,18 @@ class MainActivity : AppCompatActivity() {
 
         @JavascriptInterface
         fun appVersion(): String = BuildConfig.VERSION_NAME
+
+        /** The web app reports where it is, so the bottom bar can follow. */
+        @JavascriptInterface
+        fun routeChanged(path: String) { runOnUiThread { currentPath = path; nav.setPath(path); updateNav() } }
+
+        /** The full-screen viewer covers the bar. */
+        @JavascriptInterface
+        fun setNavVisible(on: Boolean) { runOnUiThread { viewerOpen = !on; updateNav() } }
+
+        /** Running uploads and transfers, shown on the Transfer tab. */
+        @JavascriptInterface
+        fun setBadge(count: Int) { runOnUiThread { nav.setBadge(4, count) } }
 
         /** The full-screen viewer hides the status and navigation bars together with its own bars. */
         @JavascriptInterface
@@ -579,11 +647,16 @@ class MainActivity : AppCompatActivity() {
 
     /** Paint the status and navigation bars in the app's own surface colour, with icons that stay readable on it. */
     private fun applySystemBars() {
-        web.evaluateJavascript("(function(){return getComputedStyle(document.documentElement).getPropertyValue('--surface').trim()})()") { raw ->
-            val hex = raw?.trim('"') ?: return@evaluateJavascript
-            val color = try { Color.parseColor(hex) } catch (e: Exception) { return@evaluateJavascript }
+        val vars = listOf("--surface", "--border", "--muted", "--primary-ink", "--primary-soft", "--primary").joinToString(",") { "'$it'" }
+        web.evaluateJavascript("(function(){var s=getComputedStyle(document.documentElement);return JSON.stringify([$vars].map(function(k){return s.getPropertyValue(k).trim()}))})()") { raw ->
+            val colors = try {
+                val text = org.json.JSONTokener(raw ?: return@evaluateJavascript).nextValue() as? String ?: return@evaluateJavascript
+                val arr = org.json.JSONArray(text); (0 until arr.length()).map { i -> try { Color.parseColor(arr.getString(i)) } catch (e: Exception) { null } }
+            } catch (e: Exception) { return@evaluateJavascript }
+            val color = colors.getOrNull(0) ?: return@evaluateJavascript
             window.statusBarColor = color
             window.navigationBarColor = color
+            nav.applyTheme(colors[0], colors.getOrNull(1), colors.getOrNull(2), colors.getOrNull(3), colors.getOrNull(4), colors.getOrNull(5))
             val light = ColorUtils.calculateLuminance(color) > 0.5
             val controller = WindowCompat.getInsetsController(window, window.decorView)
             controller.isAppearanceLightStatusBars = light

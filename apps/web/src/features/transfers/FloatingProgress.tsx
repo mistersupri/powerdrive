@@ -3,6 +3,7 @@ import { memo, useState } from "react";
 import { Link } from "react-router";
 import { useStorages } from "@/features/layout/Shell";
 import { cn } from "@/lib/cn";
+import { isAndroidApp } from "@/lib/platform";
 import { formatBytes, formatEta, formatSpeed, percent } from "@/lib/format";
 import { IconButton } from "@/ui/Button";
 import { Progress } from "@/ui/misc";
@@ -91,7 +92,7 @@ export function FloatingProgress() {
   const total = shownJobs.length + shownUploads.length;
   if (!total || dismissed === total + running * 1000) return null;
   return (
-    <section aria-label="Unggahan dan transfer" className="anim-slide-up fixed right-4 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-30 lg:bottom-4 w-[380px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-[14px] border border-line bg-surface shadow-float">
+    <section aria-label="Unggahan dan transfer" className={cn("anim-slide-up fixed right-4 z-30 w-[380px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-[14px] border border-line bg-surface shadow-float", isAndroidApp() ? "bottom-4" : "bottom-[calc(4.5rem+env(safe-area-inset-bottom))] lg:bottom-4")}>
       <header className="flex items-center gap-2 bg-navy px-[18px] py-3.5 text-white">
         <h2 className="text-[14px] font-semibold">Unggahan &amp; transfer</h2>
         {running > 0 && <span className="tnum rounded-full bg-white/20 px-2 text-[11px] leading-[18px] font-semibold">{running}</span>}

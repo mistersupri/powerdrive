@@ -2,6 +2,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { lazy, Suspense } from "react";
 import { BrandingApplier } from "@/lib/branding";
 import { createBrowserRouter, RouterProvider, Navigate } from "react-router";
+import { startNativeShell } from "@/lib/nativeShell";
 import { queryClient } from "@/lib/query";
 import { ForgotPage, LoginPage, RegisterPage, ResetPage } from "@/features/auth/AuthPages";
 import { AppShell } from "@/features/layout/Shell";
@@ -55,4 +56,5 @@ const router = createBrowserRouter([
   },
 ]);
 
+startNativeShell(router);
 export default function App() { return <QueryClientProvider client={queryClient}><BrandingApplier /><RouterProvider router={router} /></QueryClientProvider>; }

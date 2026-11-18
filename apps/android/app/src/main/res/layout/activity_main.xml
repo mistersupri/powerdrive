@@ -3,6 +3,14 @@
     android:layout_width="match_parent" android:layout_height="match_parent"
     android:background="@color/white">
 
+    <LinearLayout
+        android:layout_width="match_parent" android:layout_height="match_parent"
+        android:orientation="vertical">
+
+    <!-- The web app; the bar below it is the app's own. -->
+    <FrameLayout
+        android:id="@+id/content"
+        android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1">
     <WebView
         android:id="@+id/web"
         android:layout_width="match_parent" android:layout_height="match_parent" />
@@ -41,6 +49,14 @@
             android:layout_width="match_parent" android:layout_height="52dp"
             android:layout_marginTop="10dp" android:background="@drawable/bg_button_secondary" android:text="@string/error_change_server"
             android:textAllCaps="false" android:textColor="@color/ink" android:textSize="16sp" />
+    </LinearLayout>
+
+    </FrameLayout>
+
+    <app.superdrive.NativeNav
+        android:id="@+id/nav"
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:visibility="gone" />
     </LinearLayout>
 
     <!-- Shown instead of the app while it is locked, and in the recent-apps thumbnail. -->

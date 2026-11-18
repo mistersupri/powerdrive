@@ -3,6 +3,7 @@ import { formatBytes } from "@superdrive/shared";
 import { ArrowLeft, ChevronLeft, ChevronRight, Download, Info, Share2 } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { startDownload } from "@/lib/download";
+import { setNavVisible } from "@/lib/nativeShell";
 import { previewKind } from "@/lib/fileType";
 import { DetailsPanel } from "@/features/files/DetailsPanel";
 import { useFileUrls } from "@/features/files/urls";
@@ -39,6 +40,8 @@ export function MobilePreview({ items, index, onIndex, onClose, onShare, canDown
   /* system bars follow the viewer's bars: hidden together, so the picture really is full screen */
   useEffect(() => { bridge()?.setFullscreen?.(!chrome && gestures); }, [chrome, gestures]);
   useEffect(() => () => bridge()?.setFullscreen?.(false), []);
+  /* the app's own bottom bar steps aside while the viewer covers the screen */
+  useEffect(() => { setNavVisible(false); return () => setNavVisible(true); }, []);
   useEffect(() => { z.current = { s: 1, x: 0, y: 0 }; setHi(false); setInfo(false); setChrome(true); }, [index]);
 
   if (!f) return null;

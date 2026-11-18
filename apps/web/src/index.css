@@ -122,6 +122,8 @@ button:disabled { cursor: not-allowed; }
 .anim-slide-up { animation: rise-in 240ms var(--ease-out) both; }
 /* "backwards", not "both": a transform that lingers after the fade would make every fixed-position child (viewers, sheets) measure from this box instead of the screen. */
 .anim-page { animation: page-in 190ms var(--ease-out) backwards; }
+/* In the Android app a tab change is animated by the app itself. */
+[data-native-nav] .anim-page { animation: none; }
 .anim-rows { display: grid; animation: rows-in 200ms var(--ease-out) both; }
 .anim-rows[data-closing] { animation: rows-out 160ms var(--ease-out) forwards; }
 .anim-rows > * { min-height: 0; overflow: hidden; }
