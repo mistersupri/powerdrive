@@ -136,6 +136,10 @@ class MainActivity : AppCompatActivity() {
             finish()
             return
         }
+        // Opted in to the native interface: hand over (a Google sign-in coming back from the browser still belongs to this screen).
+        if (ServerStore.nativeUi(this) && intent?.data?.scheme != "app.superdrive") {
+            startActivity(Intent(this, NativeActivity::class.java)); finish(); return
+        }
         server = saved
         setContentView(R.layout.activity_main)
         web = findViewById(R.id.web)
@@ -429,6 +433,15 @@ class MainActivity : AppCompatActivity() {
 
         @JavascriptInterface
         fun appVersion(): String = BuildConfig.VERSION_NAME
+
+        /** Switch to the native interface (beta). It can be switched back from its own menu. */
+        @JavascriptInterface
+        fun setNativeUi(on: Boolean) {
+            runOnUiThread {
+                ServerStore.setNativeUi(this@MainActivity, on)
+                if (on) { startActivity(Intent(this@MainActivity, NativeActivity::class.java)); finish() }
+            }
+        }
 
         /** The web app reports where it is, so the bottom bar can follow. */
         @JavascriptInterface

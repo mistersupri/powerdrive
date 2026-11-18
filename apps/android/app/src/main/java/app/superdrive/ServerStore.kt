@@ -14,6 +14,10 @@ object ServerStore {
         context.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit().putString(KEY, url).apply()
     }
 
+    /** Opt-in to the native interface (beta). */
+    fun nativeUi(context: Context): Boolean = context.getSharedPreferences(FILE, Context.MODE_PRIVATE).getBoolean("native_ui", false)
+    fun setNativeUi(context: Context, on: Boolean) { context.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit().putBoolean("native_ui", on).apply() }
+
     fun clear(context: Context) {
         context.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit().remove(KEY).apply()
     }

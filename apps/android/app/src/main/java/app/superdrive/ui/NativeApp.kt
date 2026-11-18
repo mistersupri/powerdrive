@@ -1,0 +1,109 @@
+package app.superdrive.ui
+
+import android.webkit.WebView
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import app.superdrive.R
+import app.superdrive.data.Session
+import app.superdrive.ui.auth.AuthState
+import app.superdrive.ui.auth.AuthViewModel
+import app.superdrive.ui.auth.LoginScreen
+import app.superdrive.ui.files.FilesScreen
+import app.superdrive.ui.files.FilesViewModel
+import app.superdrive.ui.theme.Motion
+import coil3.ImageLoader
+import coil3.network.okhttp.OkHttpNetworkFetcherFactory
+
+private class Tab(val label: String, val icon: Int, val path: String?)
+private val TABS = listOf(
+    Tab("Beranda", R.drawable.ic_nav_home, "/"),
+    Tab("File", R.drawable.ic_nav_files, null), // native
+    Tab("Media", R.drawable.ic_nav_media, "/media"),
+    Tab("Berbagi", R.drawable.ic_nav_shared, "/shared"),
+    Tab("Transfer", R.drawable.ic_nav_transfers, "/transfers"),
+)
+
+/** The whole native interface: sign-in, then five tabs. Tabs that are not native yet show the website's page. */
+@Composable
+fun NativeApp(session: Session, onClassic: () -> Unit) {
+    val api = session.api ?: return
+    val auth: AuthViewModel = viewModel(factory = viewModelFactory { initializer { AuthViewModel(api) { session.workspaceId = it } } })
+    val state by auth.state.collectAsStateWithLifecycle()
+    when (val s = state) {
+        AuthState.Checking -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        is AuthState.SignedOut, is AuthState.Mfa -> LoginScreen(s, onLogin = auth::login, onVerify = auth::verify, onBackToPassword = auth::check, server = api.server)
+        is AuthState.SignedIn -> Shell(session, onClassic, onLogout = auth::logout)
+    }
+}
+
+@Composable
+private fun Shell(session: Session, onClassic: () -> Unit, onLogout: () -> Unit) {
+    val api = session.api!!
+    var tab by rememberSaveable { mutableIntStateOf(1) }
+    val webs = remember { mutableMapOf<String, WebView>() }
+    DisposableEffect(Unit) { onDispose { webs.values.forEach { it.destroy() }; webs.clear() } }
+    val context = LocalContext.current
+    val imageLoader = remember { ImageLoader.Builder(context).components { add(OkHttpNetworkFetcherFactory(callFactory = { api.http })) }.build() }
+    val files: FilesViewModel = viewModel(factory = viewModelFactory { initializer { FilesViewModel(api) } })
+
+    Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        containerColor = MaterialTheme.colorScheme.background,
+        bottomBar = {
+            NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
+                TABS.forEachIndexed { i, t ->
+                    NavigationBarItem(selected = tab == i, onClick = { tab = i }, icon = { Icon(painterResource(t.icon), contentDescription = null, modifier = Modifier.size(24.dp)) }, label = { Text(t.label) })
+                }
+            }
+        },
+    ) { pad ->
+        // A tab change slides the new screen in from the side its tab is on, like the website's bar did.
+        AnimatedContent(
+            targetState = tab, modifier = Modifier.fillMaxSize().then(Modifier), label = "tabs",
+            transitionSpec = {
+                val dir = if (targetState > initialState) 1 else -1
+                (slideInHorizontally(tween(300, easing = Motion.EaseOut)) { dir * it / 8 } + fadeIn(tween(220, easing = Motion.EaseOut))) togetherWith
+                    (slideOutHorizontally(tween(220, easing = Motion.EaseOut)) { -dir * it / 10 } + fadeOut(tween(140)))
+            },
+        ) { i ->
+            Box(Modifier.fillMaxSize().then(Modifier).padding(pad)) {
+                val t = TABS[i]
+                if (t.path == null) FilesScreen(files, api, imageLoader, onClassic = onClassic, onLogout = onLogout)
+                else WebTab(t.path, session.server!!, webs)
+            }
+        }
+    }
+}
