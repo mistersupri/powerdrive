@@ -2,6 +2,9 @@ package app.superdrive.ui
 
 import android.webkit.WebView
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -23,6 +26,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -43,6 +47,8 @@ import app.superdrive.ui.auth.AuthViewModel
 import app.superdrive.ui.auth.LoginScreen
 import app.superdrive.ui.files.FilesScreen
 import app.superdrive.ui.files.FilesViewModel
+import app.superdrive.ui.media.MediaScreen
+import app.superdrive.ui.media.MediaViewModel
 import app.superdrive.ui.theme.Motion
 import coil3.ImageLoader
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
@@ -51,7 +57,7 @@ private class Tab(val label: String, val icon: Int, val path: String?)
 private val TABS = listOf(
     Tab("Beranda", R.drawable.ic_nav_home, "/"),
     Tab("File", R.drawable.ic_nav_files, null), // native
-    Tab("Media", R.drawable.ic_nav_media, "/media"),
+    Tab("Media", R.drawable.ic_nav_media, null), // native
     Tab("Berbagi", R.drawable.ic_nav_shared, "/shared"),
     Tab("Transfer", R.drawable.ic_nav_transfers, "/transfers"),
 )
@@ -78,15 +84,19 @@ private fun Shell(session: Session, onClassic: () -> Unit, onLogout: () -> Unit)
     val context = LocalContext.current
     val imageLoader = remember { ImageLoader.Builder(context).components { add(OkHttpNetworkFetcherFactory(callFactory = { api.http })) }.build() }
     val files: FilesViewModel = viewModel(factory = viewModelFactory { initializer { FilesViewModel(api) } })
+    val media: MediaViewModel = viewModel(factory = viewModelFactory { initializer { MediaViewModel(api) } })
+    var fullscreen by remember { mutableStateOf(false) } // the media viewer covers the bottom bar
 
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
+            AnimatedVisibility(visible = !fullscreen, enter = expandVertically(tween(200)) + fadeIn(tween(200)), exit = shrinkVertically(tween(160)) + fadeOut(tween(120))) {
             NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
                 TABS.forEachIndexed { i, t ->
                     NavigationBarItem(selected = tab == i, onClick = { tab = i }, icon = { Icon(painterResource(t.icon), contentDescription = null, modifier = Modifier.size(24.dp)) }, label = { Text(t.label) })
                 }
+            }
             }
         },
     ) { pad ->
@@ -101,8 +111,9 @@ private fun Shell(session: Session, onClassic: () -> Unit, onLogout: () -> Unit)
         ) { i ->
             Box(Modifier.fillMaxSize().then(Modifier).padding(pad)) {
                 val t = TABS[i]
-                if (t.path == null) FilesScreen(files, api, imageLoader, onClassic = onClassic, onLogout = onLogout)
-                else WebTab(t.path, session.server!!, webs)
+                if (i == 1) FilesScreen(files, api, imageLoader, onClassic = onClassic, onLogout = onLogout)
+                else if (i == 2) MediaScreen(media, api, imageLoader, onFullscreen = { fullscreen = it })
+                else WebTab(t.path!!, session.server!!, webs)
             }
         }
     }
