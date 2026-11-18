@@ -43,6 +43,9 @@ jobs:
             echo "SIGNING=public" >> "$GITHUB_ENV"
           fi
 
+      - name: Unit tests (run on the JVM, no emulator needed)
+        run: gradle -p apps/android testReleaseUnitTest --no-daemon
+
       - name: Build
         run: gradle -p apps/android assembleRelease --no-daemon -PversionCode=${{ github.run_number }} -PversionName=1.0.${{ github.run_number }}
 
