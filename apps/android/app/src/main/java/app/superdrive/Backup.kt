@@ -30,6 +30,7 @@ import okhttp3.Request
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import okio.BufferedSink
+import okio.buffer
 import okio.source
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
@@ -169,12 +170,13 @@ class BackupRun(private val ctx: Context, private val stopped: () -> Boolean, pr
             val db = BackupDb(ctx); val folders = HashMap<String, String>()
             val root = ensureFolder(storageId, "root", "Cadangan Foto", folders)
             val device = ensureFolder(storageId, root, Build.MODEL.replace(Regex("[/\\\\]"), "_").trim().ifEmpty { "Perangkat" }.take(60), folders)
+            var failed = 0; var consecutive = 0; var lastError = ""
             for ((i, it) in todo.withIndex()) {
                 if (stopped()) break
                 val bucket = it.bucket.replace(Regex("[/\\\\]"), "_").trim().ifEmpty { "Lainnya" }.take(80)
                 val parent = ensureFolder(storageId, device, bucket, folders)
                 var lastTick = 0L
-                val ok = send(storageId, parent, it) { sent ->
+                val ok = try { send(storageId, parent, it) { sent ->
                     val now = System.currentTimeMillis()
                     if (now - lastTick > 800) {
                         lastTick = now
@@ -182,15 +184,21 @@ class BackupRun(private val ctx: Context, private val stopped: () -> Boolean, pr
                         BackupStore.setProgress(ctx, i, todo.size, it.name, pct)
                         report(ctx.getString(R.string.backup_title), ctx.getString(R.string.backup_progress, i + 1, todo.size) + " · " + it.name, pct)
                     }
+                } } catch (e: SessionExpired) { throw e } catch (e: Exception) {
+                    failed++; consecutive++; lastError = e.message ?: e.javaClass.simpleName
+                    if (consecutive >= 3) break // probably the connection or the server: stop and try again later instead of waiting on every file
+                    false
                 }
-                if (ok) { db.mark(it.kind, it.id); uploaded++ }
+                if (ok) { db.mark(it.kind, it.id); uploaded++; consecutive = 0 }
                 val pctDone = ((i + 1) * 100) / todo.size
                 BackupStore.setProgress(ctx, i + 1, todo.size, it.name, pctDone)
                 report(ctx.getString(R.string.backup_title), ctx.getString(R.string.backup_progress, i + 1, todo.size), pctDone)
             }
-            BackupStore.record(ctx, uploaded, null)
-            if (uploaded > 0) ctx.getSystemService(android.app.NotificationManager::class.java).notify(BACKUP_DONE_ID, Notifier.done(ctx, ctx.getString(R.string.backup_done_title), ctx.getString(R.string.backup_done_text, uploaded)))
-            return true
+            val problem = if (failed > 0) "$failed file gagal diunggah ($lastError). Ketuk “Cadangkan sekarang” untuk mencoba lagi." else null
+            BackupStore.record(ctx, uploaded, problem)
+            if (uploaded > 0) ctx.getSystemService(android.app.NotificationManager::class.java).notify(BACKUP_DONE_ID, Notifier.done(ctx, ctx.getString(R.string.backup_done_title), ctx.getString(R.string.backup_done_text, uploaded) + if (failed > 0) " · $failed gagal" else ""))
+            else if (failed > 0) ctx.getSystemService(android.app.NotificationManager::class.java).notify(BACKUP_DONE_ID, Notifier.done(ctx, ctx.getString(R.string.backup_title), problem!!))
+            return consecutive < 3
         } catch (e: SessionExpired) {
             BackupStore.record(ctx, uploaded, ctx.getString(R.string.backup_signed_out))
             ctx.getSystemService(android.app.NotificationManager::class.java).notify(BACKUP_DONE_ID, Notifier.done(ctx, ctx.getString(R.string.backup_title), ctx.getString(R.string.backup_signed_out)))
@@ -240,13 +248,33 @@ class BackupRun(private val ctx: Context, private val stopped: () -> Boolean, pr
         val created = post("/api/v1/uploads", JSONObject().put("storageId", storageId).put("parentId", parent).put("name", it.name).put("size", it.size).put("mimeType", it.mime).put("conflictPolicy", "SKIP").apply { if (it.taken > 0) put("lastModified", it.taken) }).getJSONObject("data")
         if (created.optString("status") == "DONE") return true // the same name was already there
         val id = created.getString("id")
-        val stream = ctx.contentResolver.openInputStream(it.uri) ?: return false
-        val body = object : RequestBody() {
-            override fun contentType() = "application/octet-stream".toMediaType()
-            override fun contentLength() = it.size
-            override fun writeTo(sink: BufferedSink) { var total = 0L; val buf = okio.Buffer(); stream.source().use { s -> while (true) { val n = s.read(buf, 128 * 1024); if (n < 0) break; sink.write(buf, n); total += n; onSent(total) } } }
+        // Sent in pieces, like the website does: a proxy in front of the server may refuse one huge request (HTTP 413).
+        val piece = minOf(created.optLong("chunkSize", 8L * 1024 * 1024).takeIf { s -> s > 0 } ?: (8L * 1024 * 1024), 8L * 1024 * 1024).coerceAtLeast(256L * 1024)
+        var offset = created.optLong("offset", 0L)
+        var done = created
+        while (offset < it.size && !stopped()) {
+            val len = minOf(piece, it.size - offset); val from = offset
+            var attempt = 0
+            while (true) {
+                val stream = ctx.contentResolver.openInputStream(it.uri) ?: return false
+                val src = stream.source().buffer()
+                try {
+                    src.skip(from)
+                    val body = object : RequestBody() {
+                        override fun contentType() = "application/octet-stream".toMediaType()
+                        override fun contentLength() = len
+                        override fun writeTo(sink: BufferedSink) {
+                            var left = len; val buf = okio.Buffer()
+                            while (left > 0) { val n = src.read(buf, minOf(128L * 1024, left)); if (n < 0) throw java.io.EOFException("File berubah saat dibaca"); sink.write(buf, n); left -= n; onSent(from + len - left) }
+                        }
+                    }
+                    done = call(req("/api/v1/uploads/$id").header("Upload-Offset", from.toString()).patch(body).build()).getJSONObject("data")
+                    break
+                } catch (e: java.io.IOException) { if (++attempt >= 3) throw e; Thread.sleep(1500L * attempt) }
+                finally { try { src.close() } catch (_: Exception) {}; try { stream.close() } catch (_: Exception) {} }
+            }
+            offset = from + len
         }
-        val done = try { call(req("/api/v1/uploads/$id").header("Upload-Offset", "0").patch(body).build()).getJSONObject("data") } finally { stream.close() }
         var status = done.optString("status")
         // Handing the bytes on to the storage can take a moment for cloud storages.
         var waited = 0
