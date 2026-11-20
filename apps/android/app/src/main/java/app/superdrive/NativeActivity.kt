@@ -51,6 +51,7 @@ class NativeActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         val session = Session(this)
         if (session.server == null) { startActivity(Intent(this, SetupActivity::class.java)); finish(); return }
+        app.superdrive.ui.theme.ThemePref.load(this)
         lock = AppLock(this)
         if (lock.enabled) covered = true // never flash the app before the lock
         loginLink = loginLinkOf(intent)

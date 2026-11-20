@@ -264,3 +264,74 @@ fun providerColor(provider: String): Color = when (provider) {
     "GOOGLE_DRIVE" -> Color(0xFF4285F4); "ONEDRIVE" -> Color(0xFF0078D4); "DROPBOX" -> Color(0xFF0061FF); "LOCAL" -> Color(0xFF047857)
     "S3" -> Color(0xFFA65A05); "SMB" -> Color(0xFF6D4BD1); "SFTP" -> Color(0xFF1769E8); "WEBDAV" -> Color(0xFFB42318); else -> Color(0xFF607087)
 }
+
+// ---- forms ----
+
+enum class BtnKind { Primary, Secondary, Danger }
+
+@Composable
+fun SdButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, busy: Boolean = false, kind: BtnKind = BtnKind.Primary, icon: ImageVector? = null) {
+    val c = MaterialTheme.sd
+    val (bg, fg, border) = when (kind) {
+        BtnKind.Primary -> Triple(c.primary, Color.White, Color.Transparent)
+        BtnKind.Secondary -> Triple(c.surface, c.primaryInk, c.lineStrong)
+        BtnKind.Danger -> Triple(c.dangerSoft, c.dangerInk, Color.Transparent)
+    }
+    val on = enabled && !busy
+    val shape = RoundedCornerShape(14.dp)
+    Row(
+        modifier.fillMaxWidth().height(50.dp).clip(shape).background(if (on) bg else bg.copy(alpha = 0.4f)).border(1.dp, border, shape)
+            .pressable(onClick = onClick, shape = shape, scaleTo = 0.97f, enabled = on),
+        horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (busy) androidx.compose.material3.CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = fg)
+        else { if (icon != null) Icon(icon, null, tint = fg.copy(alpha = if (on) 1f else 0.6f), modifier = Modifier.size(18.dp).padding(end = 0.dp)); Text(text, Modifier.padding(start = if (icon != null) 8.dp else 0.dp), style = MaterialTheme.typography.titleSmall, color = fg.copy(alpha = if (on) 1f else 0.6f)) }
+    }
+}
+
+@Composable
+fun SdField(value: String, onChange: (String) -> Unit, label: String, modifier: Modifier = Modifier, password: Boolean = false, enabled: Boolean = true, keyboard: androidx.compose.ui.text.input.KeyboardType = androidx.compose.ui.text.input.KeyboardType.Text, supporting: String? = null) {
+    val c = MaterialTheme.sd
+    androidx.compose.material3.OutlinedTextField(
+        value, onChange, modifier.fillMaxWidth(), enabled = enabled, singleLine = true, label = { Text(label) }, shape = RoundedCornerShape(14.dp),
+        visualTransformation = if (password) androidx.compose.ui.text.input.PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
+        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = if (password) androidx.compose.ui.text.input.KeyboardType.Password else keyboard),
+        supportingText = supporting?.let { { Text(it) } },
+        colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(focusedBorderColor = c.primary, unfocusedBorderColor = c.lineStrong, focusedContainerColor = c.surface, unfocusedContainerColor = c.surface, focusedLabelColor = c.primaryInk),
+    )
+}
+
+@Composable
+fun SdSwitch(checked: Boolean, onChange: (Boolean) -> Unit, enabled: Boolean = true) {
+    val c = MaterialTheme.sd
+    androidx.compose.material3.Switch(checked, onChange, enabled = enabled, colors = androidx.compose.material3.SwitchDefaults.colors(
+        checkedThumbColor = Color.White, checkedTrackColor = c.primary, checkedBorderColor = c.primary,
+        uncheckedThumbColor = c.faint, uncheckedTrackColor = c.surface2, uncheckedBorderColor = c.lineStrong,
+        disabledCheckedTrackColor = c.primary.copy(alpha = 0.4f), disabledUncheckedTrackColor = c.surface2, disabledUncheckedBorderColor = c.line, disabledUncheckedThumbColor = c.line,
+    ))
+}
+
+/** One row of a settings card: tinted icon tile, title, a line of detail, then a control or chevron. */
+@Composable
+fun SettingRow(icon: ImageVector, title: String, modifier: Modifier = Modifier, detail: String? = null, tone: Pair<Color, Color>? = null, onClick: (() -> Unit)? = null, trailing: (@Composable () -> Unit)? = null) {
+    val c = MaterialTheme.sd
+    Row(modifier.fillMaxWidth().then(if (onClick != null) Modifier.pressable(onClick = onClick) else Modifier).padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        IconTile(icon, tone?.first ?: c.primarySoft, tone?.second ?: c.primaryInk, size = 40.dp)
+        Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+            Text(title, style = MaterialTheme.typography.titleSmall, color = c.ink)
+            if (detail != null) Text(detail, style = MaterialTheme.typography.bodySmall, color = c.muted)
+        }
+        if (trailing != null) trailing() else if (onClick != null) Icon(Lu.ChevronRight, null, tint = c.faint, modifier = Modifier.size(18.dp))
+    }
+}
+
+@Composable
+fun Divider(inset: Dp = 66.dp) = Box(Modifier.padding(start = inset).fillMaxWidth().height(1.dp).background(MaterialTheme.sd.line))
+
+/** Message box in a tone: info (blue), warning, danger or success. */
+@Composable
+fun Notice(text: String, tone: Pair<Color, Color>, icon: ImageVector = Lu.Info, modifier: Modifier = Modifier) {
+    Row(modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(tone.first).padding(12.dp), verticalAlignment = Alignment.Top) {
+        Icon(icon, null, tint = tone.second, modifier = Modifier.size(16.dp).padding(top = 1.dp)); Text(text, Modifier.padding(start = 8.dp), style = MaterialTheme.typography.bodySmall, color = tone.second)
+    }
+}

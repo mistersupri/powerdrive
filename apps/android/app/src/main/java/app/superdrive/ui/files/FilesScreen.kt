@@ -90,7 +90,7 @@ private fun dateOf(iso: String?): String? {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FilesScreen(vm: FilesViewModel, api: Api, imageLoader: ImageLoader, onLogout: () -> Unit, onFullscreen: (Boolean) -> Unit = {}) {
+fun FilesScreen(vm: FilesViewModel, api: Api, imageLoader: ImageLoader, isAdmin: Boolean, onLogout: () -> Unit, onFullscreen: (Boolean) -> Unit = {}) {
     val s by vm.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val c = MaterialTheme.sd
@@ -103,6 +103,7 @@ fun FilesScreen(vm: FilesViewModel, api: Api, imageLoader: ImageLoader, onLogout
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris -> vm.upload(uris) }
     var viewing by remember { mutableStateOf<FileEntry?>(null) }
     var gallery by remember { mutableStateOf<Pair<List<FileEntry>, Int>?>(null) }
+    var view by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(FileView.All) }
     val selecting = s.selection.isNotEmpty()
     DisposableEffect(viewing, gallery) { onFullscreen(viewing != null || gallery != null); onDispose { onFullscreen(false) } }
     gallery?.let { (items, idx) -> app.superdrive.ui.media.MediaViewer(items, idx, api, imageLoader, onClose = { gallery = null }); return }
@@ -117,7 +118,7 @@ fun FilesScreen(vm: FilesViewModel, api: Api, imageLoader: ImageLoader, onLogout
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         snackbarHost = { SnackbarHost(snack) { d -> Snackbar(d, shape = RoundedCornerShape(12.dp), containerColor = c.navy, contentColor = Color.White) } },
         floatingActionButton = {
-            if (!selecting && s.storage != null && s.upload == null) Box {
+            if (!selecting && view == FileView.All && s.storage != null && s.upload == null) Box {
                 ExtendedFloatingActionButton(onClick = { fabMenu = true }, containerColor = c.primary, contentColor = Color.White, shape = RoundedCornerShape(16.dp)) {
                     Icon(Lu.Plus, contentDescription = null, modifier = Modifier.size(20.dp)); Text("Tambah", Modifier.padding(start = 8.dp), style = MaterialTheme.typography.titleSmall)
                 }
@@ -132,8 +133,8 @@ fun FilesScreen(vm: FilesViewModel, api: Api, imageLoader: ImageLoader, onLogout
                 if (sel) SelectionHeader(count = s.selection.size, onClose = vm::clearSelection, onAll = vm::selectAll,
                     onShare = { dialog = Dialog.Share(chosen) }, onCopy = { dialog = Dialog.Pick("COPY", chosen) }, onMove = { dialog = Dialog.Pick("MOVE", chosen) }, onDelete = { dialog = Dialog.Delete(chosen) })
                 else PageHeader(
-                    title = s.folderName.ifEmpty { "Semua file" },
-                    subtitle = if (s.loading) null else "${s.items.count { it.isFolder }} folder · ${s.items.count { !it.isFolder }} file${if (s.nextPage != null) "+" else ""}",
+                    title = if (view == FileView.All) s.folderName.ifEmpty { "Semua file" } else view.label,
+                    subtitle = if (view != FileView.All) null else if (s.loading) null else "${s.items.count { it.isFolder }} folder · ${s.items.count { !it.isFolder }} file${if (s.nextPage != null) "+" else ""}",
                     leading = if (s.stack.isNotEmpty()) ({ BarIcon(Lu.Back, "Naik satu folder", { vm.up() }, tint = c.ink) }) else null,
                     actions = {
                         if (s.stack.isEmpty() && s.storages.size > 1) Box {
@@ -155,6 +156,10 @@ fun FilesScreen(vm: FilesViewModel, api: Api, imageLoader: ImageLoader, onLogout
         },
     ) { pad ->
         Column(Modifier.padding(pad).fillMaxSize()) {
+            if (s.stack.isEmpty() && !selecting) app.superdrive.ui.design.SlidingTabs(FileView.entries.map { it.label }, view.ordinal, { view = FileView.entries[it] }, Modifier.padding(horizontal = 16.dp, vertical = 10.dp))
+            if (view != FileView.All && s.stack.isEmpty()) {
+                CollectionView(view, api, isAdmin, say = { m -> vm.say(m) }) { f, list -> if (open(f, list) { g -> gallery = g } == null) viewing = f }
+            } else {
             s.upload?.let { u ->
                 Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp).clip(RoundedCornerShape(14.dp)).background(c.primarySoft).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -185,6 +190,7 @@ fun FilesScreen(vm: FilesViewModel, api: Api, imageLoader: ImageLoader, onLogout
                         }
                     }
                 }
+            }
             }
         }
     }

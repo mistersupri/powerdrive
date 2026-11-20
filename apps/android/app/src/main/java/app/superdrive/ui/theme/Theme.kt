@@ -83,8 +83,20 @@ object Motion {
     val Drawer = CubicBezierEasing(0.32f, 0.72f, 0f, 1f)
 }
 
+/** Appearance chosen in Settings: 0 follows the phone, 1 light, 2 dark. */
+object ThemePref {
+    var mode by androidx.compose.runtime.mutableIntStateOf(0)
+    fun load(c: android.content.Context) { mode = c.getSharedPreferences("superdrive", android.content.Context.MODE_PRIVATE).getInt("theme_mode", 0) }
+    fun set(c: android.content.Context, m: Int) { mode = m; c.getSharedPreferences("superdrive", android.content.Context.MODE_PRIVATE).edit().putInt("theme_mode", m).apply() }
+}
+
 @Composable
-fun SuperDriveTheme(dark: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
+fun SuperDriveTheme(dark: Boolean = when (ThemePref.mode) { 1 -> false; 2 -> true; else -> isSystemInDarkTheme() }, content: @Composable () -> Unit) {
     val sd = if (dark) DarkSd else LightSd
+    val view = androidx.compose.ui.platform.LocalView.current
+    if (!view.isInEditMode) androidx.compose.runtime.SideEffect {
+        val w = (view.context as? android.app.Activity)?.window
+        if (w != null) androidx.core.view.WindowCompat.getInsetsController(w, view).apply { isAppearanceLightStatusBars = !dark; isAppearanceLightNavigationBars = !dark }
+    }
     CompositionLocalProvider(LocalSd provides sd) { MaterialTheme(colorScheme = scheme(sd), shapes = SdShapes, typography = SdType, content = content) }
 }

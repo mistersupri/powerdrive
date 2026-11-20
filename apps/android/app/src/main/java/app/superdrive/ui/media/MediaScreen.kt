@@ -66,6 +66,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.fillMaxWidth
+import app.superdrive.ui.design.IconTile
 import androidx.compose.foundation.border
 import app.superdrive.ui.design.BarIcon
 import app.superdrive.ui.design.EmptyState
@@ -104,14 +108,23 @@ private fun cells(items: List<FileEntry>, byDate: Boolean): List<Cell> {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MediaScreen(vm: MediaViewModel, api: Api, imageLoader: ImageLoader, onFullscreen: (Boolean) -> Unit) {
+fun MediaScreen(vm: MediaViewModel, api: Api, imageLoader: ImageLoader, userId: String, onFullscreen: (Boolean) -> Unit) {
     val s by vm.state.collectAsStateWithLifecycle()
+    val snack = remember { androidx.compose.material3.SnackbarHostState() }
+    var newAlbum by remember { mutableStateOf(false) }
+    var albumMenu by remember { mutableStateOf<Album?>(null) }
+    var renaming by remember { mutableStateOf<Album?>(null) }
+    var deleting by remember { mutableStateOf<Album?>(null) }
+    var confirmTrash by remember { mutableStateOf(false) }
+    val selecting = s.selection.isNotEmpty()
+    LaunchedEffect(s.notice) { s.notice?.let { snack.showSnackbar(it); vm.noticeShown() } }
+    BackHandler(enabled = selecting) { vm.clearSelection() }
     var open by remember { mutableStateOf<Open?>(null) }
     var sortMenu by remember { mutableStateOf(false) }
     var unlocking by remember { mutableStateOf(false) }
     LaunchedEffect(open != null) { onFullscreen(open != null) }
     DisposableEffect(Unit) { onDispose { onFullscreen(false) } }
-    BackHandler(enabled = open == null && s.scope != null) { vm.closeScope() }
+    BackHandler(enabled = open == null && !selecting && s.scope != null) { vm.closeScope() }
 
     val inGallery = s.mode == MediaMode.All || s.scope != null
     val title = when (val sc = s.scope) { is MediaScope.InFolder -> sc.name; is MediaScope.InAlbum -> sc.name; null -> "Media" }
@@ -119,12 +132,21 @@ fun MediaScreen(vm: MediaViewModel, api: Api, imageLoader: ImageLoader, onFullsc
     Scaffold(
         containerColor = MaterialTheme.sd.canvas,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        snackbarHost = { androidx.compose.material3.SnackbarHost(snack) { d -> androidx.compose.material3.Snackbar(d, shape = RoundedCornerShape(12.dp), containerColor = MaterialTheme.sd.navy, contentColor = Color.White) } },
         topBar = {
-            PageHeader(
+            if (selecting) Row(Modifier.fillMaxWidth().background(MaterialTheme.sd.primary).statusBarsPadding().padding(horizontal = 4.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                BarIcon(Lu.X, "Batal memilih", vm::clearSelection, tint = Color.White)
+                Text("${s.selection.size} dipilih", Modifier.weight(1f).padding(start = 4.dp), style = MaterialTheme.typography.titleMedium, color = Color.White)
+                BarIcon(Lu.Check, "Pilih semua", vm::selectAll, tint = Color.White)
+                BarIcon(Lu.FolderPlus, "Tambah ke album", { vm.loadPicker() }, tint = Color.White)
+                if (s.scope is MediaScope.InAlbum) BarIcon(Lu.X, "Keluarkan dari album", { vm.removeFromAlbum() }, tint = Color.White)
+                BarIcon(Lu.Trash, "Hapus", { confirmTrash = true }, tint = Color.White)
+            } else PageHeader(
                 title = title,
                 subtitle = when { s.loading -> null; inGallery -> "${s.photos} foto · ${s.videos} video"; s.mode == MediaMode.Folders -> "${s.folders.size} folder"; else -> "${s.albums.size} album" },
                 leading = if (s.scope != null) ({ BarIcon(Lu.Back, "Kembali", { vm.closeScope() }, tint = MaterialTheme.sd.ink) }) else null,
                 actions = {
+                    if (s.mode == MediaMode.Albums && s.scope == null) BarIcon(Lu.Plus, "Album baru", { newAlbum = true }, tint = MaterialTheme.sd.primaryInk)
                     if (s.mode == MediaMode.Albums && s.scope == null && s.privateStatus.unlocked) TextButton(onClick = vm::lockPrivate) { Icon(Lu.Lock, null, Modifier.size(16.dp)); Text("  Kunci") }
                     if (inGallery) Box {
                         BarIcon(Lu.More, "Urutkan", { sortMenu = true })
@@ -144,15 +166,72 @@ fun MediaScreen(vm: MediaViewModel, api: Api, imageLoader: ImageLoader, onFullsc
                     s.error != null && inGallery && s.items.isEmpty() -> Message(s.error ?: "", retry = { vm.reload(false) })
                     inGallery -> Gallery(s, vm, api, imageLoader, onOpen = { items, i -> open = Open(items, i) })
                     s.mode == MediaMode.Folders -> FolderGrid(s.folders, api, imageLoader) { vm.openScope(MediaScope.InFolder(it.storageId, it.folderId, it.name)) }
-                    else -> AlbumGrid(s, api, imageLoader, onAlbum = { vm.openScope(MediaScope.InAlbum(it.id, it.name, it.isPrivate)) }, onUnlock = { unlocking = true })
+                    else -> AlbumGrid(s, api, imageLoader, onAlbum = { vm.openScope(MediaScope.InAlbum(it.id, it.name, it.isPrivate)) }, onAlbumMenu = { albumMenu = it }, onUnlock = { unlocking = true })
                 }
             }
         }
     }
 
     open?.let { o -> MediaViewer(o.items, o.index, api, imageLoader, onClose = { open = null }) }
-    if (unlocking) UnlockDialog(error = s.unlockError, hasPassword = s.privateStatus.hasPassword, onDismiss = { unlocking = false; vm.clearUnlockError() }, onUnlock = { vm.unlock(it) })
+    if (unlocking) UnlockDialog(userId = userId, error = s.unlockError, hasPassword = s.privateStatus.hasPassword, onDismiss = { unlocking = false; vm.clearUnlockError() }, onUnlock = { vm.unlock(it) })
     LaunchedEffect(s.privateStatus.unlocked) { if (s.privateStatus.unlocked) unlocking = false }
+
+    s.pickerAlbums?.let { list -> AlbumPicker(list, onPick = { vm.addToAlbum(it) }, onNew = { newAlbum = true }, onDismiss = vm::closePicker) }
+    if (newAlbum) NewAlbumDialog(canPrivate = s.privateStatus.unlocked, onCreate = { n, p -> vm.createAlbum(n, p, vm.picked()) }, onDismiss = { newAlbum = false })
+    albumMenu?.let { a -> AlbumActions(a, onRename = { albumMenu = null; renaming = a }, onDelete = { albumMenu = null; deleting = a }, onDismiss = { albumMenu = null }) }
+    renaming?.let { a -> app.superdrive.ui.files.NameDialog("Ganti nama album", a.name, "Simpan", { vm.renameAlbum(a, it) }) { renaming = null } }
+    deleting?.let { a -> app.superdrive.ui.files.ConfirmDialog("Hapus album?", "Album “${a.name}” dihapus. Foto di dalamnya tetap aman di penyimpanan.", "Hapus", { vm.deleteAlbum(a) }) { deleting = null } }
+    if (confirmTrash) app.superdrive.ui.files.ConfirmDialog("Pindahkan ke sampah?", "${s.selection.size} item akan dipindahkan ke sampah.", "Hapus", { vm.trashPicked() }) { confirmTrash = false }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AlbumPicker(albums: List<Album>, onPick: (Album) -> Unit, onNew: () -> Unit, onDismiss: () -> Unit) {
+    val c = MaterialTheme.sd
+    androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss, containerColor = c.surface, shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)) {
+        Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 24.dp).navigationBarsPadding()) {
+            Text("Tambah ke album", style = MaterialTheme.typography.titleMedium, color = c.ink, modifier = Modifier.padding(start = 4.dp, bottom = 8.dp))
+            Row(Modifier.fillMaxWidth().pressable(onClick = onNew, shape = RoundedCornerShape(14.dp)).padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconTile(Lu.FolderPlus, c.primarySoft, c.primaryInk, size = 44.dp); Text("Album baru", Modifier.padding(start = 12.dp), style = MaterialTheme.typography.titleSmall, color = c.primaryInk)
+            }
+            albums.forEach { a ->
+                Row(Modifier.fillMaxWidth().pressable(onClick = { onPick(a) }, shape = RoundedCornerShape(14.dp)).padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    IconTile(if (a.isPrivate) Lu.Lock else Lu.Images, c.surface2, c.muted, size = 44.dp)
+                    Column(Modifier.padding(start = 12.dp)) { Text(a.name, style = MaterialTheme.typography.titleSmall, color = c.ink); Text("${a.count} item", style = MaterialTheme.typography.bodySmall, color = c.muted) }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun NewAlbumDialog(canPrivate: Boolean, onCreate: (String, Boolean) -> Unit, onDismiss: () -> Unit) {
+    var name by remember { mutableStateOf("") }; var priv by remember { mutableStateOf(false) }
+    AlertDialog(
+        onDismissRequest = onDismiss, containerColor = MaterialTheme.sd.surface, shape = RoundedCornerShape(22.dp), title = { Text("Album baru") },
+        text = {
+            Column {
+                OutlinedTextField(name, { name = it }, label = { Text("Nama album") }, singleLine = true, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth())
+                if (canPrivate) Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) { Text("Album privat", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium); androidx.compose.material3.Switch(priv, { priv = it }) }
+                else Text("Buka album privat dulu (tab Album) untuk membuat album privat.", Modifier.padding(top = 10.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.sd.muted)
+            }
+        },
+        confirmButton = { TextButton(enabled = name.isNotBlank(), onClick = { onCreate(name, priv); onDismiss() }) { Text("Buat") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Batal") } },
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AlbumActions(a: Album, onRename: () -> Unit, onDelete: () -> Unit, onDismiss: () -> Unit) {
+    val c = MaterialTheme.sd
+    androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss, containerColor = c.surface, shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)) {
+        Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 24.dp).navigationBarsPadding()) {
+            Text(a.name, style = MaterialTheme.typography.titleMedium, color = c.ink, modifier = Modifier.padding(start = 4.dp, bottom = 8.dp))
+            Row(Modifier.fillMaxWidth().pressable(onClick = onRename, shape = RoundedCornerShape(14.dp)).padding(12.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Lu.Pencil, null, tint = c.muted); Text("Ganti nama", Modifier.padding(start = 14.dp), style = MaterialTheme.typography.titleSmall, color = c.ink) }
+            Row(Modifier.fillMaxWidth().pressable(onClick = onDelete, shape = RoundedCornerShape(14.dp)).padding(12.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Lu.Trash, null, tint = c.dangerInk); Text("Hapus album", Modifier.padding(start = 14.dp), style = MaterialTheme.typography.titleSmall, color = c.dangerInk) }
+        }
+    }
 }
 
 @Composable
@@ -189,7 +268,7 @@ private fun Gallery(s: MediaState, vm: MediaViewModel, api: Api, imageLoader: Im
                     }
                     is Cell.Tile -> {
                         if (c.index >= s.items.size - 24 && s.cursor != null) LaunchedEffect(s.items.size) { vm.loadMore() }
-                        Tile(c.file, api, imageLoader) { onOpen(s.items, c.index) }
+                        Tile(c.file, api, imageLoader, selecting = s.selection.isNotEmpty(), checked = "${c.file.storageId}:${c.file.id}" in s.selection, onLongClick = { vm.toggle(c.file) }) { if (s.selection.isNotEmpty()) vm.toggle(c.file) else onOpen(s.items, c.index) }
                     }
                 }
             }
@@ -199,10 +278,12 @@ private fun Gallery(s: MediaState, vm: MediaViewModel, api: Api, imageLoader: Im
 }
 
 @Composable
-private fun Tile(f: FileEntry, api: Api, imageLoader: ImageLoader, onClick: () -> Unit) {
+private fun Tile(f: FileEntry, api: Api, imageLoader: ImageLoader, selecting: Boolean, checked: Boolean, onLongClick: () -> Unit, onClick: () -> Unit) {
     val context = LocalContext.current
-    Box(Modifier.aspectRatio(1f).background(MaterialTheme.sd.surface2).pressable(onClick = onClick, scaleTo = 0.96f)) {
+    Box(Modifier.aspectRatio(1f).background(MaterialTheme.sd.surface2).pressable(onClick = onClick, onLongClick = onLongClick, scaleTo = 0.96f)) {
         AsyncImage(model = ImageRequest.Builder(context).data(api.thumbnail(f, 256)).crossfade(true).build(), imageLoader = imageLoader, contentDescription = f.name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+        if (checked) Box(Modifier.fillMaxSize().background(MaterialTheme.sd.primary.copy(alpha = 0.28f)))
+        if (selecting) Box(Modifier.align(Alignment.TopStart).padding(6.dp).size(22.dp).background(if (checked) MaterialTheme.sd.primary else Color.Black.copy(alpha = 0.35f), CircleShape).border(1.5.dp, Color.White, CircleShape), contentAlignment = Alignment.Center) { if (checked) Icon(Lu.Check, null, tint = Color.White, modifier = Modifier.size(13.dp)) }
         if (f.mimeType?.startsWith("video/") == true) Box(Modifier.align(Alignment.BottomEnd).padding(6.dp).size(24.dp).background(Color.Black.copy(alpha = 0.6f), CircleShape), contentAlignment = Alignment.Center) {
             Icon(Lu.Play, contentDescription = "Video", tint = Color.White, modifier = Modifier.size(12.dp))
         }
@@ -242,9 +323,9 @@ private fun FolderGrid(folders: List<MediaFolder>, api: Api, imageLoader: ImageL
 }
 
 @Composable
-private fun AlbumGrid(s: MediaState, api: Api, imageLoader: ImageLoader, onAlbum: (Album) -> Unit, onUnlock: () -> Unit) {
+private fun AlbumGrid(s: MediaState, api: Api, imageLoader: ImageLoader, onAlbum: (Album) -> Unit, onAlbumMenu: (Album) -> Unit, onUnlock: () -> Unit) {
     LazyVerticalGrid(columns = GridCells.Adaptive(150.dp), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalArrangement = Arrangement.spacedBy(16.dp), contentPadding = PaddingValues(16.dp), modifier = Modifier.fillMaxSize()) {
-        items(s.albums, key = { it.id }) { a -> Card(a.cover, a.name, "${a.count} item", api, imageLoader, locked = a.isPrivate) { onAlbum(a) } }
+        items(s.albums, key = { it.id }) { a -> Card(a.cover, a.name, "${a.count} item", api, imageLoader, locked = a.isPrivate, onLongClick = { onAlbumMenu(a) }) { onAlbum(a) } }
         if (!s.privateStatus.unlocked && (s.privateStatus.hasPassword || s.privateStatus.count > 0)) item(key = "private") {
             Column(Modifier.pressable(onClick = onUnlock, shape = RoundedCornerShape(18.dp), scaleTo = 0.97f)) {
                 Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(18.dp)).background(Brush.linearGradient(listOf(MaterialTheme.sd.navyDeep, MaterialTheme.sd.navy, Color(0xFF1A4F9C)))), contentAlignment = Alignment.Center) { Icon(Lu.Lock, contentDescription = null, tint = Color.White, modifier = Modifier.size(40.dp)) }
@@ -257,9 +338,9 @@ private fun AlbumGrid(s: MediaState, api: Api, imageLoader: ImageLoader, onAlbum
 }
 
 @Composable
-private fun Card(cover: FileEntry?, title: String, sub: String, api: Api, imageLoader: ImageLoader, locked: Boolean = false, onClick: () -> Unit) {
+private fun Card(cover: FileEntry?, title: String, sub: String, api: Api, imageLoader: ImageLoader, locked: Boolean = false, onLongClick: (() -> Unit)? = null, onClick: () -> Unit) {
     val context = LocalContext.current
-    Column(Modifier.pressable(onClick = onClick, shape = RoundedCornerShape(18.dp), scaleTo = 0.97f)) {
+    Column(Modifier.pressable(onClick = onClick, onLongClick = onLongClick, shape = RoundedCornerShape(18.dp), scaleTo = 0.97f)) {
         Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(18.dp)).background(MaterialTheme.sd.primarySoft), contentAlignment = Alignment.Center) {
             if (cover == null) Icon(Lu.Images, null, tint = MaterialTheme.sd.primaryInk, modifier = Modifier.size(34.dp))
             if (cover != null) AsyncImage(model = ImageRequest.Builder(context).data(api.thumbnail(cover, 256)).crossfade(true).build(), imageLoader = imageLoader, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
@@ -271,17 +352,20 @@ private fun Card(cover: FileEntry?, title: String, sub: String, api: Api, imageL
 }
 
 @Composable
-private fun UnlockDialog(error: String?, hasPassword: Boolean, onDismiss: () -> Unit, onUnlock: (String) -> Unit) {
+private fun UnlockDialog(userId: String, error: String?, hasPassword: Boolean, onDismiss: () -> Unit, onUnlock: (String) -> Unit) {
     var pw by remember { mutableStateOf("") }
+    val context = LocalContext.current
+    val vault = remember { var c = context; var act: androidx.appcompat.app.AppCompatActivity? = null; while (c is android.content.ContextWrapper) { if (c is androidx.appcompat.app.AppCompatActivity) { act = c; break }; c = c.baseContext }; act?.let { app.superdrive.AlbumVault(it) } }
+    val canFinger = vault != null && vault.available() && vault.enrolledFor(userId)
     AlertDialog(
-        containerColor = MaterialTheme.sd.surface, shape = androidx.compose.foundation.shape.RoundedCornerShape(22.dp),
-        onDismissRequest = onDismiss,
+        onDismissRequest = onDismiss, containerColor = MaterialTheme.sd.surface, shape = RoundedCornerShape(22.dp),
         title = { Text("Buka album privat") },
         text = {
             Column {
                 Text(if (hasPassword) "Masukkan kata sandi album Anda. Kunci terbuka selama 10 menit." else "Buat kata sandi album di Beranda → Pengaturan → Album privat.", style = MaterialTheme.typography.bodyMedium)
-                if (hasPassword) OutlinedTextField(pw, { pw = it }, label = { Text("Kata sandi album") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth().padding(top = 12.dp))
-                error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp)) }
+                if (hasPassword) OutlinedTextField(pw, { pw = it }, label = { Text("Kata sandi album") }, singleLine = true, shape = RoundedCornerShape(14.dp), visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth().padding(top = 12.dp))
+                if (canFinger) TextButton(onClick = { vault!!.unlock(userId) { password, _ -> if (password != null) onUnlock(password) } }) { Icon(Lu.Fingerprint, null, Modifier.size(18.dp)); Text("  Pakai sidik jari") }
+                error?.let { Text(it, color = MaterialTheme.sd.dangerInk, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp)) }
             }
         },
         confirmButton = { if (hasPassword) TextButton(onClick = { onUnlock(pw) }, enabled = pw.length >= 6) { Text("Buka") } },

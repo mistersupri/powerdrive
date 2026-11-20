@@ -90,7 +90,7 @@ private fun Shell(session: Session, me: app.superdrive.core.Me, onLogout: () -> 
     var settings by remember { mutableStateOf(false) }
     var fullscreen by remember { mutableStateOf(false) } // the media viewer covers the bottom bar
 
-    if (settings) { app.superdrive.ui.settings.SettingsScreen(api, me, onBack = { settings = false }, onLogout = onLogout); return }
+    if (settings) { app.superdrive.ui.settings.SettingsScreen(api, me, isAdmin = me.workspaces.firstOrNull { it.id == me.activeWorkspaceId }?.role in listOf("OWNER", "ADMIN"), onBack = { settings = false }, onLogout = onLogout); return }
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         containerColor = MaterialTheme.colorScheme.background,
@@ -114,8 +114,8 @@ private fun Shell(session: Session, me: app.superdrive.core.Me, onLogout: () -> 
                 if (i == 0) app.superdrive.ui.home.HomeScreen(home, me.user.name, onOpenFiles = { tab = 1 }, onOpenTransfers = { tab = 4 }, onSettings = { settings = true })
                 else if (i == 3) app.superdrive.ui.shared.SharedScreen(shared, session.server!!)
                 else if (i == 4) app.superdrive.ui.transfers.TransfersScreen(transfers)
-                else if (i == 1) FilesScreen(files, api, imageLoader, onLogout = onLogout, onFullscreen = { fullscreen = it })
-                else if (i == 2) MediaScreen(media, api, imageLoader, onFullscreen = { fullscreen = it })
+                else if (i == 1) FilesScreen(files, api, imageLoader, isAdmin = me.workspaces.firstOrNull { it.id == me.activeWorkspaceId }?.role in listOf("OWNER", "ADMIN"), onLogout = onLogout, onFullscreen = { fullscreen = it })
+                else if (i == 2) MediaScreen(media, api, imageLoader, me.user.id, onFullscreen = { fullscreen = it })
             }
         }
     }

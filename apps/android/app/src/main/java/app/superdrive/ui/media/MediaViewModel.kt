@@ -52,6 +52,10 @@ data class MediaState(
     val refreshing: Boolean = false,
     val error: String? = null,
     val unlockError: String? = null,
+    /** "storageId:fileId" of the picked photos while selecting. */
+    val selection: Set<String> = emptySet(),
+    val notice: String? = null,
+    val pickerAlbums: List<Album>? = null,
 )
 
 class MediaViewModel(private val api: Api) : ViewModel() {
@@ -129,4 +133,37 @@ class MediaViewModel(private val api: Api) : ViewModel() {
     }
     fun clearUnlockError() = _state.update { it.copy(unlockError = null) }
     fun lockPrivate() { viewModelScope.launch { try { api.send("POST", "/albums-private/lock", buildJsonObject { }); reload(false) } catch (_: ApiException) { } } }
+
+    // ---- selection and album management ----
+    private fun key(f: FileEntry) = "${f.storageId}:${f.id}"
+    fun toggle(f: FileEntry) = _state.update { it.copy(selection = if (key(f) in it.selection) it.selection - key(f) else it.selection + key(f)) }
+    fun selectAll() = _state.update { it.copy(selection = it.items.map(::key).toSet()) }
+    fun clearSelection() = _state.update { it.copy(selection = emptySet()) }
+    fun noticeShown() = _state.update { it.copy(notice = null) }
+    fun picked(): List<FileEntry> = _state.value.let { s -> s.items.filter { key(it) in s.selection } }
+
+    private fun act(done: String, reload: Boolean = true, block: suspend () -> Unit) {
+        viewModelScope.launch {
+            try { block(); _state.update { it.copy(notice = done, selection = emptySet()) }; if (reload) reload(true) }
+            catch (e: ApiException) { _state.update { it.copy(notice = e.message ?: "Gagal.") } }
+        }
+    }
+
+    fun loadPicker() { viewModelScope.launch { try { _state.update { it.copy(pickerAlbums = api.get<Albums>("/albums").albums) } } catch (e: ApiException) { _state.update { it.copy(notice = e.message) } } } }
+    fun closePicker() = _state.update { it.copy(pickerAlbums = null) }
+    private fun itemsBody(files: List<FileEntry>) = buildJsonObject { put("items", kotlinx.serialization.json.JsonArray(files.map { f -> buildJsonObject { put("storageId", f.storageId); put("fileId", f.id) } })) }
+
+    fun addToAlbum(album: Album, files: List<FileEntry> = picked()) { if (files.isNotEmpty()) { closePicker(); act("${files.size} item masuk ke “${album.name}”", reload = false) { api.send("POST", "/albums/${album.id}/items", itemsBody(files)) } } }
+    fun createAlbum(name: String, isPrivate: Boolean, files: List<FileEntry> = emptyList()) {
+        if (name.isBlank()) return
+        closePicker()
+        act(if (files.isEmpty()) "Album dibuat" else "Album dibuat dengan ${files.size} item") {
+            val a = api.post<Album>("/albums", buildJsonObject { put("name", name.trim()); put("private", isPrivate) })
+            if (files.isNotEmpty()) api.send("POST", "/albums/${a.id}/items", itemsBody(files))
+        }
+    }
+    fun renameAlbum(a: Album, name: String) { if (name.isNotBlank() && name != a.name) act("Album diganti nama") { api.send("PATCH", "/albums/${a.id}", buildJsonObject { put("name", name.trim()) }) } }
+    fun deleteAlbum(a: Album) = act("Album dihapus (foto tetap aman)") { api.send("DELETE", "/albums/${a.id}") }
+    fun removeFromAlbum(files: List<FileEntry> = picked()) { val id = (_state.value.scope as? MediaScope.InAlbum)?.id ?: return; if (files.isNotEmpty()) act("Dikeluarkan dari album") { api.send("POST", "/albums/$id/items/remove", itemsBody(files)) } }
+    fun trashPicked(files: List<FileEntry> = picked()) { if (files.isNotEmpty()) act(if (files.size == 1) "Dipindahkan ke sampah" else "${files.size} item dipindahkan ke sampah") { files.forEach { api.send("DELETE", "/files/${it.storageId}/${it.id}") } } }
 }

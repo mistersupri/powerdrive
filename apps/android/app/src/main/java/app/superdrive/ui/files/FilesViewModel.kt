@@ -117,6 +117,7 @@ class FilesViewModel(private val api: Api, private val ops: FileOps = FileOps(ap
     fun toggle(f: FileEntry) = _state.update { it.copy(selection = if (f.id in it.selection) it.selection - f.id else it.selection + f.id) }
     fun selectAll() = _state.update { it.copy(selection = it.items.map { f -> f.id }.toSet()) }
     fun clearSelection() = _state.update { it.copy(selection = emptySet()) }
+    fun say(m: String) = _state.update { it.copy(notice = m) }
     fun noticeShown() = _state.update { it.copy(notice = null) }
     fun shareShown() = _state.update { it.copy(share = null) }
     private fun picked(): List<FileEntry> = _state.value.let { s -> s.items.filter { it.id in s.selection } }
