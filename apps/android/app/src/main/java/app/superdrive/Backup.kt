@@ -250,7 +250,7 @@ class BackupRun(private val ctx: Context, private val stopped: () -> Boolean, pr
         var status = done.optString("status")
         // Handing the bytes on to the storage can take a moment for cloud storages.
         var waited = 0
-        while (status == "FINALIZING" && waited < 120 && !isStopped) { Thread.sleep(1000); waited++; status = get("/api/v1/uploads/$id").getJSONObject("data").optString("status") }
+        while (status == "FINALIZING" && waited < 120 && !stopped()) { Thread.sleep(1000); waited++; status = get("/api/v1/uploads/$id").getJSONObject("data").optString("status") }
         return status == "DONE"
     }
 }
