@@ -108,6 +108,7 @@ class SharedViewModel(private val api: Api) : ViewModel() {
 /** Link as a person can open it: the server returns a path when the share is a direct one. */
 private fun absolute(server: String, url: String) = if (url.startsWith("http")) url else server.trimEnd('/') + url
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun SharedScreen(vm: SharedViewModel, server: String) {
     val s by vm.state.collectAsStateWithLifecycle()

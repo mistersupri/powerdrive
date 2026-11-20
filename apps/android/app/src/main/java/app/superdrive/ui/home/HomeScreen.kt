@@ -183,6 +183,7 @@ private fun SearchHeader(query: String, onChange: (String) -> Unit, onSearch: ()
     }
 }
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 private fun HomeBody(s: HomeState, vm: HomeViewModel, onOpenFiles: () -> Unit, onOpenTransfers: () -> Unit) {
     val c = MaterialTheme.sd; val context = LocalContext.current

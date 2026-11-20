@@ -87,6 +87,7 @@ private fun statusText(j: TransferJob) = when (j.status) {
     "COPY_COMPLETED_SOURCE_RETAINED" -> "Tersalin, sumber dipertahankan"; else -> j.status
 }
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun TransfersScreen(vm: TransfersViewModel) {
     val s by vm.state.collectAsStateWithLifecycle()
