@@ -30,6 +30,8 @@
         <!-- WorkManager runs the backup as a foreground service so a long first backup is not cut off. -->
         <service android:name="androidx.work.impl.foreground.SystemForegroundService" android:foregroundServiceType="dataSync" tools:node="merge" />
 
+        <service android:name=".BackupService" android:exported="false" android:foregroundServiceType="dataSync" />
+
         <service android:name=".TransferService" android:exported="false" android:foregroundServiceType="dataSync" />
 
         <receiver android:name=".InstallReceiver" android:exported="false" />

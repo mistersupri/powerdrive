@@ -357,6 +357,7 @@ private fun BackupPage(say: (String) -> Unit) {
         }
         if (on && !notifOk) Notice("Notifikasi dimatikan, jadi progres pencadangan tidak tampil di bilah notifikasi.", c.warnSoft to c.warnInk, Lu.Bell)
         if (on && !notifOk) SdButton("Izinkan notifikasi", { if (android.os.Build.VERSION.SDK_INT >= 33) askNotif.launch(android.Manifest.permission.POST_NOTIFICATIONS) else context.startActivity(Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)) }, kind = BtnKind.Secondary, icon = Lu.Bell)
+        if (on && running == null) BackupStore.networkBlocked(context)?.let { Notice(it, c.warnSoft to c.warnInk, Lu.Link) }
         running?.let { r ->
             SdCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {

@@ -56,6 +56,10 @@ class NativeActivity : AppCompatActivity() {
         if (lock.enabled) covered = true // never flash the app before the lock
         loginLink = loginLinkOf(intent)
         BackupScheduler.apply(this)
+        // Catch up on photos taken while the app was closed (at most once every 15 minutes).
+        getSharedPreferences("superdrive", MODE_PRIVATE).let { p ->
+            if (BackupStore.enabled(this) && BackupStore.hasPermission(this) && System.currentTimeMillis() - p.getLong("bk_last_start", 0L) > 15 * 60_000L) { p.edit().putLong("bk_last_start", System.currentTimeMillis()).apply(); BackupScheduler.now(this) }
+        }
         Updater(this).check(false)
         askNotificationsOnce()
         setContent {

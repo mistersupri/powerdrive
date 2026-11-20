@@ -61,6 +61,15 @@ object BackupStore {
     class Progress(val done: Int, val total: Int, val name: String, val percent: Int)
     fun progress(c: Context): Progress? = p(c).takeIf { it.getBoolean("bk_running", false) && it.getInt("bk_p_total", 0) > 0 }?.let { Progress(it.getInt("bk_p_done", 0), it.getInt("bk_p_total", 0), it.getString("bk_p_name", "") ?: "", it.getInt("bk_p_pct", 0)) }
 
+    /** Why a backup cannot start right now (no network, or Wi-Fi only on mobile data); null when it can. */
+    fun networkBlocked(c: Context): String? {
+        val cm = c.getSystemService(android.net.ConnectivityManager::class.java)
+        val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return "Tidak ada koneksi internet."
+        if (!caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)) return "Tidak ada koneksi internet."
+        if (wifiOnly(c) && !caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_NOT_METERED)) return "Menunggu Wi-Fi. Matikan “Hanya lewat Wi-Fi” untuk mencadangkan lewat data seluler."
+        return null
+    }
+
     fun hasPermission(c: Context): Boolean {
         fun ok(perm: String) = ContextCompat.checkSelfPermission(c, perm) == PackageManager.PERMISSION_GRANTED
         return when {
@@ -115,36 +124,37 @@ object BackupScheduler {
         WorkManager.getInstance(c).enqueueUniqueWork("backup-trigger", policy, req)
     }
 
+    /** Starts a backup right now in a foreground service (the person just asked for it, so the app is on screen). */
     fun now(c: Context) {
+        try { ContextCompat.startForegroundService(c, android.content.Intent(c, BackupService::class.java)); return } catch (e: Exception) { /* fall back to the scheduler */ }
         val req = OneTimeWorkRequest.Builder(BackupWorker::class.java).setConstraints(base(c)).setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST).build()
         WorkManager.getInstance(c).enqueueUniqueWork("backup-now", ExistingWorkPolicy.KEEP, req)
     }
 }
 
-class BackupWorker(private val ctx: Context, params: WorkerParameters) : Worker(ctx, params) {
-    class Item(val kind: String, val id: Long, val uri: Uri, val name: String, val size: Long, val mime: String, val bucket: String, val taken: Long)
+class Item(val kind: String, val id: Long, val uri: Uri, val name: String, val size: Long, val mime: String, val bucket: String, val taken: Long)
+internal const val BACKUP_NOTIF_ID = 1003
+internal const val BACKUP_DONE_ID = 1004
+
+/** The backup itself. Both the background worker and the "Cadangkan sekarang" button run this same code. */
+class BackupRun(private val ctx: Context, private val stopped: () -> Boolean, private val report: (title: String, text: String, percent: Int) -> Unit) {
     private class SessionExpired : Exception()
 
     private val http = OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS).readTimeout(5, TimeUnit.MINUTES).writeTimeout(5, TimeUnit.MINUTES).build()
     private val json = "application/json".toMediaType()
     private var base = ""; private var cookie = ""; private var workspace = ""
 
-    override fun getForegroundInfo(): ForegroundInfo = foreground(ctx.getString(R.string.backup_title), "", -1)
-
-    private fun foreground(title: String, text: String, percent: Int): ForegroundInfo {
-        val n = Notifier.progress(ctx, title, text, percent)
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) ForegroundInfo(NOTIF_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC) else ForegroundInfo(NOTIF_ID, n)
-    }
-
-    override fun doWork(): Result {
-        val rearm = inputData.getBoolean("trigger", false)
-        if (!BackupStore.enabled(ctx) || !BackupStore.hasPermission(ctx)) return Result.success()
+    /** Runs one backup pass. True when it is finished (nothing to retry), false when it should be tried again later. */
+    fun run(): Boolean {
+        if (!BackupStore.enabled(ctx)) return true
+        if (!BackupStore.hasPermission(ctx)) { BackupStore.record(ctx, 0, "Izin akses foto belum diberikan."); return true }
+        BackupStore.networkBlocked(ctx)?.let { BackupStore.record(ctx, 0, it); return true }
         BackupStore.running(ctx, true)
         var uploaded = 0
         // Show the notification straight away: scanning a big gallery can take a while.
-        setForegroundAsync(foreground(ctx.getString(R.string.backup_title), "Memeriksa galeri…", -1))
+        report(ctx.getString(R.string.backup_title), "Memeriksa galeri…", -1)
         try {
-            base = ServerStore.url(ctx) ?: return Result.success()
+            base = ServerStore.url(ctx) ?: return true
             cookie = app.superdrive.core.PrefsCookies(ctx).get(base) ?: throw SessionExpired()
             val me = get("/api/v1/auth/me"); workspace = me.getJSONObject("data").optString("activeWorkspaceId")
             val storages = get("/api/v1/storages").getJSONArray("data")
@@ -152,15 +162,15 @@ class BackupWorker(private val ctx: Context, params: WorkerParameters) : Worker(
             for (i in 0 until storages.length()) { val s = storages.getJSONObject(i); if (s.optBoolean("isDefault")) storageId = s.getString("id") }
             if (storageId.isEmpty()) throw IllegalStateException("Penyimpanan bawaan tidak ditemukan")
 
-            val todo = pendingItems(ctx)
-            if (todo.isEmpty()) { BackupStore.record(ctx, 0, null); return Result.success() }
+            val todo = BackupWorker.pendingItems(ctx)
+            if (todo.isEmpty()) { BackupStore.record(ctx, 0, null); return true }
             BackupStore.setProgress(ctx, 0, todo.size, "", 0)
-            setForegroundAsync(foreground(ctx.getString(R.string.backup_title), ctx.getString(R.string.backup_progress, 0, todo.size), 0))
+            report(ctx.getString(R.string.backup_title), ctx.getString(R.string.backup_progress, 0, todo.size), 0)
             val db = BackupDb(ctx); val folders = HashMap<String, String>()
             val root = ensureFolder(storageId, "root", "Cadangan Foto", folders)
             val device = ensureFolder(storageId, root, Build.MODEL.replace(Regex("[/\\\\]"), "_").trim().ifEmpty { "Perangkat" }.take(60), folders)
             for ((i, it) in todo.withIndex()) {
-                if (isStopped) break
+                if (stopped()) break
                 val bucket = it.bucket.replace(Regex("[/\\\\]"), "_").trim().ifEmpty { "Lainnya" }.take(80)
                 val parent = ensureFolder(storageId, device, bucket, folders)
                 var lastTick = 0L
@@ -170,28 +180,27 @@ class BackupWorker(private val ctx: Context, params: WorkerParameters) : Worker(
                         lastTick = now
                         val pct = (((i + (if (it.size > 0) sent.toDouble() / it.size else 1.0)) * 100) / todo.size).toInt().coerceIn(0, 100)
                         BackupStore.setProgress(ctx, i, todo.size, it.name, pct)
-                        setForegroundAsync(foreground(ctx.getString(R.string.backup_title), ctx.getString(R.string.backup_progress, i + 1, todo.size) + " · " + it.name, pct))
+                        report(ctx.getString(R.string.backup_title), ctx.getString(R.string.backup_progress, i + 1, todo.size) + " · " + it.name, pct)
                     }
                 }
                 if (ok) { db.mark(it.kind, it.id); uploaded++ }
                 val pctDone = ((i + 1) * 100) / todo.size
                 BackupStore.setProgress(ctx, i + 1, todo.size, it.name, pctDone)
-                setForegroundAsync(foreground(ctx.getString(R.string.backup_title), ctx.getString(R.string.backup_progress, i + 1, todo.size), pctDone))
+                report(ctx.getString(R.string.backup_title), ctx.getString(R.string.backup_progress, i + 1, todo.size), pctDone)
             }
             BackupStore.record(ctx, uploaded, null)
-            if (uploaded > 0) ctx.getSystemService(android.app.NotificationManager::class.java).notify(DONE_NOTIF_ID, Notifier.done(ctx, ctx.getString(R.string.backup_done_title), ctx.getString(R.string.backup_done_text, uploaded)))
-            return Result.success()
+            if (uploaded > 0) ctx.getSystemService(android.app.NotificationManager::class.java).notify(BACKUP_DONE_ID, Notifier.done(ctx, ctx.getString(R.string.backup_done_title), ctx.getString(R.string.backup_done_text, uploaded)))
+            return true
         } catch (e: SessionExpired) {
             BackupStore.record(ctx, uploaded, ctx.getString(R.string.backup_signed_out))
-            ctx.getSystemService(android.app.NotificationManager::class.java).notify(DONE_NOTIF_ID, Notifier.done(ctx, ctx.getString(R.string.backup_title), ctx.getString(R.string.backup_signed_out)))
-            return Result.success()
+            ctx.getSystemService(android.app.NotificationManager::class.java).notify(BACKUP_DONE_ID, Notifier.done(ctx, ctx.getString(R.string.backup_title), ctx.getString(R.string.backup_signed_out)))
+            return true
         } catch (e: Exception) {
             BackupStore.record(ctx, uploaded, e.message ?: e.javaClass.simpleName)
-            if (uploaded > 0) ctx.getSystemService(android.app.NotificationManager::class.java).notify(DONE_NOTIF_ID, Notifier.done(ctx, ctx.getString(R.string.backup_title), "$uploaded file tercadangkan, sisanya dilanjutkan nanti (${e.message ?: "koneksi terputus"})"))
-            return Result.retry() // the next attempt continues where this one stopped: sent photos are remembered
+            if (uploaded > 0) ctx.getSystemService(android.app.NotificationManager::class.java).notify(BACKUP_DONE_ID, Notifier.done(ctx, ctx.getString(R.string.backup_title), "$uploaded file tercadangkan, sisanya dilanjutkan nanti (${e.message ?: "koneksi terputus"})"))
+            return false // the next attempt continues where this one stopped: sent photos are remembered
         } finally {
             BackupStore.running(ctx, false)
-            if (rearm && BackupStore.enabled(ctx)) BackupScheduler.arm(ctx, ExistingWorkPolicy.APPEND_OR_REPLACE)
         }
     }
 
@@ -244,10 +253,26 @@ class BackupWorker(private val ctx: Context, params: WorkerParameters) : Worker(
         while (status == "FINALIZING" && waited < 120 && !isStopped) { Thread.sleep(1000); waited++; status = get("/api/v1/uploads/$id").getJSONObject("data").optString("status") }
         return status == "DONE"
     }
+}
+
+class BackupWorker(private val ctx: Context, params: WorkerParameters) : Worker(ctx, params) {
+    override fun getForegroundInfo(): ForegroundInfo = foreground(ctx.getString(R.string.backup_title), "", -1)
+
+    private fun foreground(title: String, text: String, percent: Int): ForegroundInfo {
+        val n = Notifier.progress(ctx, title, text, percent)
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) ForegroundInfo(BACKUP_NOTIF_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC) else ForegroundInfo(BACKUP_NOTIF_ID, n)
+    }
+
+    override fun doWork(): Result {
+        val rearm = inputData.getBoolean("trigger", false)
+        try {
+            return if (BackupRun(ctx, { isStopped }) { t, x, p -> setForegroundAsync(foreground(t, x, p)) }.run()) Result.success() else Result.retry()
+        } finally {
+            if (rearm && BackupStore.enabled(ctx)) BackupScheduler.arm(ctx, ExistingWorkPolicy.APPEND_OR_REPLACE)
+        }
+    }
 
     companion object {
-        private const val NOTIF_ID = 1003
-        private const val DONE_NOTIF_ID = 1004
 
         private fun scan(c: Context, uri: Uri, kind: String): List<Item> {
             val since = if (BackupStore.existing(c)) 0L else BackupStore.since(c)
