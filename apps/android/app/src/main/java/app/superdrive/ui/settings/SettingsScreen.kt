@@ -344,11 +344,31 @@ private fun BackupPage(say: (String) -> Unit) {
         }
     }
     val st = remember(tick, on) { BackupStore.state(context) }
+    // While a backup runs, refresh every second so the bar and file name move.
+    val running = remember(tick) { BackupStore.progress(context) }
+    LaunchedEffect(on, running != null) { while (on) { kotlinx.coroutines.delay(if (BackupStore.progress(context) != null) 1000 else 4000); tick++ } }
+    var notifOk by remember(tick) { mutableStateOf(android.os.Build.VERSION.SDK_INT < 33 || androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED) }
+    val askNotif = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { tick++ }
     Page {
         Group("Cadangan otomatis", 0) {
             SettingRow(Lu.Images, "Cadangkan foto dan video", detail = if (on) "Aktif · berjalan saat galeri berubah" else "Nonaktif", tone = c.okSoft to c.okInk, trailing = {
                 SdSwitch(on, onChange = { want -> if (want) { if (BackupStore.hasPermission(context)) { on = true; save(o = true); BackupScheduler.now(context) } else askPerms.launch(BackupStore.permissionsToAsk()) } else { on = false; save(o = false) } })
             })
+        }
+        if (on && !notifOk) Notice("Notifikasi dimatikan, jadi progres pencadangan tidak tampil di bilah notifikasi.", c.warnSoft to c.warnInk, Lu.Bell)
+        if (on && !notifOk) SdButton("Izinkan notifikasi", { if (android.os.Build.VERSION.SDK_INT >= 33) askNotif.launch(android.Manifest.permission.POST_NOTIFICATIONS) else context.startActivity(Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)) }, kind = BtnKind.Secondary, icon = Lu.Bell)
+        running?.let { r ->
+            SdCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconTile(Lu.Upload, c.primarySoft, c.primaryInk, size = 36.dp, iconSize = 18.dp)
+                        Column(Modifier.weight(1f).padding(horizontal = 12.dp)) { Text("Sedang mencadangkan", style = MaterialTheme.typography.titleSmall, color = c.ink); Text("${r.done} dari ${r.total} file", style = MaterialTheme.typography.bodySmall, color = c.muted) }
+                        Text("${r.percent}%", style = MaterialTheme.typography.labelLarge, color = c.primaryInk)
+                    }
+                    SdProgress(r.percent / 100f)
+                    if (r.name.isNotBlank()) Text(r.name, style = MaterialTheme.typography.bodySmall, color = c.faint, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
         }
         if (on) {
             Group("Pilihan", 1) {
@@ -373,8 +393,7 @@ private fun BackupPage(say: (String) -> Unit) {
             }
             val last = st.optLong("lastRun", 0L); val err = st.optString("error", "").takeIf { it.isNotBlank() && it != "null" }
             Panel("Status") {
-                if (st.optBoolean("running")) Notice("Sedang mencadangkan…", c.primarySoft to c.primaryInk, Lu.Upload)
-                else Text(if (last > 0) "Terakhir berjalan ${timeAgo(java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US).apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }.format(java.util.Date(last)))} · ${st.optInt("lastCount")} file terunggah" else "Belum pernah berjalan", style = MaterialTheme.typography.bodyMedium, color = c.muted)
+                if (running == null) Text(if (last > 0) "Terakhir berjalan ${timeAgo(java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US).apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }.format(java.util.Date(last)))} · ${st.optInt("lastCount")} file terunggah" else "Belum pernah berjalan", style = MaterialTheme.typography.bodyMedium, color = c.muted)
                 pending?.let { Text("$it file menunggu dicadangkan", style = MaterialTheme.typography.bodySmall, color = c.faint) }
                 err?.let { Notice(it, c.dangerSoft to c.dangerInk) }
                 SdButton("Cadangkan sekarang", { BackupScheduler.now(context); say("Pencadangan dimulai"); tick++ }, kind = BtnKind.Secondary, icon = Lu.Upload)

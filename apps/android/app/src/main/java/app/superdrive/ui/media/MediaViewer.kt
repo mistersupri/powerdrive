@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -34,6 +35,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.foundation.verticalScroll
+import app.superdrive.ui.theme.sd
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -125,20 +128,28 @@ fun MediaViewer(items: List<FileEntry>, startIndex: Int, api: Api, imageLoader: 
                 IconButton(onClick = onClose) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Kembali", tint = Color.White) }
                 Column(Modifier.weight(1f).padding(horizontal = 4.dp)) {
                     Text(current?.name ?: "", color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium)
-                    Text("${pager.currentPage + 1} dari ${items.size}", color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.bodySmall)
+                    Text(listOfNotNull(app.superdrive.ui.design.formatDateTime(current?.modifiedAt), "${pager.currentPage + 1} dari ${items.size}").joinToString(" · "), color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.bodySmall)
                 }
                 IconButton(onClick = { info = current }) { Icon(Icons.Default.Info, contentDescription = "Detail", tint = Color.White) }
+            }
+        }
+        AnimatedVisibility(chrome && dragY == 0f, Modifier.align(Alignment.BottomCenter), enter = fadeIn(tween(160)), exit = fadeOut(tween(120))) {
+            Row(Modifier.fillMaxWidth().background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f)))).navigationBarsPadding().padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(listOfNotNull(current?.let { app.superdrive.ui.design.typeLabel(it) }, current?.size?.let { Formatter.formatShortFileSize(context, it) }).joinToString(" · "), color = Color.White, style = MaterialTheme.typography.titleSmall)
+                    Text(app.superdrive.ui.design.formatLongDateTime(current?.modifiedAt) ?: "", color = Color.White.copy(alpha = 0.75f), style = MaterialTheme.typography.bodySmall)
+                }
+                TextButton(onClick = { info = current }) { Icon(Icons.Default.Info, null, tint = Color.White, modifier = Modifier.size(18.dp)); Text("  Info lengkap", color = Color.White) }
             }
         }
     }
 
     info?.let { f ->
-        ModalBottomSheet(onDismissRequest = { info = null }) {
-            Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 24.dp).navigationBarsPadding()) {
-                Text(f.name, style = MaterialTheme.typography.titleMedium, maxLines = 3, overflow = TextOverflow.Ellipsis)
-                Text(listOfNotNull(f.size?.let { Formatter.formatShortFileSize(context, it) }, shortDate(f.modifiedAt)).joinToString(" · "), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp))
-                Button(onClick = { enqueueDownload(context, api.download(f), f.name, f.mimeType); info = null }, modifier = Modifier.fillMaxWidth().padding(top = 20.dp)) { Text("Unduh") }
-                TextButton(onClick = { info = null }, modifier = Modifier.fillMaxWidth()) { Text("Tutup") }
+        ModalBottomSheet(onDismissRequest = { info = null }, containerColor = MaterialTheme.sd.surface, shape = androidx.compose.foundation.shape.RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)) {
+            Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 16.dp).navigationBarsPadding(), verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp)) {
+                Text("Detail", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.sd.ink, modifier = Modifier.padding(start = 4.dp))
+                Column(Modifier.weight(1f, fill = false).verticalScroll(androidx.compose.foundation.rememberScrollState())) { app.superdrive.ui.files.MetadataView(f, remember { app.superdrive.core.FileOps(api) }) }
+                Button(onClick = { enqueueDownload(context, api.download(f), f.name, f.mimeType); info = null }, modifier = Modifier.fillMaxWidth()) { Text("Unduh") }
             }
         }
     }

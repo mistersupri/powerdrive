@@ -11,6 +11,9 @@ import java.util.UUID
 
 @Serializable data class ShareLink(val id: String, val url: String, val role: String = "VIEWER", val name: String = "", val hasPassword: Boolean = false, val expiresAt: String? = null, val title: String? = null)
 @Serializable data class Activity(val id: String, val action: String, val actor: String = "", val at: String = "", val meta: JsonObject = JsonObject(emptyMap()))
+@Serializable data class MetaRow(val k: String, val v: String)
+@Serializable data class MetaGroup(val title: String, val rows: List<MetaRow> = emptyList())
+@Serializable data class FolderStats(val files: Int = 0, val folders: Int = 0, val bytes: Long = 0, val truncated: Boolean = false)
 @Serializable data class Comment(val id: String, val body: String, val authorName: String = "", val createdAt: String = "", val mine: Boolean = false)
 
 /** Everything a person can do to a file or folder. Each call is one request; the server decides what is allowed. */
@@ -42,6 +45,9 @@ class FileOps(private val api: Api) {
             put("title", title?.takeIf { it.isNotBlank() }?.let { JsonPrimitive(it) } ?: JsonNull)
         })
 
+    /** EXIF and video details; empty for other files. */
+    suspend fun metadata(f: FileEntry): List<MetaGroup> = api.get("/files/${f.storageId}/${f.id}/metadata")
+    suspend fun stats(f: FileEntry): FolderStats = api.get("/files/${f.storageId}/${f.id}/stats")
     suspend fun activity(f: FileEntry): List<Activity> = api.get("/files/${f.storageId}/${f.id}/activity")
     suspend fun comments(f: FileEntry): List<Comment> = api.get("/files/${f.storageId}/${f.id}/comments")
     suspend fun addComment(f: FileEntry, body: String): List<Comment> = api.post("/files/${f.storageId}/${f.id}/comments", buildJsonObject { put("body", body) })

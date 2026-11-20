@@ -111,7 +111,7 @@ private fun Shell(session: Session, me: app.superdrive.core.Me, onLogout: () -> 
             },
         ) { i ->
             Box(Modifier.fillMaxSize().then(Modifier).padding(pad)) {
-                if (i == 0) app.superdrive.ui.home.HomeScreen(home, me.user.name, onOpenFiles = { tab = 1 }, onOpenTransfers = { tab = 4 }, onSettings = { settings = true })
+                if (i == 0) app.superdrive.ui.home.HomeScreen(home, me.user.name, onOpenFiles = { tab = 1 }, onOpenStorage = { id -> files.openStorage(id); tab = 1 }, onOpenTransfers = { tab = 4 }, onSettings = { settings = true })
                 else if (i == 3) app.superdrive.ui.shared.SharedScreen(shared, session.server!!)
                 else if (i == 4) app.superdrive.ui.transfers.TransfersScreen(transfers)
                 else if (i == 1) FilesScreen(files, api, imageLoader, isAdmin = me.workspaces.firstOrNull { it.id == me.activeWorkspaceId }?.role in listOf("OWNER", "ADMIN"), onLogout = onLogout, onFullscreen = { fullscreen = it })

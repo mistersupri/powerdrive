@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -197,11 +198,9 @@ fun DetailsSheet(f: FileEntry, ops: FileOps, sizeText: String, dateText: String?
             PrimaryTabRow(selectedTabIndex = tab, containerColor = androidx.compose.ui.graphics.Color.Transparent) {
                 listOf("Detail", "Aktivitas", "Komentar", "Tag").forEachIndexed { i, l -> Tab(selected = tab == i, onClick = { tab = i }, text = { Text(l) }) }
             }
-            Box(Modifier.heightIn(min = 160.dp, max = 360.dp).fillMaxWidth().padding(top = 12.dp)) {
+            Box(Modifier.heightIn(min = 160.dp, max = 460.dp).fillMaxWidth().padding(top = 12.dp)) {
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) } ?: when (tab) {
-                    0 -> Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(if (f.isFolder) "Folder" else (f.mimeType ?: "Berkas")); if (!f.isFolder) Text("Ukuran: $sizeText"); dateText?.let { Text("Diubah: $it") }
-                    }
+                    0 -> Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())) { MetadataView(f, ops) }
                     1 -> activity?.let { list -> if (list.isEmpty()) Text("Belum ada aktivitas") else LazyColumn { items(list, key = { it.id }) { a -> Column(Modifier.padding(vertical = 6.dp)) { Text(actionLabel(a.action)); Text(listOf(a.actor, a.at.take(10)).filter { it.isNotBlank() }.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } } } } ?: CircularProgressIndicator(Modifier.align(Alignment.Center))
                     2 -> Column {
                         val list = comments

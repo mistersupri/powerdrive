@@ -129,7 +129,7 @@ class HomeViewModel(private val api: Api) : ViewModel() {
 private enum class Page { Home, Notifications, Search }
 
 @Composable
-fun HomeScreen(vm: HomeViewModel, userName: String, onOpenFiles: () -> Unit, onOpenTransfers: () -> Unit, onSettings: () -> Unit) {
+fun HomeScreen(vm: HomeViewModel, userName: String, onOpenFiles: () -> Unit, onOpenStorage: (String) -> Unit, onOpenTransfers: () -> Unit, onSettings: () -> Unit) {
     val s by vm.state.collectAsStateWithLifecycle()
     var page by remember { mutableStateOf(Page.Home) }
     val c = MaterialTheme.sd
@@ -155,7 +155,7 @@ fun HomeScreen(vm: HomeViewModel, userName: String, onOpenFiles: () -> Unit, onO
                 when (p) {
                     Page.Search -> SearchResults(s, onOpenFiles)
                     Page.Notifications -> NotificationList(s.notifications.items)
-                    Page.Home -> HomeBody(s, vm, onOpenFiles, onOpenTransfers)
+                    Page.Home -> HomeBody(s, vm, onOpenFiles, onOpenStorage, onOpenTransfers)
                 }
             }
         }
@@ -185,7 +185,7 @@ private fun SearchHeader(query: String, onChange: (String) -> Unit, onSearch: ()
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-private fun HomeBody(s: HomeState, vm: HomeViewModel, onOpenFiles: () -> Unit, onOpenTransfers: () -> Unit) {
+private fun HomeBody(s: HomeState, vm: HomeViewModel, onOpenFiles: () -> Unit, onOpenStorage: (String) -> Unit, onOpenTransfers: () -> Unit) {
     val c = MaterialTheme.sd; val context = LocalContext.current
     PullToRefreshBox(isRefreshing = s.refreshing, onRefresh = { vm.load(true) }, modifier = Modifier.fillMaxSize()) {
         val d = s.dashboard
@@ -196,7 +196,7 @@ private fun HomeBody(s: HomeState, vm: HomeViewModel, onOpenFiles: () -> Unit, o
             d == null -> EmptyState(Lu.Info, "Tidak dapat memuat Beranda", s.error) { Button(onClick = { vm.load(false) }, shape = RoundedCornerShape(12.dp)) { Text("Coba lagi") } }
             else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 item(key = "hero") {
-                    Box(Modifier.fillMaxWidth().riseIn(0).clip(RoundedCornerShape(22.dp)).background(Brush.linearGradient(listOf(c.navyDeep, c.navy, Color(0xFF1A4F9C)), start = Offset(0f, 0f), end = Offset(900f, 700f)))) {
+                    Box(Modifier.fillMaxWidth().riseIn(0).clip(RoundedCornerShape(22.dp)).pressable(onClick = onOpenFiles, shape = RoundedCornerShape(22.dp), scaleTo = 0.985f).background(Brush.linearGradient(listOf(c.navyDeep, c.navy, Color(0xFF1A4F9C)), start = Offset(0f, 0f), end = Offset(900f, 700f)))) {
                         Box(Modifier.matchParentSize().background(Brush.radialGradient(listOf(Color(0x401769E8), Color.Transparent), center = Offset(900f, 0f), radius = 700f)))
                         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -214,7 +214,7 @@ private fun HomeBody(s: HomeState, vm: HomeViewModel, onOpenFiles: () -> Unit, o
                 item(key = "stats") {
                     Column(Modifier.riseIn(1), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Stat(Modifier.weight(1f), Lu.HardDrive, c.primarySoft, c.primaryInk, "${d.storages}", "Penyimpanan")
+                            Stat(Modifier.weight(1f), Lu.HardDrive, c.primarySoft, c.primaryInk, "${d.storages}", "Penyimpanan", onClick = onOpenFiles)
                             Stat(Modifier.weight(1f), Lu.Link, c.okSoft, c.okInk, "${d.providers}", "Penyedia")
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -226,11 +226,12 @@ private fun HomeBody(s: HomeState, vm: HomeViewModel, onOpenFiles: () -> Unit, o
                 if (d.storageList.isNotEmpty()) {
                     item(key = "st-h") { SectionLabel("Sumber penyimpanan", Modifier.padding(top = 6.dp)) }
                     items(d.storageList, key = { "s" + it.id }) { st ->
-                        SdCard(Modifier.fillMaxWidth().riseIn(2)) {
+                        SdCard(Modifier.fillMaxWidth().riseIn(2), onClick = { onOpenStorage(st.id) }) {
                             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Box(Modifier.size(10.dp).clip(CircleShape).background(providerColor(st.provider)))
                                     Text(st.name, Modifier.padding(start = 10.dp).weight(1f), style = MaterialTheme.typography.titleSmall, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    if (st.status == "CONNECTED") Icon(Lu.ChevronRight, null, tint = c.faint, modifier = Modifier.size(18.dp))
                                     if (st.status != "CONNECTED") Text("Perlu perhatian", style = MaterialTheme.typography.labelMedium, color = c.warnInk, modifier = Modifier.clip(RoundedCornerShape(50)).background(c.warnSoft).padding(horizontal = 8.dp, vertical = 2.dp))
                                 }
                                 val q = st.quota

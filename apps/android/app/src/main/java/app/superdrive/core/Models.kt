@@ -18,6 +18,7 @@ data class FileEntry(
     val id: String, val storageId: String, val parentId: String? = null, val name: String, val isFolder: Boolean,
     val mimeType: String? = null, val size: Long? = null, val modifiedAt: String? = null, val hasThumbnail: Boolean = false,
     val version: String? = null, val starred: Boolean = false, val changed: Boolean = false,
+    val createdAt: String? = null, val checksum: String? = null, val path: String? = null,
 )
 @Serializable data class Crumb(val id: String, val name: String)
 @Serializable data class FolderInfo(val id: String, val name: String = "", val parentId: String? = null, val path: List<Crumb> = emptyList())

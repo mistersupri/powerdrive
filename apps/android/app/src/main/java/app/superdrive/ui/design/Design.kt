@@ -335,3 +335,16 @@ fun Notice(text: String, tone: Pair<Color, Color>, icon: ImageVector = Lu.Info, 
         Icon(icon, null, tint = tone.second, modifier = Modifier.size(16.dp).padding(top = 1.dp)); Text(text, Modifier.padding(start = 8.dp), style = MaterialTheme.typography.bodySmall, color = tone.second)
     }
 }
+
+
+/** Short type label for a file: "JPG", "PDF", "Folder". */
+fun typeLabel(f: FileEntry): String {
+    if (f.isFolder) return "Folder"
+    val ext = f.name.substringAfterLast('.', "").uppercase()
+    return when {
+        f.mimeType?.startsWith("video/") == true && ext.isEmpty() -> "Video"
+        f.mimeType?.startsWith("image/") == true && ext.isEmpty() -> "Gambar"
+        ext.isNotEmpty() && ext.length <= 5 -> ext
+        else -> f.mimeType?.substringAfter('/')?.uppercase()?.take(8) ?: "Berkas"
+    }
+}

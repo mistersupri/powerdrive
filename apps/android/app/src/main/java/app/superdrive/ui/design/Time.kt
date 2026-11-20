@@ -17,3 +17,15 @@ fun timeAgo(iso: String?, now: Long = System.currentTimeMillis()): String {
         else -> SimpleDateFormat("d MMM yyyy", Locale("id", "ID")).format(java.util.Date(t))
     }
 }
+
+private fun parseUtc(iso: String?): java.util.Date? {
+    if (iso == null || iso.length < 19) return null
+    return try { SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }.parse(iso.substring(0, 19)) } catch (e: Exception) { null }
+}
+private val ID = Locale("id", "ID")
+/** "16 Nov 2026" in the phone's time zone. */
+fun formatDate(iso: String?): String? = parseUtc(iso)?.let { SimpleDateFormat("d MMM yyyy", ID).format(it) }
+/** "16 Nov 2026, 14.20". */
+fun formatDateTime(iso: String?): String? = parseUtc(iso)?.let { SimpleDateFormat("d MMM yyyy, HH.mm", ID).format(it) }
+/** "Senin, 16 November 2026 pukul 14.20". */
+fun formatLongDateTime(iso: String?): String? = parseUtc(iso)?.let { SimpleDateFormat("EEEE, d MMMM yyyy 'pukul' HH.mm", ID).format(it) }

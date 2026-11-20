@@ -73,7 +73,8 @@ class FilesViewModel(private val api: Api, private val ops: FileOps = FileOps(ap
                 val all = api.get<List<Storage>>("/storages").filter { it.status == "CONNECTED" }
                 val first = all.firstOrNull { it.isDefault } ?: all.firstOrNull()
                 _state.update { it.copy(storages = all, storage = first, error = if (first == null) "Belum ada penyimpanan yang terhubung." else null, loading = first != null) }
-                if (first != null) load(refresh = false)
+                val target = pendingStorage?.let { id -> all.firstOrNull { it.id == id } }; pendingStorage = null
+                if (target != null) switchStorage(target) else if (first != null) load(refresh = false)
             } catch (e: ApiException) { _state.update { it.copy(loading = false, error = e.message) } }
         }
     }
@@ -158,6 +159,26 @@ class FilesViewModel(private val api: Api, private val ops: FileOps = FileOps(ap
                 load(refresh = true)
             } catch (e: ApiException) { _state.update { it.copy(upload = null, notice = e.message ?: "Unggahan gagal.") } }
         }
+    }
+
+    fun uploadFolder(tree: Uri) {
+        val s = _state.value; val st = s.storage ?: return; val up = uploader ?: return
+        if (s.upload != null) return
+        viewModelScope.launch {
+            try {
+                val n = up.uploadFolder(st.id, folderId(s), tree) { p -> _state.update { it.copy(upload = p) } }
+                _state.update { it.copy(upload = null, notice = if (n == 1) "Folder terunggah (1 file)" else "Folder terunggah ($n file)") }
+                load(refresh = true)
+            } catch (e: ApiException) { _state.update { it.copy(upload = null, notice = e.message ?: "Unggahan gagal.") }; load(refresh = true) }
+        }
+    }
+
+    /** Jumps to one storage (from the Beranda cards). Waits for the storage list when it is still loading. */
+    private var pendingStorage: String? = null
+    fun openStorage(id: String) {
+        val st = _state.value.storages.firstOrNull { it.id == id }
+        if (st == null) { pendingStorage = id; return }
+        pendingStorage = null; switchStorage(st)
     }
 
     // ---- details ----

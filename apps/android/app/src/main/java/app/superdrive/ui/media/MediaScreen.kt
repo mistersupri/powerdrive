@@ -71,6 +71,11 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.fillMaxWidth
 import app.superdrive.ui.design.IconTile
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.pointerInput
 import app.superdrive.ui.design.BarIcon
 import app.superdrive.ui.design.EmptyState
 import app.superdrive.ui.design.Lu
@@ -246,6 +251,8 @@ private fun SkeletonGrid() = Column(Modifier.fillMaxSize().padding(horizontal = 
 @Composable
 private fun Gallery(s: MediaState, vm: MediaViewModel, api: Api, imageLoader: ImageLoader, onOpen: (List<FileEntry>, Int) -> Unit) {
     val rows = remember(s.items, s.sort) { cells(s.items, byDate = s.sort.sort == "date") }
+    val gridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
+    val byKey = remember(rows) { rows.filterIsInstance<Cell.Tile>().associate { "${it.file.storageId}:${it.file.id}" to it.file } }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             MediaKind.entries.forEach { k ->
@@ -258,7 +265,7 @@ private fun Gallery(s: MediaState, vm: MediaViewModel, api: Api, imageLoader: Im
             }
         }
         if (s.items.isEmpty()) { Message("Belum ada foto atau video di sini."); return@Column }
-        LazyVerticalGrid(columns = GridCells.Adaptive(112.dp), horizontalArrangement = Arrangement.spacedBy(2.dp), verticalArrangement = Arrangement.spacedBy(2.dp), contentPadding = PaddingValues(bottom = 16.dp), modifier = Modifier.fillMaxSize()) {
+        LazyVerticalGrid(columns = GridCells.Adaptive(112.dp), horizontalArrangement = Arrangement.spacedBy(2.dp), verticalArrangement = Arrangement.spacedBy(2.dp), contentPadding = PaddingValues(bottom = 16.dp), state = gridState, modifier = Modifier.fillMaxSize().dragSelect(gridState, { k -> byKey[k as? String] }, vm::select)) {
             if (s.scope == null && s.kind == MediaKind.All && s.highlights.isNotEmpty()) item(key = "highlights", span = { GridItemSpan(maxLineSpan) }) { Highlights(s.highlights, api, imageLoader, onOpen) }
             items(rows.size, key = { i -> when (val c = rows[i]) { is Cell.Head -> "h$i"; is Cell.Tile -> "${c.file.storageId}:${c.file.id}" } }, span = { i -> if (rows[i] is Cell.Head) GridItemSpan(maxLineSpan) else GridItemSpan(1) }) { i ->
                 when (val c = rows[i]) {
@@ -268,7 +275,7 @@ private fun Gallery(s: MediaState, vm: MediaViewModel, api: Api, imageLoader: Im
                     }
                     is Cell.Tile -> {
                         if (c.index >= s.items.size - 24 && s.cursor != null) LaunchedEffect(s.items.size) { vm.loadMore() }
-                        Tile(c.file, api, imageLoader, selecting = s.selection.isNotEmpty(), checked = "${c.file.storageId}:${c.file.id}" in s.selection, onLongClick = { vm.toggle(c.file) }) { if (s.selection.isNotEmpty()) vm.toggle(c.file) else onOpen(s.items, c.index) }
+                        Tile(c.file, api, imageLoader, selecting = s.selection.isNotEmpty(), checked = "${c.file.storageId}:${c.file.id}" in s.selection, onLongClick = null) { if (s.selection.isNotEmpty()) vm.toggle(c.file) else onOpen(s.items, c.index) }
                     }
                 }
             }
@@ -278,7 +285,7 @@ private fun Gallery(s: MediaState, vm: MediaViewModel, api: Api, imageLoader: Im
 }
 
 @Composable
-private fun Tile(f: FileEntry, api: Api, imageLoader: ImageLoader, selecting: Boolean, checked: Boolean, onLongClick: () -> Unit, onClick: () -> Unit) {
+private fun Tile(f: FileEntry, api: Api, imageLoader: ImageLoader, selecting: Boolean, checked: Boolean, onLongClick: (() -> Unit)?, onClick: () -> Unit) {
     val context = LocalContext.current
     Box(Modifier.aspectRatio(1f).background(MaterialTheme.sd.surface2).pressable(onClick = onClick, onLongClick = onLongClick, scaleTo = 0.96f)) {
         AsyncImage(model = ImageRequest.Builder(context).data(api.thumbnail(f, 256)).crossfade(true).build(), imageLoader = imageLoader, contentDescription = f.name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
@@ -371,4 +378,35 @@ private fun UnlockDialog(userId: String, error: String?, hasPassword: Boolean, o
         confirmButton = { if (hasPassword) TextButton(onClick = { onUnlock(pw) }, enabled = pw.length >= 6) { Text("Buka") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Batal") } },
     )
+}
+
+
+/**
+ * Press and hold a photo to start selecting, then slide the finger over more photos to select them too,
+ * until the finger lifts. Dragging near the top or bottom edge scrolls the grid.
+ */
+private fun Modifier.dragSelect(state: androidx.compose.foundation.lazy.grid.LazyGridState, fileFor: (Any?) -> FileEntry?, onSelect: (FileEntry) -> Unit): Modifier = pointerInput(state) {
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false)
+        // Not a long press if the finger lifts, moves (a scroll) or another handler takes the gesture before the timeout.
+        val early = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
+            while (true) {
+                val ev = awaitPointerEvent()
+                val ch = ev.changes.firstOrNull { it.id == down.id } ?: return@withTimeoutOrNull true
+                if (!ch.pressed || ch.isConsumed || (ch.position - down.position).getDistance() > viewConfiguration.touchSlop) return@withTimeoutOrNull true
+            }
+            @Suppress("UNREACHABLE_CODE") false
+        }
+        if (early != null) return@awaitEachGesture
+        fun hit(pos: Offset): FileEntry? = state.layoutInfo.visibleItemsInfo.firstOrNull { pos.x >= it.offset.x && pos.x < it.offset.x + it.size.width && pos.y >= it.offset.y && pos.y < it.offset.y + it.size.height }?.let { fileFor(it.key) }
+        hit(down.position)?.let(onSelect)
+        while (true) {
+            val ev = awaitPointerEvent(PointerEventPass.Initial)
+            val ch = ev.changes.firstOrNull { it.id == down.id } ?: break
+            ch.consume()
+            if (!ch.pressed) break
+            hit(ch.position)?.let(onSelect)
+            if (ch.position.y < 140f) state.dispatchRawDelta(-28f) else if (ch.position.y > size.height - 140f) state.dispatchRawDelta(28f)
+        }
+    }
 }

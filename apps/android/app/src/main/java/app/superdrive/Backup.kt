@@ -55,7 +55,11 @@ object BackupStore {
     fun record(c: Context, uploaded: Int, error: String?) {
         p(c).edit().putLong("bk_last_run", System.currentTimeMillis()).putInt("bk_last_count", uploaded).apply { if (error == null) remove("bk_error") else putString("bk_error", error) }.apply()
     }
-    fun running(c: Context, on: Boolean) { p(c).edit().putBoolean("bk_running", on).apply() }
+    fun running(c: Context, on: Boolean) { p(c).edit().putBoolean("bk_running", on).apply(); if (!on) p(c).edit().remove("bk_p_done").remove("bk_p_total").remove("bk_p_name").remove("bk_p_pct").apply() }
+    /** What the running backup is doing right now, for the settings page. */
+    fun setProgress(c: Context, done: Int, total: Int, name: String, percent: Int) { p(c).edit().putInt("bk_p_done", done).putInt("bk_p_total", total).putString("bk_p_name", name).putInt("bk_p_pct", percent).apply() }
+    class Progress(val done: Int, val total: Int, val name: String, val percent: Int)
+    fun progress(c: Context): Progress? = p(c).takeIf { it.getBoolean("bk_running", false) && it.getInt("bk_p_total", 0) > 0 }?.let { Progress(it.getInt("bk_p_done", 0), it.getInt("bk_p_total", 0), it.getString("bk_p_name", "") ?: "", it.getInt("bk_p_pct", 0)) }
 
     fun hasPermission(c: Context): Boolean {
         fun ok(perm: String) = ContextCompat.checkSelfPermission(c, perm) == PackageManager.PERMISSION_GRANTED
@@ -137,6 +141,8 @@ class BackupWorker(private val ctx: Context, params: WorkerParameters) : Worker(
         if (!BackupStore.enabled(ctx) || !BackupStore.hasPermission(ctx)) return Result.success()
         BackupStore.running(ctx, true)
         var uploaded = 0
+        // Show the notification straight away: scanning a big gallery can take a while.
+        setForegroundAsync(foreground(ctx.getString(R.string.backup_title), "Memeriksa galeri…", -1))
         try {
             base = ServerStore.url(ctx) ?: return Result.success()
             cookie = app.superdrive.core.PrefsCookies(ctx).get(base) ?: throw SessionExpired()
@@ -148,6 +154,7 @@ class BackupWorker(private val ctx: Context, params: WorkerParameters) : Worker(
 
             val todo = pendingItems(ctx)
             if (todo.isEmpty()) { BackupStore.record(ctx, 0, null); return Result.success() }
+            BackupStore.setProgress(ctx, 0, todo.size, "", 0)
             setForegroundAsync(foreground(ctx.getString(R.string.backup_title), ctx.getString(R.string.backup_progress, 0, todo.size), 0))
             val db = BackupDb(ctx); val folders = HashMap<String, String>()
             val root = ensureFolder(storageId, "root", "Cadangan Foto", folders)
@@ -156,8 +163,20 @@ class BackupWorker(private val ctx: Context, params: WorkerParameters) : Worker(
                 if (isStopped) break
                 val bucket = it.bucket.replace(Regex("[/\\\\]"), "_").trim().ifEmpty { "Lainnya" }.take(80)
                 val parent = ensureFolder(storageId, device, bucket, folders)
-                if (send(storageId, parent, it)) { db.mark(it.kind, it.id); uploaded++ }
-                setForegroundAsync(foreground(ctx.getString(R.string.backup_title), ctx.getString(R.string.backup_progress, i + 1, todo.size), ((i + 1) * 100) / todo.size))
+                var lastTick = 0L
+                val ok = send(storageId, parent, it) { sent ->
+                    val now = System.currentTimeMillis()
+                    if (now - lastTick > 800) {
+                        lastTick = now
+                        val pct = (((i + (if (it.size > 0) sent.toDouble() / it.size else 1.0)) * 100) / todo.size).toInt().coerceIn(0, 100)
+                        BackupStore.setProgress(ctx, i, todo.size, it.name, pct)
+                        setForegroundAsync(foreground(ctx.getString(R.string.backup_title), ctx.getString(R.string.backup_progress, i + 1, todo.size) + " · " + it.name, pct))
+                    }
+                }
+                if (ok) { db.mark(it.kind, it.id); uploaded++ }
+                val pctDone = ((i + 1) * 100) / todo.size
+                BackupStore.setProgress(ctx, i + 1, todo.size, it.name, pctDone)
+                setForegroundAsync(foreground(ctx.getString(R.string.backup_title), ctx.getString(R.string.backup_progress, i + 1, todo.size), pctDone))
             }
             BackupStore.record(ctx, uploaded, null)
             if (uploaded > 0) ctx.getSystemService(android.app.NotificationManager::class.java).notify(DONE_NOTIF_ID, Notifier.done(ctx, ctx.getString(R.string.backup_done_title), ctx.getString(R.string.backup_done_text, uploaded)))
@@ -168,6 +187,7 @@ class BackupWorker(private val ctx: Context, params: WorkerParameters) : Worker(
             return Result.success()
         } catch (e: Exception) {
             BackupStore.record(ctx, uploaded, e.message ?: e.javaClass.simpleName)
+            if (uploaded > 0) ctx.getSystemService(android.app.NotificationManager::class.java).notify(DONE_NOTIF_ID, Notifier.done(ctx, ctx.getString(R.string.backup_title), "$uploaded file tercadangkan, sisanya dilanjutkan nanti (${e.message ?: "koneksi terputus"})"))
             return Result.retry() // the next attempt continues where this one stopped: sent photos are remembered
         } finally {
             BackupStore.running(ctx, false)
@@ -207,7 +227,7 @@ class BackupWorker(private val ctx: Context, params: WorkerParameters) : Worker(
     }
 
     /** Sends one photo or video. True when it is on the server (or was already). */
-    private fun send(storageId: String, parent: String, it: Item): Boolean {
+    private fun send(storageId: String, parent: String, it: Item, onSent: (Long) -> Unit = {}): Boolean {
         val created = post("/api/v1/uploads", JSONObject().put("storageId", storageId).put("parentId", parent).put("name", it.name).put("size", it.size).put("mimeType", it.mime).put("conflictPolicy", "SKIP").apply { if (it.taken > 0) put("lastModified", it.taken) }).getJSONObject("data")
         if (created.optString("status") == "DONE") return true // the same name was already there
         val id = created.getString("id")
@@ -215,7 +235,7 @@ class BackupWorker(private val ctx: Context, params: WorkerParameters) : Worker(
         val body = object : RequestBody() {
             override fun contentType() = "application/octet-stream".toMediaType()
             override fun contentLength() = it.size
-            override fun writeTo(sink: BufferedSink) { stream.source().use { s -> sink.writeAll(s) } }
+            override fun writeTo(sink: BufferedSink) { var total = 0L; val buf = okio.Buffer(); stream.source().use { s -> while (true) { val n = s.read(buf, 128 * 1024); if (n < 0) break; sink.write(buf, n); total += n; onSent(total) } } }
         }
         val done = try { call(req("/api/v1/uploads/$id").header("Upload-Offset", "0").patch(body).build()).getJSONObject("data") } finally { stream.close() }
         var status = done.optString("status")

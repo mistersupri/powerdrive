@@ -137,6 +137,8 @@ class MediaViewModel(private val api: Api) : ViewModel() {
     // ---- selection and album management ----
     private fun key(f: FileEntry) = "${f.storageId}:${f.id}"
     fun toggle(f: FileEntry) = _state.update { it.copy(selection = if (key(f) in it.selection) it.selection - key(f) else it.selection + key(f)) }
+    /** Adds one photo to the selection (used while dragging a finger across the grid). */
+    fun select(f: FileEntry) { if (key(f) !in _state.value.selection) _state.update { it.copy(selection = it.selection + key(f)) } }
     fun selectAll() = _state.update { it.copy(selection = it.items.map(::key).toSet()) }
     fun clearSelection() = _state.update { it.copy(selection = emptySet()) }
     fun noticeShown() = _state.update { it.copy(notice = null) }
