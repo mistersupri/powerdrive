@@ -172,7 +172,7 @@ fun SkeletonRows(count: Int = 7) = Column(Modifier.fillMaxWidth().padding(horizo
 @Composable
 fun PageHeader(title: String, modifier: Modifier = Modifier, subtitle: String? = null, leading: (@Composable () -> Unit)? = null, actions: @Composable RowScope.() -> Unit = {}) {
     Column(modifier.fillMaxWidth().background(MaterialTheme.sd.surface).windowInsetsPadding(WindowInsets.statusBars)) {
-        Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(start = if (leading == null) 20.dp else 8.dp, end = 8.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(start = if (leading == null) 20.dp else 8.dp, end = 8.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             leading?.invoke()
             Column(Modifier.weight(1f).padding(end = 8.dp)) {
                 Text(title, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.sd.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)

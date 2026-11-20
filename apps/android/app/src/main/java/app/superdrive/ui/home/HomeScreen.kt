@@ -219,7 +219,7 @@ private fun HomeBody(s: HomeState, vm: HomeViewModel, onOpenFiles: () -> Unit, o
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             Stat(Modifier.weight(1f), Lu.Transfer, c.violetSoft, c.violetInk, "${d.transfers.active}", "Transfer aktif", onClick = onOpenTransfers)
-                            Stat(Modifier.weight(1f), Lu.Check, c.warnSoft, c.warnInk, "${d.transfers.completed}", "Selesai · ${d.transfers.failed} gagal", onClick = onOpenTransfers)
+                            Stat(Modifier.weight(1f), Lu.Check, c.warnSoft, c.warnInk, "${d.transfers.completed}", if (d.transfers.failed > 0) "Selesai · ${d.transfers.failed} gagal" else "Selesai", onClick = onOpenTransfers)
                         }
                     }
                 }
@@ -291,7 +291,7 @@ private fun Stat(modifier: Modifier, icon: androidx.compose.ui.graphics.vector.I
             IconTile(icon, bg, fg, size = 40.dp)
             Column(Modifier.padding(start = 12.dp)) {
                 Text(value, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.sd.ink)
-                Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.sd.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.sd.muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
         }
     }
