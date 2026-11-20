@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
@@ -28,6 +27,27 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
+import app.superdrive.ui.design.EmptyState
+import app.superdrive.ui.design.IconTile
+import app.superdrive.ui.design.Lu
+import app.superdrive.ui.design.PageHeader
+import app.superdrive.ui.design.SdCard
+import app.superdrive.ui.design.SdProgress
+import app.superdrive.ui.design.Skeleton
+import app.superdrive.ui.design.StatusPill
+import app.superdrive.ui.design.pressable
+import app.superdrive.ui.design.riseIn
+import app.superdrive.ui.theme.sd
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
@@ -67,41 +87,75 @@ private fun statusText(j: TransferJob) = when (j.status) {
     "COPY_COMPLETED_SOURCE_RETAINED" -> "Tersalin, sumber dipertahankan"; else -> j.status
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TransfersScreen(vm: TransfersViewModel) {
     val s by vm.state.collectAsStateWithLifecycle()
+    val c = MaterialTheme.sd
     // Live while this tab is on screen: quick while something is moving, slow otherwise.
     LaunchedEffect(Unit) { while (true) { vm.poll(); delay(if (vm.state.value.jobs.any { it.active || it.paused }) 2000 else 10000) } }
+    val running = s.jobs.count { it.active }
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background, contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        topBar = { TopAppBar(title = { Text("Transfer", style = MaterialTheme.typography.titleLarge) }, colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)) },
+        containerColor = c.canvas, contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        topBar = { PageHeader("Transfer", subtitle = if (s.loading) null else if (running > 0) "$running berjalan" else "Tidak ada yang berjalan") },
     ) { pad ->
         PullToRefreshBox(isRefreshing = s.refreshing, onRefresh = vm::refresh, modifier = Modifier.padding(pad).fillMaxSize()) {
             when {
-                s.loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-                s.error != null -> Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) { Text(s.error ?: "", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                s.jobs.isEmpty() -> Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) { Text("Belum ada transfer. Salin atau pindahkan file untuk memulai.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                else -> LazyColumn(Modifier.fillMaxSize()) {
-                    items(s.jobs, key = { it.id }) { j ->
-                        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(j.title, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)
-                                if (j.active || j.paused) Text("${j.percent}%", style = MaterialTheme.typography.labelLarge)
-                            }
-                            Text("${j.sourceStorageName} → ${j.destinationStorageName} · ${statusText(j)}", style = MaterialTheme.typography.bodySmall, color = if (j.status == "FAILED") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            if (j.active || j.paused) LinearProgressIndicator(progress = { j.percent / 100f }, modifier = Modifier.fillMaxWidth())
-                            Row {
-                                if (j.active) TextButton(onClick = { vm.act(j, "pause") }) { Text("Jeda") }
-                                if (j.paused) TextButton(onClick = { vm.act(j, "resume") }) { Text("Lanjutkan") }
-                                if (j.active || j.paused) TextButton(onClick = { vm.act(j, "cancel") }) { Text("Batalkan") }
-                                if (j.status == "FAILED" || j.status == "CANCELLED") TextButton(onClick = { vm.act(j, "retry") }) { Text("Coba lagi") }
-                            }
-                        }
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    }
+                s.loading -> Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) { repeat(4) { Skeleton(Modifier.fillMaxWidth().height(96.dp), 14.dp) } }
+                s.error != null -> EmptyState(Lu.Info, "Tidak dapat memuat transfer", s.error)
+                s.jobs.isEmpty() -> EmptyState(Lu.Transfer, "Belum ada transfer", "Salin atau pindahkan file antar penyimpanan, progresnya muncul di sini.")
+                else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    itemsIndexed(s.jobs, key = { _, j -> j.id }) { i, j -> JobCard(j, vm, Modifier.riseIn(i)) }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun JobCard(j: TransferJob, vm: TransfersViewModel, modifier: Modifier) {
+    val c = MaterialTheme.sd; val live = j.active || j.paused
+    val (pillBg, pillFg) = when (j.status) {
+        "COMPLETED", "COPY_COMPLETED_SOURCE_RETAINED" -> c.okSoft to c.okInk
+        "FAILED" -> c.dangerSoft to c.dangerInk
+        "PAUSED", "RETRYING" -> c.warnSoft to c.warnInk
+        "CANCELLED" -> c.surface2 to c.muted
+        else -> c.primarySoft to c.primaryInk
+    }
+    SdCard(modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconTile(if (j.type == "MOVE") Lu.Move else Lu.Copy, pillBg, pillFg, size = 38.dp, iconSize = 19.dp)
+                Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                    Text(j.title, style = MaterialTheme.typography.titleSmall, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(j.sourceStorageName, style = MaterialTheme.typography.bodySmall, color = c.muted, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                        Icon(Lu.ChevronRight, null, tint = c.faint, modifier = Modifier.padding(horizontal = 2.dp).size(14.dp))
+                        Text(j.destinationStorageName, style = MaterialTheme.typography.bodySmall, color = c.muted, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                    }
+                }
+                StatusPill(statusText(j).let { if (it.length > 18) it.take(16) + "…" else it }, pillBg, pillFg)
+            }
+            if (live) {
+                SdProgress(j.percent / 100f, color = if (j.status == "RETRYING") c.warnInk else c.primary)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("${j.percent}%", style = MaterialTheme.typography.labelLarge, color = c.ink, modifier = Modifier.weight(1f))
+                    if (j.active) ActionChip("Jeda", Lu.Pause) { vm.act(j, "pause") }
+                    if (j.paused) ActionChip("Lanjutkan", Lu.Play) { vm.act(j, "resume") }
+                    Box(Modifier.width(8.dp))
+                    ActionChip("Batalkan", Lu.X, danger = true) { vm.act(j, "cancel") }
+                }
+            } else if (j.status == "FAILED") {
+                Text(j.errorMessage ?: "Transfer gagal.", style = MaterialTheme.typography.bodySmall, color = c.dangerInk, maxLines = 2)
+                Row { ActionChip("Coba lagi", Lu.Retry) { vm.act(j, "retry") } }
+            } else if (j.status == "CANCELLED") Row { ActionChip("Coba lagi", Lu.Retry) { vm.act(j, "retry") } }
+        }
+    }
+}
+
+@Composable
+private fun ActionChip(text: String, icon: ImageVector, danger: Boolean = false, onClick: () -> Unit) {
+    val c = MaterialTheme.sd; val fg = if (danger) c.dangerInk else c.primaryInk
+    Row(Modifier.clip(RoundedCornerShape(50)).background(if (danger) c.dangerSoft else c.primarySoft).pressable(onClick = onClick, shape = RoundedCornerShape(50), scaleTo = 0.94f).padding(horizontal = 12.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, null, tint = fg, modifier = Modifier.size(14.dp)); Text(text, Modifier.padding(start = 6.dp), style = MaterialTheme.typography.labelLarge, color = fg)
     }
 }

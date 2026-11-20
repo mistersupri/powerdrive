@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -51,6 +52,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.draw.clip
+import app.superdrive.ui.design.Avatar
+import app.superdrive.ui.design.BarIcon
+import app.superdrive.ui.design.IconTile
+import app.superdrive.ui.design.Lu
+import app.superdrive.ui.design.PageHeader
+import app.superdrive.ui.design.SdCard
+import app.superdrive.ui.design.pressable
+import app.superdrive.ui.design.riseIn
+import app.superdrive.ui.theme.sd
 import app.superdrive.AlbumVault
 import app.superdrive.AppLock
 import app.superdrive.BackupScheduler
@@ -84,22 +97,44 @@ fun SettingsScreen(api: Api, me: Me, onBack: () -> Unit, onLogout: () -> Unit) {
     var sub by remember { mutableStateOf(Sub.Hub) }
     val snack = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    val c = MaterialTheme.sd
     val say: (String) -> Unit = { m -> scope.launch { snack.showSnackbar(m) } }
     BackHandler { if (sub == Sub.Hub) onBack() else sub = Sub.Hub }
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background, contentWindowInsets = WindowInsets(0, 0, 0, 0), snackbarHost = { SnackbarHost(snack) },
-        topBar = { TopAppBar(title = { Text(sub.title, style = MaterialTheme.typography.titleLarge) }, colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-            navigationIcon = { IconButton(onClick = { if (sub == Sub.Hub) onBack() else sub = Sub.Hub }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Kembali") } }) },
+        containerColor = c.canvas, contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        snackbarHost = { SnackbarHost(snack) { d -> androidx.compose.material3.Snackbar(d, shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp), containerColor = c.navy, contentColor = androidx.compose.ui.graphics.Color.White) } },
+        topBar = { PageHeader(sub.title, subtitle = if (sub == Sub.Hub) me.user.email else null, leading = { BarIcon(Lu.Back, "Kembali", { if (sub == Sub.Hub) onBack() else sub = Sub.Hub }, tint = c.ink) }) },
     ) { pad ->
         Box(Modifier.padding(pad).fillMaxSize()) {
             when (sub) {
-                Sub.Hub -> Column(Modifier.verticalScroll(rememberScrollState())) {
-                    Sub.entries.filter { it != Sub.Hub }.forEach { s ->
-                        ListItem(headlineContent = { Text(s.title) }, supportingContent = { Text(when (s) { Sub.Profile -> me.user.name + " · " + me.user.email; Sub.Security -> "Kata sandi dan verifikasi dua langkah"; Sub.Private -> "Kata sandi dan sidik jari"; Sub.App -> "Kunci, cadangan foto, pembaruan"; Sub.Storage -> "Kapasitas tiap penyimpanan"; Sub.Members -> "Anggota ruang kerja"; Sub.Hub -> "" }) },
-                            modifier = Modifier.clickable { sub = s }, colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface))
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                Sub.Hub -> Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    SdCard(Modifier.fillMaxWidth().riseIn(0)) {
+                        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Avatar(me.user.name, size = 52.dp)
+                            Column(Modifier.padding(start = 14.dp)) {
+                                Text(me.user.name, style = MaterialTheme.typography.titleMedium, color = c.ink)
+                                Text(me.user.email, style = MaterialTheme.typography.bodySmall, color = c.muted)
+                            }
+                        }
                     }
-                    Text("Pengaturan sistem dan website hanya tersedia di situs web.", Modifier.padding(16.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    SdCard(Modifier.fillMaxWidth().riseIn(1)) {
+                        val rows = listOf(
+                            Triple(Sub.Profile, Lu.User, "Nama dan kata sandi"), Triple(Sub.Security, Lu.Shield, "Verifikasi dua langkah"), Triple(Sub.Private, Lu.Lock, "Kata sandi dan sidik jari"),
+                            Triple(Sub.App, Lu.Phone, "Kunci, cadangan foto, pembaruan"), Triple(Sub.Storage, Lu.HardDrive, "Kapasitas tiap penyimpanan"), Triple(Sub.Members, Lu.Users, "Anggota ruang kerja"),
+                        )
+                        rows.forEachIndexed { i, (s, icon, summary) ->
+                            Row(Modifier.fillMaxWidth().pressable(onClick = { sub = s }).padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                IconTile(icon, c.primarySoft, c.primaryInk, size = 40.dp)
+                                Column(Modifier.weight(1f).padding(horizontal = 12.dp)) { Text(s.title, style = MaterialTheme.typography.titleSmall, color = c.ink); Text(summary, style = MaterialTheme.typography.bodySmall, color = c.muted) }
+                                Icon(Lu.ChevronRight, null, tint = c.faint, modifier = Modifier.size(18.dp))
+                            }
+                            if (i < rows.lastIndex) Box(Modifier.padding(start = 66.dp).fillMaxWidth().height(1.dp).background(c.line))
+                        }
+                    }
+                    Row(Modifier.fillMaxWidth().clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp)).background(c.surface2).padding(12.dp), verticalAlignment = Alignment.Top) {
+                        Icon(Lu.Info, null, tint = c.muted, modifier = Modifier.size(16.dp))
+                        Text("Pengaturan sistem dan website hanya tersedia di situs web.", Modifier.padding(start = 8.dp), style = MaterialTheme.typography.bodySmall, color = c.muted)
+                    }
                 }
                 Sub.Profile -> ProfilePage(api, me, say, onLogout)
                 Sub.Security -> SecurityPage(api, say)

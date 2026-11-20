@@ -50,17 +50,14 @@ import app.superdrive.ui.files.FilesViewModel
 import app.superdrive.ui.media.MediaScreen
 import app.superdrive.ui.media.MediaViewModel
 import app.superdrive.ui.theme.Motion
+import app.superdrive.ui.design.Lu
+import app.superdrive.ui.design.NavItem
+import app.superdrive.ui.design.SdBottomBar
 import coil3.ImageLoader
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 
-private class Tab(val label: String, val icon: Int)
-private val TABS = listOf(
-    Tab("Beranda", R.drawable.ic_nav_home),
-    Tab("File", R.drawable.ic_nav_files),
-    Tab("Media", R.drawable.ic_nav_media),
-    Tab("Berbagi", R.drawable.ic_nav_shared),
-    Tab("Transfer", R.drawable.ic_nav_transfers),
-)
+private val TAB_LABELS = listOf("Beranda", "File", "Media", "Berbagi", "Transfer")
+private val TAB_ICONS by lazy { listOf(Lu.Dashboard, Lu.Folder, Lu.Images, Lu.Users, Lu.Transfer) }
 
 /** The whole native interface: sign-in, then five tabs. Tabs that are not native yet show the website's page. */
 @Composable
@@ -72,7 +69,7 @@ fun NativeApp(session: Session, loginLink: android.net.Uri?, onLoginLinkHandled:
     val context = LocalContext.current
     LaunchedEffect(loginLink) { loginLink?.let { auth.onLoginLink(context, it); onLoginLinkHandled() } }
     when (val s = state) {
-        AuthState.Checking -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        AuthState.Checking -> app.superdrive.ui.auth.Splash()
         is AuthState.SignedOut, is AuthState.Mfa -> LoginScreen(s, onLogin = auth::login, onVerify = auth::verify, onBackToPassword = auth::check, server = api.server, google = google, onGoogle = { auth.startGoogle(context) })
         is AuthState.SignedIn -> Shell(session, s.me, onLogout = auth::logout)
     }
@@ -89,6 +86,7 @@ private fun Shell(session: Session, me: app.superdrive.core.Me, onLogout: () -> 
     val home: app.superdrive.ui.home.HomeViewModel = viewModel(factory = viewModelFactory { initializer { app.superdrive.ui.home.HomeViewModel(api) } })
     val transfers: app.superdrive.ui.transfers.TransfersViewModel = viewModel(factory = viewModelFactory { initializer { app.superdrive.ui.transfers.TransfersViewModel(api) } })
     val shared: app.superdrive.ui.shared.SharedViewModel = viewModel(factory = viewModelFactory { initializer { app.superdrive.ui.shared.SharedViewModel(api) } })
+    val homeState by home.state.collectAsStateWithLifecycle()
     var settings by remember { mutableStateOf(false) }
     var fullscreen by remember { mutableStateOf(false) } // the media viewer covers the bottom bar
 
@@ -97,12 +95,9 @@ private fun Shell(session: Session, me: app.superdrive.core.Me, onLogout: () -> 
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
-            AnimatedVisibility(visible = !fullscreen, enter = expandVertically(tween(200)) + fadeIn(tween(200)), exit = shrinkVertically(tween(160)) + fadeOut(tween(120))) {
-            NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
-                TABS.forEachIndexed { i, t ->
-                    NavigationBarItem(selected = tab == i, onClick = { tab = i }, icon = { Icon(painterResource(t.icon), contentDescription = null, modifier = Modifier.size(24.dp)) }, label = { Text(t.label) })
-                }
-            }
+            AnimatedVisibility(visible = !fullscreen, enter = expandVertically(tween(220, easing = Motion.Drawer)) + fadeIn(tween(200)), exit = shrinkVertically(tween(160)) + fadeOut(tween(120))) {
+                val active = homeState.dashboard?.transfers?.active ?: 0
+                SdBottomBar(TAB_LABELS.mapIndexed { i, l -> NavItem(l, TAB_ICONS[i], if (i == 4) active else 0) }, tab, onSelect = { tab = it })
             }
         },
     ) { pad ->
@@ -116,7 +111,7 @@ private fun Shell(session: Session, me: app.superdrive.core.Me, onLogout: () -> 
             },
         ) { i ->
             Box(Modifier.fillMaxSize().then(Modifier).padding(pad)) {
-                if (i == 0) app.superdrive.ui.home.HomeScreen(home, onOpenFiles = { tab = 1 }, onOpenTransfers = { tab = 4 }, onSettings = { settings = true })
+                if (i == 0) app.superdrive.ui.home.HomeScreen(home, me.user.name, onOpenFiles = { tab = 1 }, onOpenTransfers = { tab = 4 }, onSettings = { settings = true })
                 else if (i == 3) app.superdrive.ui.shared.SharedScreen(shared, session.server!!)
                 else if (i == 4) app.superdrive.ui.transfers.TransfersScreen(transfers)
                 else if (i == 1) FilesScreen(files, api, imageLoader, onLogout = onLogout, onFullscreen = { fullscreen = it })

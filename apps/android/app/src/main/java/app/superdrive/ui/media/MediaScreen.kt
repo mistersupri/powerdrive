@@ -66,6 +66,15 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.foundation.border
+import app.superdrive.ui.design.BarIcon
+import app.superdrive.ui.design.EmptyState
+import app.superdrive.ui.design.Lu
+import app.superdrive.ui.design.PageHeader
+import app.superdrive.ui.design.Skeleton
+import app.superdrive.ui.design.SlidingTabs
+import app.superdrive.ui.design.pressable
+import app.superdrive.ui.theme.sd
 import app.superdrive.core.Album
 import app.superdrive.core.Api
 import app.superdrive.core.FileEntry
@@ -108,32 +117,30 @@ fun MediaScreen(vm: MediaViewModel, api: Api, imageLoader: ImageLoader, onFullsc
     val title = when (val sc = s.scope) { is MediaScope.InFolder -> sc.name; is MediaScope.InAlbum -> sc.name; null -> "Media" }
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
+        containerColor = MaterialTheme.sd.canvas,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-            TopAppBar(
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-                title = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleLarge) },
-                navigationIcon = { if (s.scope != null) IconButton(onClick = { vm.closeScope() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Kembali") } },
+            PageHeader(
+                title = title,
+                subtitle = when { s.loading -> null; inGallery -> "${s.photos} foto · ${s.videos} video"; s.mode == MediaMode.Folders -> "${s.folders.size} folder"; else -> "${s.albums.size} album" },
+                leading = if (s.scope != null) ({ BarIcon(Lu.Back, "Kembali", { vm.closeScope() }, tint = MaterialTheme.sd.ink) }) else null,
                 actions = {
+                    if (s.mode == MediaMode.Albums && s.scope == null && s.privateStatus.unlocked) TextButton(onClick = vm::lockPrivate) { Icon(Lu.Lock, null, Modifier.size(16.dp)); Text("  Kunci") }
                     if (inGallery) Box {
-                        IconButton(onClick = { sortMenu = true }) { Icon(Icons.Default.MoreVert, contentDescription = "Urutkan") }
-                        DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
-                            MediaSort.entries.forEach { o -> DropdownMenuItem(text = { Text(o.label + if (o == s.sort) "  ✓" else "") }, onClick = { sortMenu = false; vm.setSort(o) }) }
+                        BarIcon(Lu.More, "Urutkan", { sortMenu = true })
+                        DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }, shape = RoundedCornerShape(14.dp)) {
+                            MediaSort.entries.forEach { o -> DropdownMenuItem(text = { Text(o.label, color = if (o == s.sort) MaterialTheme.sd.primaryInk else MaterialTheme.sd.ink) }, trailingIcon = { if (o == s.sort) Icon(Lu.Check, null, tint = MaterialTheme.sd.primaryInk, modifier = Modifier.size(16.dp)) }, onClick = { sortMenu = false; vm.setSort(o) }) }
                         }
                     }
-                    if (s.mode == MediaMode.Albums && s.scope == null && s.privateStatus.unlocked) TextButton(onClick = vm::lockPrivate) { Text("Kunci") }
                 },
             )
         },
     ) { pad ->
         Column(Modifier.padding(pad).fillMaxSize()) {
-            if (s.scope == null) PrimaryTabRow(selectedTabIndex = s.mode.ordinal, containerColor = MaterialTheme.colorScheme.surface) {
-                listOf("Semua" to MediaMode.All, "Folder" to MediaMode.Folders, "Album" to MediaMode.Albums).forEach { (label, m) -> Tab(selected = s.mode == m, onClick = { vm.setMode(m) }, text = { Text(label) }) }
-            }
+            if (s.scope == null) SlidingTabs(listOf("Semua", "Folder", "Album"), s.mode.ordinal, { vm.setMode(listOf(MediaMode.All, MediaMode.Folders, MediaMode.Albums)[it]) }, Modifier.padding(horizontal = 16.dp, vertical = 10.dp))
             PullToRefreshBox(isRefreshing = s.refreshing, onRefresh = { vm.reload(true) }, modifier = Modifier.fillMaxSize()) {
                 when {
-                    s.loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                    s.loading -> SkeletonGrid()
                     s.error != null && inGallery && s.items.isEmpty() -> Message(s.error ?: "", retry = { vm.reload(false) })
                     inGallery -> Gallery(s, vm, api, imageLoader, onOpen = { items, i -> open = Open(items, i) })
                     s.mode == MediaMode.Folders -> FolderGrid(s.folders, api, imageLoader) { vm.openScope(MediaScope.InFolder(it.storageId, it.folderId, it.name)) }
@@ -149,21 +156,26 @@ fun MediaScreen(vm: MediaViewModel, api: Api, imageLoader: ImageLoader, onFullsc
 }
 
 @Composable
-private fun Message(text: String, retry: (() -> Unit)? = null) {
-    Column(Modifier.fillMaxSize().padding(32.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(text, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        if (retry != null) TextButton(onClick = retry) { Text("Coba lagi") }
-    }
+private fun Message(text: String, retry: (() -> Unit)? = null) =
+    EmptyState(Lu.Images, text, null) { if (retry != null) TextButton(onClick = retry) { Text("Coba lagi") } }
+
+@Composable
+private fun SkeletonGrid() = Column(Modifier.fillMaxSize().padding(horizontal = 2.dp)) {
+    repeat(5) { Row(Modifier.fillMaxWidth().padding(vertical = 1.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) { repeat(3) { Skeleton(Modifier.weight(1f).aspectRatio(1f), 4.dp) } } }
 }
 
 @Composable
 private fun Gallery(s: MediaState, vm: MediaViewModel, api: Api, imageLoader: ImageLoader, onOpen: (List<FileEntry>, Int) -> Unit) {
     val rows = remember(s.items, s.sort) { cells(s.items, byDate = s.sort.sort == "date") }
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             MediaKind.entries.forEach { k ->
                 val n = when (k) { MediaKind.All -> s.photos + s.videos; MediaKind.Image -> s.photos; MediaKind.Video -> s.videos }
-                FilterChip(selected = s.kind == k, onClick = { vm.setKind(k) }, label = { Text("${k.label}  $n") })
+                val on = s.kind == k
+                Row(Modifier.clip(RoundedCornerShape(50)).background(if (on) MaterialTheme.sd.primary else MaterialTheme.sd.surface).border(1.dp, if (on) MaterialTheme.sd.primary else MaterialTheme.sd.line, RoundedCornerShape(50)).pressable(onClick = { vm.setKind(k) }, shape = RoundedCornerShape(50), scaleTo = 0.95f).padding(horizontal = 14.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(k.label, style = MaterialTheme.typography.labelLarge, color = if (on) Color.White else MaterialTheme.sd.ink)
+                    Text("  $n", style = MaterialTheme.typography.labelMedium, color = if (on) Color.White.copy(alpha = 0.8f) else MaterialTheme.sd.faint)
+                }
             }
         }
         if (s.items.isEmpty()) { Message("Belum ada foto atau video di sini."); return@Column }
@@ -172,8 +184,8 @@ private fun Gallery(s: MediaState, vm: MediaViewModel, api: Api, imageLoader: Im
             items(rows.size, key = { i -> when (val c = rows[i]) { is Cell.Head -> "h$i"; is Cell.Tile -> "${c.file.storageId}:${c.file.id}" } }, span = { i -> if (rows[i] is Cell.Head) GridItemSpan(maxLineSpan) else GridItemSpan(1) }) { i ->
                 when (val c = rows[i]) {
                     is Cell.Head -> Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 14.dp, bottom = 6.dp), verticalAlignment = Alignment.Bottom) {
-                        Text(c.label, style = MaterialTheme.typography.titleSmall)
-                        Text("  ${c.count}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(c.label, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.sd.ink)
+                        Text("  ${c.count}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.sd.faint)
                     }
                     is Cell.Tile -> {
                         if (c.index >= s.items.size - 24 && s.cursor != null) LaunchedEffect(s.items.size) { vm.loadMore() }
@@ -189,10 +201,10 @@ private fun Gallery(s: MediaState, vm: MediaViewModel, api: Api, imageLoader: Im
 @Composable
 private fun Tile(f: FileEntry, api: Api, imageLoader: ImageLoader, onClick: () -> Unit) {
     val context = LocalContext.current
-    Box(Modifier.aspectRatio(1f).background(MaterialTheme.colorScheme.surfaceVariant).clickable(onClick = onClick)) {
+    Box(Modifier.aspectRatio(1f).background(MaterialTheme.sd.surface2).pressable(onClick = onClick, scaleTo = 0.96f)) {
         AsyncImage(model = ImageRequest.Builder(context).data(api.thumbnail(f, 256)).crossfade(true).build(), imageLoader = imageLoader, contentDescription = f.name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
         if (f.mimeType?.startsWith("video/") == true) Box(Modifier.align(Alignment.BottomEnd).padding(6.dp).size(24.dp).background(Color.Black.copy(alpha = 0.6f), CircleShape), contentAlignment = Alignment.Center) {
-            Icon(Icons.Default.PlayArrow, contentDescription = "Video", tint = Color.White, modifier = Modifier.size(16.dp))
+            Icon(Lu.Play, contentDescription = "Video", tint = Color.White, modifier = Modifier.size(12.dp))
         }
     }
 }
@@ -201,12 +213,12 @@ private fun Tile(f: FileEntry, api: Api, imageLoader: ImageLoader, onClick: () -
 private fun Highlights(groups: List<app.superdrive.core.HighlightGroup>, api: Api, imageLoader: ImageLoader, onOpen: (List<FileEntry>, Int) -> Unit) {
     val context = LocalContext.current
     Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
-        Text("Sorotan", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(horizontal = 12.dp))
-        Text("Hari ini dan 3 hari ke depan, di tahun-tahun lalu", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 12.dp))
-        LazyRow(contentPadding = PaddingValues(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text("Sorotan", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.sd.ink, modifier = Modifier.padding(horizontal = 16.dp))
+        Text("Hari ini dan 3 hari ke depan, di tahun-tahun lalu", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp))
+        LazyRow(contentPadding = PaddingValues(16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             items(groups, key = { it.year }) { g ->
                 val cover = g.items.firstOrNull() ?: return@items
-                Box(Modifier.width(116.dp).height(145.dp).clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surfaceVariant).clickable { onOpen(g.items, 0) }) {
+                Box(Modifier.width(128.dp).height(168.dp).clip(RoundedCornerShape(18.dp)).background(MaterialTheme.sd.surface2).pressable(onClick = { onOpen(g.items, 0) }, shape = RoundedCornerShape(18.dp), scaleTo = 0.96f)) {
                     AsyncImage(model = ImageRequest.Builder(context).data(api.thumbnail(cover, 256)).crossfade(true).build(), imageLoader = imageLoader, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                     Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f)))).padding(horizontal = 8.dp, vertical = 8.dp)) {
                         Text("${g.yearsAgo} tahun lalu", color = Color.White, style = MaterialTheme.typography.labelLarge)
@@ -224,36 +236,37 @@ private fun CardGrid(content: @Composable () -> Unit) = Box(Modifier.fillMaxSize
 @Composable
 private fun FolderGrid(folders: List<MediaFolder>, api: Api, imageLoader: ImageLoader, onOpen: (MediaFolder) -> Unit) {
     if (folders.isEmpty()) { Message("Belum ada folder berisi foto atau video."); return }
-    LazyVerticalGrid(columns = GridCells.Adaptive(150.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(14.dp), contentPadding = PaddingValues(12.dp), modifier = Modifier.fillMaxSize()) {
+    LazyVerticalGrid(columns = GridCells.Adaptive(150.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(14.dp), contentPadding = PaddingValues(16.dp), modifier = Modifier.fillMaxSize()) {
         items(folders, key = { it.storageId + it.folderId }) { f -> Card(f.cover, f.name, "${f.count} item${if (f.storageName.isNotEmpty() && f.storageName != f.name) " · " + f.storageName else ""}", api, imageLoader) { onOpen(f) } }
     }
 }
 
 @Composable
 private fun AlbumGrid(s: MediaState, api: Api, imageLoader: ImageLoader, onAlbum: (Album) -> Unit, onUnlock: () -> Unit) {
-    LazyVerticalGrid(columns = GridCells.Adaptive(150.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(14.dp), contentPadding = PaddingValues(12.dp), modifier = Modifier.fillMaxSize()) {
+    LazyVerticalGrid(columns = GridCells.Adaptive(150.dp), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalArrangement = Arrangement.spacedBy(16.dp), contentPadding = PaddingValues(16.dp), modifier = Modifier.fillMaxSize()) {
         items(s.albums, key = { it.id }) { a -> Card(a.cover, a.name, "${a.count} item", api, imageLoader, locked = a.isPrivate) { onAlbum(a) } }
         if (!s.privateStatus.unlocked && (s.privateStatus.hasPassword || s.privateStatus.count > 0)) item(key = "private") {
-            Column(Modifier.clickable(onClick = onUnlock)) {
-                Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(14.dp)).background(Color(0xFF102C54)), contentAlignment = Alignment.Center) { Icon(Icons.Default.Lock, contentDescription = null, tint = Color.White, modifier = Modifier.size(40.dp)) }
-                Text("Album privat", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
-                Text(if (s.privateStatus.count > 0) "${s.privateStatus.count} album · terkunci" else "Terkunci dengan kata sandi", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Column(Modifier.pressable(onClick = onUnlock, shape = RoundedCornerShape(18.dp), scaleTo = 0.97f)) {
+                Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(18.dp)).background(Brush.linearGradient(listOf(MaterialTheme.sd.navyDeep, MaterialTheme.sd.navy, Color(0xFF1A4F9C)))), contentAlignment = Alignment.Center) { Icon(Lu.Lock, contentDescription = null, tint = Color.White, modifier = Modifier.size(40.dp)) }
+                Text("Album privat", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.sd.ink, modifier = Modifier.padding(top = 8.dp, start = 2.dp))
+                Text(if (s.privateStatus.count > 0) "${s.privateStatus.count} album · terkunci" else "Terkunci dengan kata sandi", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.sd.muted, modifier = Modifier.padding(start = 2.dp))
             }
         }
-        if (s.albums.isEmpty() && s.privateStatus.count == 0 && !s.privateStatus.hasPassword) item(span = { GridItemSpan(maxLineSpan) }) { Message("Belum ada album. Album dibuat dari tampilan klasik untuk sementara.") }
+        if (s.albums.isEmpty() && s.privateStatus.count == 0 && !s.privateStatus.hasPassword) item(span = { GridItemSpan(maxLineSpan) }) { Message("Belum ada album") }
     }
 }
 
 @Composable
 private fun Card(cover: FileEntry?, title: String, sub: String, api: Api, imageLoader: ImageLoader, locked: Boolean = false, onClick: () -> Unit) {
     val context = LocalContext.current
-    Column(Modifier.clickable(onClick = onClick)) {
-        Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surfaceVariant)) {
+    Column(Modifier.pressable(onClick = onClick, shape = RoundedCornerShape(18.dp), scaleTo = 0.97f)) {
+        Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(18.dp)).background(MaterialTheme.sd.primarySoft), contentAlignment = Alignment.Center) {
+            if (cover == null) Icon(Lu.Images, null, tint = MaterialTheme.sd.primaryInk, modifier = Modifier.size(34.dp))
             if (cover != null) AsyncImage(model = ImageRequest.Builder(context).data(api.thumbnail(cover, 256)).crossfade(true).build(), imageLoader = imageLoader, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-            if (locked) Box(Modifier.align(Alignment.TopStart).padding(8.dp).size(26.dp).background(Color.Black.copy(alpha = 0.6f), CircleShape), contentAlignment = Alignment.Center) { Icon(Icons.Default.Lock, contentDescription = "Privat", tint = Color.White, modifier = Modifier.size(14.dp)) }
+            if (locked) Box(Modifier.align(Alignment.TopStart).padding(8.dp).size(26.dp).background(Color.Black.copy(alpha = 0.6f), CircleShape), contentAlignment = Alignment.Center) { Icon(Lu.Lock, contentDescription = "Privat", tint = Color.White, modifier = Modifier.size(14.dp)) }
         }
-        Text(title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp))
-        Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.sd.ink, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp, start = 2.dp))
+        Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.sd.muted, modifier = Modifier.padding(start = 2.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -261,11 +274,12 @@ private fun Card(cover: FileEntry?, title: String, sub: String, api: Api, imageL
 private fun UnlockDialog(error: String?, hasPassword: Boolean, onDismiss: () -> Unit, onUnlock: (String) -> Unit) {
     var pw by remember { mutableStateOf("") }
     AlertDialog(
+        containerColor = MaterialTheme.sd.surface, shape = androidx.compose.foundation.shape.RoundedCornerShape(22.dp),
         onDismissRequest = onDismiss,
         title = { Text("Buka album privat") },
         text = {
             Column {
-                Text(if (hasPassword) "Masukkan kata sandi album Anda. Kunci terbuka selama 10 menit." else "Kata sandi album dibuat dari tampilan klasik (Media → Album → Album privat).", style = MaterialTheme.typography.bodyMedium)
+                Text(if (hasPassword) "Masukkan kata sandi album Anda. Kunci terbuka selama 10 menit." else "Buat kata sandi album di Beranda → Pengaturan → Album privat.", style = MaterialTheme.typography.bodyMedium)
                 if (hasPassword) OutlinedTextField(pw, { pw = it }, label = { Text("Kata sandi album") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth().padding(top = 12.dp))
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp)) }
             }

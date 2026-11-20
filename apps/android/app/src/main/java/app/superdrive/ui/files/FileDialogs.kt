@@ -27,6 +27,7 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import app.superdrive.ui.theme.sd
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -54,6 +55,7 @@ import kotlinx.coroutines.launch
 fun NameDialog(title: String, initial: String, confirm: String, onDone: (String) -> Unit, onDismiss: () -> Unit) {
     var text by remember { mutableStateOf(initial) }
     AlertDialog(
+        containerColor = MaterialTheme.sd.surface, shape = androidx.compose.foundation.shape.RoundedCornerShape(22.dp),
         onDismissRequest = onDismiss, title = { Text(title) },
         text = { OutlinedTextField(text, { text = it }, singleLine = true, modifier = Modifier.fillMaxWidth()) },
         confirmButton = { TextButton(enabled = text.isNotBlank(), onClick = { onDone(text); onDismiss() }) { Text(confirm) } },
@@ -64,6 +66,7 @@ fun NameDialog(title: String, initial: String, confirm: String, onDone: (String)
 @Composable
 fun ConfirmDialog(title: String, message: String, confirm: String, onYes: () -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
+        containerColor = MaterialTheme.sd.surface, shape = androidx.compose.foundation.shape.RoundedCornerShape(22.dp),
         onDismissRequest = onDismiss, title = { Text(title) }, text = { Text(message) },
         confirmButton = { TextButton(onClick = { onYes(); onDismiss() }) { Text(confirm, color = MaterialTheme.colorScheme.error) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Batal") } },
@@ -88,6 +91,7 @@ fun FolderPickerDialog(api: Api, storages: List<Storage>, start: Storage?, verb:
         loading = false
     }
     AlertDialog(
+        containerColor = MaterialTheme.sd.surface, shape = androidx.compose.foundation.shape.RoundedCornerShape(22.dp),
         onDismissRequest = onDismiss,
         title = { Text("$verb ke…") },
         text = {
@@ -122,7 +126,7 @@ fun ShareOptionsSheet(items: List<FileEntry>, onCreate: (role: String, days: Int
     var days by remember { mutableStateOf<Int?>(7) }
     var password by remember { mutableStateOf("") }
     var title by remember { mutableStateOf("") }
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.sd.surface, shape = androidx.compose.foundation.shape.RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)) {
         Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 24.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(if (items.size == 1) "Bagikan “${items.first().name}”" else "Bagikan ${items.size} item", style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Text("Izin", style = MaterialTheme.typography.labelLarge)
@@ -146,6 +150,7 @@ fun ShareOptionsSheet(items: List<FileEntry>, onCreate: (role: String, days: Int
 fun ShareResultDialog(link: ShareLink, onDismiss: () -> Unit) {
     val context = LocalContext.current
     AlertDialog(
+        containerColor = MaterialTheme.sd.surface, shape = androidx.compose.foundation.shape.RoundedCornerShape(22.dp),
         onDismissRequest = onDismiss, title = { Text("Tautan dibuat") },
         text = { Text(link.url, style = MaterialTheme.typography.bodyMedium) },
         confirmButton = {
@@ -186,7 +191,7 @@ fun DetailsSheet(f: FileEntry, ops: FileOps, sizeText: String, dateText: String?
             error = null
         } catch (e: ApiException) { error = e.message }
     }
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.sd.surface, shape = androidx.compose.foundation.shape.RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)) {
         Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 24.dp).navigationBarsPadding()) {
             Text(f.name, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
             PrimaryTabRow(selectedTabIndex = tab, containerColor = androidx.compose.ui.graphics.Color.Transparent) {

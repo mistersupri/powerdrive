@@ -105,9 +105,10 @@ fun DocumentViewer(f: FileEntry, api: Api, onClose: () -> Unit, onDownload: () -
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background, contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-            TopAppBar(title = { Text(f.name, maxLines = 1, overflow = TextOverflow.Ellipsis) }, colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-                navigationIcon = { IconButton(onClick = onClose) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Tutup") } },
-                actions = { TextButton(onClick = onDownload) { Text("Unduh") } })
+            app.superdrive.ui.design.PageHeader(f.name, subtitle = listOfNotNull(f.size?.let { android.text.format.Formatter.formatShortFileSize(androidx.compose.ui.platform.LocalContext.current, it) }, f.mimeType).joinToString(" · ").ifEmpty { null },
+                leading = { app.superdrive.ui.design.BarIcon(app.superdrive.ui.design.Lu.Back, "Tutup", onClose, tint = MaterialTheme.colorScheme.onSurface) }) {
+                app.superdrive.ui.design.BarIcon(app.superdrive.ui.design.Lu.Download, "Unduh", onDownload, tint = MaterialTheme.colorScheme.primary)
+            }
         },
     ) { pad ->
         Box(Modifier.padding(pad).fillMaxSize()) {

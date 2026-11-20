@@ -2,57 +2,48 @@ package app.superdrive.ui.files
 
 import android.text.format.Formatter
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.background
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Checkbox
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -61,16 +52,26 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import app.superdrive.R
 import app.superdrive.core.Api
 import app.superdrive.core.FileEntry
+import app.superdrive.ui.design.BarIcon
+import app.superdrive.ui.design.EmptyState
+import app.superdrive.ui.design.Lu
+import app.superdrive.ui.design.PageHeader
+import app.superdrive.ui.design.SdProgress
+import app.superdrive.ui.design.SectionLabel
+import app.superdrive.ui.design.SkeletonRows
+import app.superdrive.ui.design.kindStyle
+import app.superdrive.ui.design.pressable
+import app.superdrive.ui.design.riseIn
+import app.superdrive.ui.theme.sd
 import coil3.ImageLoader
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
@@ -92,9 +93,9 @@ private fun dateOf(iso: String?): String? {
 fun FilesScreen(vm: FilesViewModel, api: Api, imageLoader: ImageLoader, onLogout: () -> Unit, onFullscreen: (Boolean) -> Unit = {}) {
     val s by vm.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val c = MaterialTheme.sd
     var menu by remember { mutableStateOf(false) }
     var storageMenu by remember { mutableStateOf(false) }
-    var selected by remember { mutableStateOf<FileEntry?>(null) }
     var rowMenu by remember { mutableStateOf<FileEntry?>(null) }
     var dialog by remember { mutableStateOf<Dialog?>(null) }
     var fabMenu by remember { mutableStateOf(false) }
@@ -103,7 +104,7 @@ fun FilesScreen(vm: FilesViewModel, api: Api, imageLoader: ImageLoader, onLogout
     var viewing by remember { mutableStateOf<FileEntry?>(null) }
     var gallery by remember { mutableStateOf<Pair<List<FileEntry>, Int>?>(null) }
     val selecting = s.selection.isNotEmpty()
-    androidx.compose.runtime.DisposableEffect(viewing, gallery) { onFullscreen(viewing != null || gallery != null); onDispose { onFullscreen(false) } }
+    DisposableEffect(viewing, gallery) { onFullscreen(viewing != null || gallery != null); onDispose { onFullscreen(false) } }
     gallery?.let { (items, idx) -> app.superdrive.ui.media.MediaViewer(items, idx, api, imageLoader, onClose = { gallery = null }); return }
     viewing?.let { v -> DocumentViewer(v, api, onClose = { viewing = null }, onDownload = { enqueueDownload(context, api.download(v), v.name, v.mimeType) }); return }
     val chosen = s.items.filter { it.id in s.selection }
@@ -112,101 +113,79 @@ fun FilesScreen(vm: FilesViewModel, api: Api, imageLoader: ImageLoader, onLogout
     LaunchedEffect(s.notice) { s.notice?.let { snack.showSnackbar(it); vm.noticeShown() } }
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
+        containerColor = c.canvas,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        snackbarHost = { SnackbarHost(snack) },
+        snackbarHost = { SnackbarHost(snack) { d -> Snackbar(d, shape = RoundedCornerShape(12.dp), containerColor = c.navy, contentColor = Color.White) } },
         floatingActionButton = {
             if (!selecting && s.storage != null && s.upload == null) Box {
-                FloatingActionButton(onClick = { fabMenu = true }) { Icon(Icons.Default.Add, contentDescription = "Tambah") }
-                DropdownMenu(expanded = fabMenu, onDismissRequest = { fabMenu = false }) {
-                    DropdownMenuItem(text = { Text("Unggah file") }, onClick = { fabMenu = false; picker.launch(arrayOf("*/*")) })
-                    DropdownMenuItem(text = { Text("Folder baru") }, onClick = { fabMenu = false; dialog = Dialog.NewFolder })
+                ExtendedFloatingActionButton(onClick = { fabMenu = true }, containerColor = c.primary, contentColor = Color.White, shape = RoundedCornerShape(16.dp)) {
+                    Icon(Lu.Plus, contentDescription = null, modifier = Modifier.size(20.dp)); Text("Tambah", Modifier.padding(start = 8.dp), style = MaterialTheme.typography.titleSmall)
+                }
+                DropdownMenu(expanded = fabMenu, onDismissRequest = { fabMenu = false }, shape = RoundedCornerShape(14.dp)) {
+                    MenuRow("Unggah file", Lu.Upload) { fabMenu = false; picker.launch(arrayOf("*/*")) }
+                    MenuRow("Folder baru", Lu.FolderPlus) { fabMenu = false; dialog = Dialog.NewFolder }
                 }
             }
         },
         topBar = {
-            if (selecting) TopAppBar(
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-                title = { Text("${s.selection.size} dipilih") },
-                navigationIcon = { IconButton(onClick = vm::clearSelection) { Icon(Icons.Default.Close, contentDescription = "Batal memilih") } },
-                actions = {
-                    TextButton(onClick = vm::selectAll) { Text("Semua") }
-                    TextButton(onClick = { dialog = Dialog.Share(chosen) }) { Text("Bagikan") }
-                    Box {
-                        var more by remember { mutableStateOf(false) }
-                        IconButton(onClick = { more = true }) { Icon(Icons.Default.MoreVert, contentDescription = "Aksi") }
-                        DropdownMenu(expanded = more, onDismissRequest = { more = false }) {
-                            DropdownMenuItem(text = { Text("Salin ke…") }, onClick = { more = false; dialog = Dialog.Pick("COPY", chosen) })
-                            DropdownMenuItem(text = { Text("Pindahkan ke…") }, onClick = { more = false; dialog = Dialog.Pick("MOVE", chosen) })
-                            DropdownMenuItem(text = { Text("Hapus") }, onClick = { more = false; dialog = Dialog.Delete(chosen) })
+            AnimatedContent(selecting, transitionSpec = { fadeIn() togetherWith fadeOut() }, label = "header") { sel ->
+                if (sel) SelectionHeader(count = s.selection.size, onClose = vm::clearSelection, onAll = vm::selectAll,
+                    onShare = { dialog = Dialog.Share(chosen) }, onCopy = { dialog = Dialog.Pick("COPY", chosen) }, onMove = { dialog = Dialog.Pick("MOVE", chosen) }, onDelete = { dialog = Dialog.Delete(chosen) })
+                else PageHeader(
+                    title = s.folderName.ifEmpty { "Semua file" },
+                    subtitle = if (s.loading) null else "${s.items.count { it.isFolder }} folder · ${s.items.count { !it.isFolder }} file${if (s.nextPage != null) "+" else ""}",
+                    leading = if (s.stack.isNotEmpty()) ({ BarIcon(Lu.Back, "Naik satu folder", { vm.up() }, tint = c.ink) }) else null,
+                    actions = {
+                        if (s.stack.isEmpty() && s.storages.size > 1) Box {
+                            BarIcon(Lu.HardDrive, "Pilih penyimpanan", { storageMenu = true })
+                            DropdownMenu(expanded = storageMenu, onDismissRequest = { storageMenu = false }, shape = RoundedCornerShape(14.dp)) {
+                                s.storages.forEach { st -> MenuRow(if (st.isDefault) "Semua file" else st.name, Lu.HardDrive) { storageMenu = false; vm.switchStorage(st) } }
+                            }
                         }
-                    }
-                },
-            ) else TopAppBar(
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-                title = {
-                    Box {
-                        Row(Modifier.clickable(enabled = s.stack.isEmpty() && s.storages.size > 1) { storageMenu = true }, verticalAlignment = Alignment.CenterVertically) {
-                            Text(s.folderName.ifEmpty { "Semua file" }, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleLarge)
-                            if (s.stack.isEmpty() && s.storages.size > 1) Icon(Icons.Default.ArrowDropDown, contentDescription = "Pilih penyimpanan")
+                        Box {
+                            BarIcon(Lu.More, "Lainnya", { menu = true })
+                            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = RoundedCornerShape(14.dp)) {
+                                MenuRow("Muat ulang", Lu.Retry) { menu = false; vm.refresh() }
+                                MenuRow("Keluar", Lu.X) { menu = false; onLogout() }
+                            }
                         }
-                        DropdownMenu(expanded = storageMenu, onDismissRequest = { storageMenu = false }) {
-                            s.storages.forEach { st -> DropdownMenuItem(text = { Text(if (st.isDefault) "Semua file" else st.name) }, onClick = { storageMenu = false; vm.switchStorage(st) }) }
-                        }
-                    }
-                },
-                navigationIcon = { if (s.stack.isNotEmpty()) IconButton(onClick = { vm.up() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Naik satu folder") } },
-                actions = {
-                    Box {
-                        IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, contentDescription = "Lainnya") }
-                        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                            DropdownMenuItem(text = { Text("Muat ulang") }, onClick = { menu = false; vm.refresh() })
-                            DropdownMenuItem(text = { Text("Keluar") }, onClick = { menu = false; onLogout() })
-                        }
-                    }
-                },
-            )
+                    },
+                )
+            }
         },
     ) { pad ->
         Column(Modifier.padding(pad).fillMaxSize()) {
-        s.upload?.let { u ->
-            Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant).padding(horizontal = 16.dp, vertical = 8.dp)) {
-                Text("Mengunggah ${u.done + 1}/${u.total} · ${u.name}", maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
-                LinearProgressIndicator(progress = { u.percent / 100f }, modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
-            }
-        }
-        PullToRefreshBox(isRefreshing = s.refreshing, onRefresh = vm::refresh, modifier = Modifier.fillMaxSize()) {
-            when {
-                s.loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-                s.error != null && s.items.isEmpty() -> Column(Modifier.fillMaxSize().padding(32.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(s.error ?: "", textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    TextButton(onClick = vm::retry) { Text("Coba lagi") }
-                }
-                s.items.isEmpty() -> Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) { Text("Folder ini masih kosong", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                else -> LazyColumn(Modifier.fillMaxSize()) {
-                    itemsIndexed(s.items, key = { _, f -> f.id }) { index, f ->
-                        if (index >= s.items.size - 12 && s.nextPage != null) LaunchedEffect(s.items.size) { vm.loadMore() }
-                        Box {
-                            FileRow(f, api, imageLoader, selecting = selecting, checked = f.id in s.selection,
-                                onClick = { if (selecting) vm.toggle(f) else if (f.isFolder) vm.open(f) else open(f, s.items) { g -> gallery = g } ?: run { viewing = f } },
-                                onLongClick = { vm.toggle(f) }, onMore = { rowMenu = f })
-                            DropdownMenu(expanded = rowMenu?.id == f.id, onDismissRequest = { rowMenu = null }) {
-                                DropdownMenuItem(text = { Text("Detail") }, onClick = { rowMenu = null; dialog = Dialog.Details(f) })
-                                DropdownMenuItem(text = { Text("Ganti nama") }, onClick = { rowMenu = null; dialog = Dialog.Rename(f) })
-                                DropdownMenuItem(text = { Text(if (f.starred) "Lepas bintang" else "Beri bintang") }, onClick = { rowMenu = null; vm.star(f) })
-                                DropdownMenuItem(text = { Text("Bagikan") }, onClick = { rowMenu = null; dialog = Dialog.Share(listOf(f)) })
-                                DropdownMenuItem(text = { Text("Salin ke…") }, onClick = { rowMenu = null; dialog = Dialog.Pick("COPY", listOf(f)) })
-                                DropdownMenuItem(text = { Text("Pindahkan ke…") }, onClick = { rowMenu = null; dialog = Dialog.Pick("MOVE", listOf(f)) })
-                                if (!f.isFolder) DropdownMenuItem(text = { Text("Unduh") }, onClick = { rowMenu = null; enqueueDownload(context, api.download(f), f.name, f.mimeType) })
-                                DropdownMenuItem(text = { Text("Hapus") }, onClick = { rowMenu = null; dialog = Dialog.Delete(listOf(f)) })
-                            }
-                        }
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            s.upload?.let { u ->
+                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp).clip(RoundedCornerShape(14.dp)).background(c.primarySoft).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Lu.Upload, null, tint = c.primaryInk, modifier = Modifier.size(18.dp))
+                        Text("Mengunggah ${u.done + 1} dari ${u.total}", Modifier.padding(start = 8.dp).weight(1f), style = MaterialTheme.typography.labelLarge, color = c.primaryInk)
+                        Text("${u.percent}%", style = MaterialTheme.typography.labelLarge, color = c.primaryInk)
                     }
-                    if (s.loadingMore) item { Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp) } }
+                    Text(u.name, style = MaterialTheme.typography.bodySmall, color = c.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    SdProgress(u.percent / 100f, track = c.surface)
                 }
             }
-        }
+            PullToRefreshBox(isRefreshing = s.refreshing, onRefresh = vm::refresh, modifier = Modifier.fillMaxSize()) {
+                when {
+                    s.loading -> SkeletonRows()
+                    s.error != null && s.items.isEmpty() -> EmptyState(Lu.Info, "Tidak dapat memuat folder", s.error) { Button(onClick = vm::retry, shape = RoundedCornerShape(12.dp)) { Text("Coba lagi") } }
+                    s.items.isEmpty() -> EmptyState(Lu.Folder, "Folder ini masih kosong", "Unggah file atau buat folder baru lewat tombol Tambah.")
+                    else -> {
+                        val folders = s.items.filter { it.isFolder }; val files = s.items.filter { !it.isFolder }
+                        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 96.dp)) {
+                            if (folders.isNotEmpty()) item(key = "h-folder") { SectionLabel("Folder", Modifier.padding(top = 6.dp, bottom = 6.dp)) }
+                            items(folders, key = { it.id }) { f -> RowWithMenu(f, folders.indexOf(f), s, vm, api, imageLoader, selecting, rowMenu, { rowMenu = it }, { dialog = it }, { gallery = it }, { viewing = it }) }
+                            if (files.isNotEmpty()) item(key = "h-file") { SectionLabel("File", Modifier.padding(top = 14.dp, bottom = 6.dp)) }
+                            items(files, key = { it.id }) { f ->
+                                if (f.id == files.getOrNull(files.size - 6)?.id && s.nextPage != null) LaunchedEffect(s.items.size) { vm.loadMore() }
+                                RowWithMenu(f, folders.size + files.indexOf(f), s, vm, api, imageLoader, selecting, rowMenu, { rowMenu = it }, { dialog = it }, { gallery = it }, { viewing = it })
+                            }
+                            if (s.loadingMore) item { Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp) } }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -219,15 +198,45 @@ fun FilesScreen(vm: FilesViewModel, api: Api, imageLoader: ImageLoader, onLogout
         is Dialog.Details -> DetailsSheet(d.f, vm.ops(), d.f.size?.let { Formatter.formatShortFileSize(context, it) } ?: "-", dateOf(d.f.modifiedAt)) { dialog = null }
     } }
     s.share?.let { ShareResultDialog(it, onDismiss = vm::shareShown) }
+}
 
-    selected?.let { f ->
-        ModalBottomSheet(onDismissRequest = { selected = null }) {
-            Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 24.dp).navigationBarsPadding()) {
-                Text(f.name, style = MaterialTheme.typography.titleMedium, maxLines = 3, overflow = TextOverflow.Ellipsis)
-                Text(listOfNotNull(f.size?.let { Formatter.formatShortFileSize(context, it) }, dateOf(f.modifiedAt)).joinToString(" · "), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp))
-                Button(onClick = { enqueueDownload(context, api.download(f), f.name, f.mimeType); selected = null }, modifier = Modifier.fillMaxWidth().padding(top = 20.dp)) { Text("Unduh") }
-                Text("Pratinjau native tersedia di tahap berikutnya.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 12.dp))
-            }
+@Composable
+private fun MenuRow(text: String, icon: ImageVector, onClick: () -> Unit) =
+    DropdownMenuItem(text = { Text(text, style = MaterialTheme.typography.bodyMedium) }, leadingIcon = { Icon(icon, null, tint = MaterialTheme.sd.muted, modifier = Modifier.size(18.dp)) }, onClick = onClick)
+
+/** Header that replaces the page header while files are selected: the brand blue, a count, and the actions as icons. */
+@Composable
+private fun SelectionHeader(count: Int, onClose: () -> Unit, onAll: () -> Unit, onShare: () -> Unit, onCopy: () -> Unit, onMove: () -> Unit, onDelete: () -> Unit) {
+    Row(Modifier.fillMaxWidth().background(MaterialTheme.sd.primary).statusBarsPadding().padding(horizontal = 4.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        BarIcon(Lu.X, "Batal memilih", onClose, tint = Color.White)
+        Text("$count dipilih", Modifier.weight(1f).padding(start = 4.dp), style = MaterialTheme.typography.titleMedium, color = Color.White)
+        BarIcon(Lu.Check, "Pilih semua", onAll, tint = Color.White)
+        BarIcon(Lu.Share, "Bagikan", onShare, tint = Color.White)
+        BarIcon(Lu.Copy, "Salin ke", onCopy, tint = Color.White)
+        BarIcon(Lu.Move, "Pindahkan ke", onMove, tint = Color.White)
+        BarIcon(Lu.Trash, "Hapus", onDelete, tint = Color.White)
+    }
+}
+
+@Composable
+private fun RowWithMenu(
+    f: FileEntry, index: Int, s: FilesState, vm: FilesViewModel, api: Api, imageLoader: ImageLoader, selecting: Boolean,
+    rowMenu: FileEntry?, setRowMenu: (FileEntry?) -> Unit, setDialog: (Dialog) -> Unit, setGallery: (Pair<List<FileEntry>, Int>) -> Unit, setViewing: (FileEntry) -> Unit,
+) {
+    val context = LocalContext.current
+    Box(Modifier.riseIn(index)) {
+        FileRow(f, api, imageLoader, selecting = selecting, checked = f.id in s.selection,
+            onClick = { if (selecting) vm.toggle(f) else if (f.isFolder) vm.open(f) else open(f, s.items) { g -> setGallery(g) } ?: run { setViewing(f) } },
+            onLongClick = { vm.toggle(f) }, onMore = { setRowMenu(f) })
+        DropdownMenu(expanded = rowMenu?.id == f.id, onDismissRequest = { setRowMenu(null) }, shape = RoundedCornerShape(14.dp)) {
+            MenuRow("Detail", Lu.Info) { setRowMenu(null); setDialog(Dialog.Details(f)) }
+            MenuRow("Ganti nama", Lu.Pencil) { setRowMenu(null); setDialog(Dialog.Rename(f)) }
+            MenuRow(if (f.starred) "Lepas bintang" else "Beri bintang", Lu.Star) { setRowMenu(null); vm.star(f) }
+            MenuRow("Bagikan", Lu.Share) { setRowMenu(null); setDialog(Dialog.Share(listOf(f))) }
+            MenuRow("Salin ke…", Lu.Copy) { setRowMenu(null); setDialog(Dialog.Pick("COPY", listOf(f))) }
+            MenuRow("Pindahkan ke…", Lu.Move) { setRowMenu(null); setDialog(Dialog.Pick("MOVE", listOf(f))) }
+            if (!f.isFolder) MenuRow("Unduh", Lu.Download) { setRowMenu(null); enqueueDownload(context, api.download(f), f.name, f.mimeType) }
+            MenuRow("Hapus", Lu.Trash) { setRowMenu(null); setDialog(Dialog.Delete(listOf(f))) }
         }
     }
 }
@@ -235,29 +244,34 @@ fun FilesScreen(vm: FilesViewModel, api: Api, imageLoader: ImageLoader, onLogout
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun FileRow(f: FileEntry, api: Api, imageLoader: ImageLoader, selecting: Boolean, checked: Boolean, onClick: () -> Unit, onLongClick: () -> Unit, onMore: () -> Unit) {
-    val context = LocalContext.current
-    ListItem(
-        modifier = Modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick),
-        colors = ListItemDefaults.colors(containerColor = if (checked) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface),
-        headlineContent = { Text(f.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-        supportingContent = { Text(if (f.isFolder) (dateOf(f.modifiedAt) ?: "Folder") else listOfNotNull(f.size?.let { Formatter.formatShortFileSize(context, it) }, dateOf(f.modifiedAt)).joinToString(" · "), maxLines = 1) },
-        leadingContent = {
-            Box(Modifier.size(48.dp).clip(RoundedCornerShape(10.dp)), contentAlignment = Alignment.Center) {
-                if (!f.isFolder && f.hasThumbnail) AsyncImage(
-                    model = ImageRequest.Builder(context).data(api.thumbnail(f, 256)).crossfade(true).build(), imageLoader = imageLoader,
-                    contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
-                ) else Icon(painterResource(if (f.isFolder) R.drawable.ic_nav_files else R.drawable.ic_file), contentDescription = null, tint = if (f.isFolder) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(28.dp))
+    val context = LocalContext.current; val c = MaterialTheme.sd
+    val kind = kindStyle(f)
+    val shape = RoundedCornerShape(14.dp)
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 2.dp).clip(shape).background(if (checked) c.primarySoft else Color.Transparent).pressable(onClick = onClick, onLongClick = onLongClick, shape = shape).padding(horizontal = 8.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(46.dp).clip(RoundedCornerShape(12.dp)).background(kind.bg), contentAlignment = Alignment.Center) {
+            Icon(kind.icon, contentDescription = null, tint = kind.fg, modifier = Modifier.size(22.dp))
+            if (!f.isFolder && f.hasThumbnail) AsyncImage(
+                model = ImageRequest.Builder(context).data(api.thumbnail(f, 256)).crossfade(true).build(), imageLoader = imageLoader,
+                contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
+            )
+        }
+        Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+            Text(f.name, style = MaterialTheme.typography.titleSmall, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(if (f.isFolder) (dateOf(f.modifiedAt) ?: "Folder") else listOfNotNull(f.size?.let { Formatter.formatShortFileSize(context, it) }, dateOf(f.modifiedAt)).joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = c.muted, maxLines = 1)
+        }
+        if (selecting) {
+            Box(Modifier.size(24.dp).clip(CircleShape).background(if (checked) c.primary else Color.Transparent).border(if (checked) 0.dp else 1.5.dp, c.lineStrong, CircleShape), contentAlignment = Alignment.Center) {
+                if (checked) Icon(Lu.Check, null, tint = Color.White, modifier = Modifier.size(15.dp))
             }
-        },
-        trailingContent = {
-            if (selecting) Checkbox(checked = checked, onCheckedChange = { onClick() })
-            else Row(verticalAlignment = Alignment.CenterVertically) {
-                if (f.starred) Icon(Icons.Default.Star, contentDescription = "Berbintang", tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.size(18.dp))
-                if (f.changed) Box(Modifier.padding(horizontal = 4.dp).size(8.dp).background(MaterialTheme.colorScheme.primary, CircleShape))
-                IconButton(onClick = onMore) { Icon(Icons.Default.MoreVert, contentDescription = "Aksi untuk ${f.name}") }
-            }
-        },
-    )
+        } else Row(verticalAlignment = Alignment.CenterVertically) {
+            if (f.starred) Icon(Lu.Star, contentDescription = "Berbintang", tint = c.warnInk, modifier = Modifier.size(16.dp))
+            if (f.changed) Box(Modifier.padding(horizontal = 6.dp).size(8.dp).background(c.primary, CircleShape))
+            BarIcon(Lu.More, "Aksi untuk ${f.name}", onMore)
+        }
+    }
 }
 
 /** The one dialog or sheet open on the Files screen, if any. */
