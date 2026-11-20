@@ -107,7 +107,7 @@ class HomeViewModel(private val api: Api) : ViewModel() {
         viewModelScope.launch {
             try {
                 val d = api.get<Dashboard>("/dashboard")
-                val r = runCatching { api.get<SearchResult>("/search?recent=true&limit=8").items }.getOrDefault(emptyList())
+                val r = runCatching { api.get<SearchResult>("/search?recent=true&limit=12").items.filter { !it.isFolder }.take(8) }.getOrDefault(emptyList())
                 val n = runCatching { api.get<Notifications>("/notifications") }.getOrDefault(Notifications())
                 _state.update { it.copy(dashboard = d, recent = r, notifications = n, loading = false, refreshing = false, error = null) }
             } catch (e: ApiException) { _state.update { it.copy(loading = false, refreshing = false, error = e.message) } }
@@ -129,7 +129,7 @@ class HomeViewModel(private val api: Api) : ViewModel() {
 private enum class Page { Home, Notifications, Search }
 
 @Composable
-fun HomeScreen(vm: HomeViewModel, userName: String, onOpenFiles: () -> Unit, onOpenStorage: (String) -> Unit, onOpenTransfers: () -> Unit, onSettings: () -> Unit) {
+fun HomeScreen(vm: HomeViewModel, userName: String, onOpenFiles: () -> Unit, onOpenStorage: (String) -> Unit, onOpenFile: (FileEntry, List<FileEntry>) -> Unit, onOpenTransfers: () -> Unit, onSettings: () -> Unit) {
     val s by vm.state.collectAsStateWithLifecycle()
     var page by remember { mutableStateOf(Page.Home) }
     val c = MaterialTheme.sd
@@ -153,9 +153,9 @@ fun HomeScreen(vm: HomeViewModel, userName: String, onOpenFiles: () -> Unit, onO
         Box(Modifier.padding(pad).fillMaxSize()) {
             AnimatedContent(page, label = "home-page", transitionSpec = { (fadeIn(tween(220, easing = Motion.EaseOut)) + slideInHorizontally(tween(280, easing = Motion.EaseOut)) { if (targetState == Page.Home) -it / 12 else it / 12 }) togetherWith (fadeOut(tween(120)) + slideOutHorizontally(tween(200)) { if (targetState == Page.Home) it / 14 else -it / 14 }) }) { p ->
                 when (p) {
-                    Page.Search -> SearchResults(s, onOpenFiles)
+                    Page.Search -> SearchResults(s, onOpenFiles, onOpenFile)
                     Page.Notifications -> NotificationList(s.notifications.items)
-                    Page.Home -> HomeBody(s, vm, onOpenFiles, onOpenStorage, onOpenTransfers)
+                    Page.Home -> HomeBody(s, vm, onOpenFiles, onOpenStorage, onOpenFile, onOpenTransfers)
                 }
             }
         }
@@ -185,7 +185,7 @@ private fun SearchHeader(query: String, onChange: (String) -> Unit, onSearch: ()
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-private fun HomeBody(s: HomeState, vm: HomeViewModel, onOpenFiles: () -> Unit, onOpenStorage: (String) -> Unit, onOpenTransfers: () -> Unit) {
+private fun HomeBody(s: HomeState, vm: HomeViewModel, onOpenFiles: () -> Unit, onOpenStorage: (String) -> Unit, onOpenFile: (FileEntry, List<FileEntry>) -> Unit, onOpenTransfers: () -> Unit) {
     val c = MaterialTheme.sd; val context = LocalContext.current
     PullToRefreshBox(isRefreshing = s.refreshing, onRefresh = { vm.load(true) }, modifier = Modifier.fillMaxSize()) {
         val d = s.dashboard
@@ -249,7 +249,7 @@ private fun HomeBody(s: HomeState, vm: HomeViewModel, onOpenFiles: () -> Unit, o
                         SdCard(Modifier.fillMaxWidth()) {
                             s.recent.forEachIndexed { i, f ->
                                 val k = kindStyle(f)
-                                Row(Modifier.fillMaxWidth().pressable(onClick = onOpenFiles).padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Row(Modifier.fillMaxWidth().pressable(onClick = { onOpenFile(f, s.recent) }).padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                                     IconTile(k.icon, k.bg, k.fg, size = 38.dp, iconSize = 19.dp)
                                     Column(Modifier.weight(1f).padding(start = 12.dp)) {
                                         Text(f.name, style = MaterialTheme.typography.titleSmall, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -299,7 +299,7 @@ private fun Stat(modifier: Modifier, icon: androidx.compose.ui.graphics.vector.I
 }
 
 @Composable
-private fun SearchResults(s: HomeState, onOpenFiles: () -> Unit) {
+private fun SearchResults(s: HomeState, onOpenFiles: () -> Unit, onOpenFile: (FileEntry, List<FileEntry>) -> Unit) {
     val context = LocalContext.current; val c = MaterialTheme.sd
     val r = s.results
     when {
@@ -309,7 +309,7 @@ private fun SearchResults(s: HomeState, onOpenFiles: () -> Unit) {
         else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp)) {
             items(r, key = { it.id }) { f ->
                 val k = kindStyle(f)
-                Row(Modifier.fillMaxWidth().padding(vertical = 2.dp).pressable(onClick = onOpenFiles, shape = RoundedCornerShape(14.dp)).padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth().padding(vertical = 2.dp).pressable(onClick = { if (f.isFolder) onOpenFiles() else onOpenFile(f, r) }, shape = RoundedCornerShape(14.dp)).padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     IconTile(k.icon, k.bg, k.fg, size = 44.dp)
                     Column(Modifier.weight(1f).padding(start = 12.dp)) {
                         Text(f.name, style = MaterialTheme.typography.titleSmall, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)

@@ -91,6 +91,7 @@ fun MediaViewer(items: List<FileEntry>, startIndex: Int, api: Api, imageLoader: 
     var zoomed by remember { mutableStateOf(false) }
     var info by remember { mutableStateOf<FileEntry?>(null) }
     var dragY by remember { mutableFloatStateOf(0f) }
+    var upY by remember { mutableFloatStateOf(0f) } // swiping up (negative) opens the details
     BackHandler(onBack = onClose)
 
     // The system bars go with the viewer's own bars, so the picture really is full screen.
@@ -108,12 +109,19 @@ fun MediaViewer(items: List<FileEntry>, startIndex: Int, api: Api, imageLoader: 
             Modifier.fillMaxSize()
                 .pointerInput(zoomed) {
                     if (!zoomed) detectVerticalDragGestures(
-                        onDragEnd = { if (dragY > 260f) onClose() else scope.launch { val a = Animatable(dragY); a.animateTo(0f, tween(220)) { dragY = value } } },
-                        onDragCancel = { dragY = 0f },
-                        onVerticalDrag = { change, dy -> if (dragY > 0f || dy > 0f) { dragY = (dragY + dy).coerceAtLeast(0f); change.consume() } },
+                        onDragEnd = {
+                            if (upY < -150f) info = items.getOrNull(pager.currentPage)
+                            if (upY != 0f) scope.launch { val a = Animatable(upY); a.animateTo(0f, tween(240)) { upY = value } }
+                            if (dragY > 260f) onClose() else if (dragY > 0f) scope.launch { val a = Animatable(dragY); a.animateTo(0f, tween(220)) { dragY = value } }
+                        },
+                        onDragCancel = { dragY = 0f; upY = 0f },
+                        onVerticalDrag = { change, dy ->
+                            if (upY < 0f || (dragY == 0f && dy < 0f)) { upY = (upY + dy).coerceAtMost(0f); change.consume() }
+                            else if (dragY > 0f || dy > 0f) { dragY = (dragY + dy).coerceAtLeast(0f); change.consume() }
+                        },
                     )
                 }
-                .graphicsLayer { translationY = dragY; val s = 1f - (dragY / 2400f).coerceIn(0f, 0.25f); scaleX = s; scaleY = s },
+                .graphicsLayer { translationY = dragY + upY * 0.4f; val s = 1f - (dragY / 2400f).coerceIn(0f, 0.25f); scaleX = s; scaleY = s },
         ) {
             HorizontalPager(pager, Modifier.fillMaxSize(), userScrollEnabled = !zoomed, beyondViewportPageCount = 1, key = { items[it].id }) { page ->
                 val f = items[page]
@@ -134,12 +142,10 @@ fun MediaViewer(items: List<FileEntry>, startIndex: Int, api: Api, imageLoader: 
             }
         }
         AnimatedVisibility(chrome && dragY == 0f, Modifier.align(Alignment.BottomCenter), enter = fadeIn(tween(160)), exit = fadeOut(tween(120))) {
-            Row(Modifier.fillMaxWidth().background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f)))).navigationBarsPadding().padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(listOfNotNull(current?.let { app.superdrive.ui.design.typeLabel(it) }, current?.size?.let { Formatter.formatShortFileSize(context, it) }).joinToString(" · "), color = Color.White, style = MaterialTheme.typography.titleSmall)
-                    Text(app.superdrive.ui.design.formatLongDateTime(current?.modifiedAt) ?: "", color = Color.White.copy(alpha = 0.75f), style = MaterialTheme.typography.bodySmall)
-                }
-                TextButton(onClick = { info = current }) { Icon(Icons.Default.Info, null, tint = Color.White, modifier = Modifier.size(18.dp)); Text("  Info lengkap", color = Color.White) }
+            Column(Modifier.fillMaxWidth().background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f)))).navigationBarsPadding().padding(horizontal = 16.dp, vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(app.superdrive.ui.design.Lu.ChevronDown, null, tint = Color.White.copy(alpha = 0.8f), modifier = Modifier.size(22.dp).graphicsLayer { rotationZ = 180f })
+                Text("Geser ke atas untuk detail", color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.labelMedium)
+                Text(listOfNotNull(current?.let { app.superdrive.ui.design.typeLabel(it) }, current?.size?.let { Formatter.formatShortFileSize(context, it) }, app.superdrive.ui.design.formatDateTime(current?.modifiedAt)).joinToString(" · "), color = Color.White, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
             }
         }
     }

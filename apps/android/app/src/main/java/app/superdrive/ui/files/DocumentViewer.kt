@@ -86,16 +86,28 @@ private suspend fun fetch(api: Api, f: FileEntry, dir: File, max: Long): File = 
 
 private class PdfDoc(file: File) : AutoCloseable {
     private val fd = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
-    private val renderer = PdfRenderer(fd)
-    val count get() = renderer.pageCount
-    @Synchronized fun render(index: Int, widthPx: Int): Bitmap {
-        renderer.openPage(index).use { page ->
-            val h = (widthPx.toFloat() * page.height / page.width).toInt().coerceAtLeast(1)
-            val bmp = Bitmap.createBitmap(widthPx, h, Bitmap.Config.ARGB_8888); bmp.eraseColor(AColor.WHITE)
-            page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY); return bmp
-        }
+    private val renderer = try { PdfRenderer(fd) } catch (e: Throwable) { fd.close(); throw e }
+    /** Read once: asking a closed renderer for its page count throws. */
+    val count: Int = renderer.pageCount
+    private var closed = false
+
+    /** Null when the document was closed meanwhile or the page cannot be drawn; never throws. */
+    @Synchronized fun render(index: Int, widthPx: Int): Bitmap? {
+        if (closed || index !in 0 until count) return null
+        return try {
+            renderer.openPage(index).use { page ->
+                val ratio = page.height.toFloat() / page.width.coerceAtLeast(1)
+                // A very tall page must not ask for hundreds of megabytes.
+                val w = minOf(widthPx, (6_000_000f / (4f * ratio.coerceAtLeast(0.1f))).let { Math.sqrt(it.toDouble()).toInt() * 2 }.coerceAtLeast(200))
+                val h = (w * ratio).toInt().coerceIn(1, 8000)
+                val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888); bmp.eraseColor(AColor.WHITE)
+                page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                bmp
+            }
+        } catch (e: Throwable) { null }
     }
-    override fun close() { renderer.close(); fd.close() }
+
+    @Synchronized override fun close() { if (closed) return; closed = true; try { renderer.close() } catch (_: Throwable) {}; try { fd.close() } catch (_: Throwable) {} }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -132,18 +144,21 @@ private fun PdfBody(f: FileEntry, api: Api) {
     val context = LocalContext.current
     val widthPx = with(LocalDensity.current) { (context.resources.displayMetrics.widthPixels).coerceAtMost(1600) }
     val doc by produceState<Result<PdfDoc>?>(null, f.id) {
-        value = try { Result.success(PdfDoc(fetch(api, f, context.cacheDir, DOC_LIMIT))) } catch (e: ApiException) { Result.failure(e) } catch (e: Exception) { Result.failure(e) }
+        value = try { Result.success(PdfDoc(fetch(api, f, context.cacheDir, DOC_LIMIT))) } catch (e: Throwable) { Result.failure(e) }
     }
-    DisposableEffect(doc) { onDispose { doc?.getOrNull()?.close() } }
+    // Close exactly the document this effect was started for. (Reading `doc` inside onDispose would close the newly loaded one.)
+    val loaded = doc?.getOrNull()
+    DisposableEffect(loaded) { onDispose { loaded?.close() } }
     val d = doc
     when {
         d == null -> Loading()
-        d.isFailure -> Loading(d.exceptionOrNull()?.message?.takeIf { it.isNotBlank() } ?: "PDF ini tidak dapat dibuka.")
+        d.isFailure -> Loading(d.exceptionOrNull()?.let { if (it is ApiException) it.message else "PDF ini tidak dapat dibuka (rusak atau dilindungi kata sandi)." } ?: "PDF ini tidak dapat dibuka.")
+        loaded == null || loaded.count == 0 -> Loading("PDF ini tidak memiliki halaman.")
         else -> {
-            val pdf = d.getOrThrow()
+            val pdf = loaded
             LazyColumn(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant), contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 8.dp), verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
                 items(pdf.count, key = { it }) { i ->
-                    val bmp by produceState<Bitmap?>(null, i) { value = withContext(Dispatchers.Default) { try { pdf.render(i, widthPx) } catch (e: Exception) { null } } }
+                    val bmp by produceState<Bitmap?>(null, i) { value = withContext(Dispatchers.Default) { pdf.render(i, widthPx) } }
                     val b = bmp
                     if (b == null) Box(Modifier.fillMaxWidth().aspectRatio(0.707f).background(Color.White), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
                     else Image(b.asImageBitmap(), contentDescription = "Halaman ${i + 1}", contentScale = ContentScale.FillWidth, modifier = Modifier.fillMaxWidth())
@@ -165,7 +180,7 @@ private fun TextualBody(f: FileEntry, api: Api, kind: DocKind) {
                     DocKind.Csv -> parseCsv(file.readText()); else -> file.readText()
                 })
             }
-        } catch (e: ApiException) { Result.failure(e) } catch (e: Exception) { Result.failure(ApiException(0, "PARSE", "Berkas ini tidak dapat dibaca.")) }
+        } catch (e: ApiException) { Result.failure(e) } catch (e: Throwable) { Result.failure(ApiException(0, "PARSE", "Berkas ini tidak dapat dibaca.")) }
     }
     val c = content
     when {

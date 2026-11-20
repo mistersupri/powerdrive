@@ -88,14 +88,16 @@ private fun Shell(session: Session, me: app.superdrive.core.Me, onLogout: () -> 
     val shared: app.superdrive.ui.shared.SharedViewModel = viewModel(factory = viewModelFactory { initializer { app.superdrive.ui.shared.SharedViewModel(api) } })
     val homeState by home.state.collectAsStateWithLifecycle()
     var settings by remember { mutableStateOf(false) }
+    var preview by remember { mutableStateOf<Pair<app.superdrive.core.FileEntry, List<app.superdrive.core.FileEntry>>?>(null) }
     var fullscreen by remember { mutableStateOf(false) } // the media viewer covers the bottom bar
 
     if (settings) { app.superdrive.ui.settings.SettingsScreen(api, me, isAdmin = me.workspaces.firstOrNull { it.id == me.activeWorkspaceId }?.role in listOf("OWNER", "ADMIN"), onBack = { settings = false }, onLogout = onLogout); return }
+    Box(Modifier.fillMaxSize()) {
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
-            AnimatedVisibility(visible = !fullscreen, enter = expandVertically(tween(220, easing = Motion.Drawer)) + fadeIn(tween(200)), exit = shrinkVertically(tween(160)) + fadeOut(tween(120))) {
+            AnimatedVisibility(visible = !fullscreen && preview == null, enter = expandVertically(tween(220, easing = Motion.Drawer)) + fadeIn(tween(200)), exit = shrinkVertically(tween(160)) + fadeOut(tween(120))) {
                 val active = homeState.dashboard?.transfers?.active ?: 0
                 SdBottomBar(TAB_LABELS.mapIndexed { i, l -> NavItem(l, TAB_ICONS[i], if (i == 4) active else 0) }, tab, onSelect = { tab = it })
             }
@@ -111,12 +113,14 @@ private fun Shell(session: Session, me: app.superdrive.core.Me, onLogout: () -> 
             },
         ) { i ->
             Box(Modifier.fillMaxSize().then(Modifier).padding(pad)) {
-                if (i == 0) app.superdrive.ui.home.HomeScreen(home, me.user.name, onOpenFiles = { tab = 1 }, onOpenStorage = { id -> files.openStorage(id); tab = 1 }, onOpenTransfers = { tab = 4 }, onSettings = { settings = true })
+                if (i == 0) app.superdrive.ui.home.HomeScreen(home, me.user.name, onOpenFiles = { tab = 1 }, onOpenStorage = { id -> files.openStorage(id); tab = 1 }, onOpenFile = { f, list -> preview = f to list }, onOpenTransfers = { tab = 4 }, onSettings = { settings = true })
                 else if (i == 3) app.superdrive.ui.shared.SharedScreen(shared, session.server!!)
                 else if (i == 4) app.superdrive.ui.transfers.TransfersScreen(transfers)
                 else if (i == 1) FilesScreen(files, api, imageLoader, isAdmin = me.workspaces.firstOrNull { it.id == me.activeWorkspaceId }?.role in listOf("OWNER", "ADMIN"), onLogout = onLogout, onFullscreen = { fullscreen = it })
                 else if (i == 2) MediaScreen(media, api, imageLoader, me.user.id, onFullscreen = { fullscreen = it })
             }
         }
+    }
+    preview?.let { (f, list) -> app.superdrive.ui.files.FilePreview(f, list, api, imageLoader, onClose = { preview = null }) }
     }
 }
