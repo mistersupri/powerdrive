@@ -56,6 +56,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.superdrive.AlbumVault
 import app.superdrive.AppLock
+import app.superdrive.BackupLive
 import app.superdrive.BackupScheduler
 import app.superdrive.BackupStore
 import app.superdrive.BackupWorker
@@ -113,7 +114,7 @@ import kotlinx.serialization.json.put
 @Serializable private data class AuditPage(val items: List<AuditEntry> = emptyList(), val total: Int = 0)
 
 private enum class Sub(val title: String) {
-    Hub("Pengaturan"), Profile("Profil"), Security("Keamanan"), Private("Album privat"), Backup("Cadangan foto"), App("Aplikasi"),
+    Hub("Pengaturan"), Profile("Profil"), Security("Keamanan"), Private("Album privat"), Backup("Cadangan foto"), BackupAlbums("Pilih album"), App("Aplikasi"),
     Appearance("Tampilan"), Storage("Penyimpanan"), Members("Anggota"), Activity("Log aktivitas"),
 }
 
@@ -129,11 +130,12 @@ fun SettingsScreen(api: Api, me: Me, isAdmin: Boolean, onBack: () -> Unit, onLog
     val c = MaterialTheme.sd
     val say: (String) -> Unit = { m -> scope.launch { snack.showSnackbar(m) } }
     val role = me.workspaces.firstOrNull { it.id == me.activeWorkspaceId }?.role ?: "MEMBER"
-    BackHandler { if (sub == Sub.Hub) onBack() else sub = Sub.Hub }
+    val back: () -> Unit = { if (sub == Sub.Hub) onBack() else sub = if (sub == Sub.BackupAlbums) Sub.Backup else Sub.Hub }
+    BackHandler { back() }
     Scaffold(
         containerColor = c.canvas, contentWindowInsets = WindowInsets(0, 0, 0, 0),
         snackbarHost = { SnackbarHost(snack) { d -> Snackbar(d, shape = RoundedCornerShape(12.dp), containerColor = c.navy, contentColor = Color.White) } },
-        topBar = { PageHeader(sub.title, subtitle = if (sub == Sub.Hub) me.user.email else null, leading = { BarIcon(Lu.Back, "Kembali", { if (sub == Sub.Hub) onBack() else sub = Sub.Hub }, tint = c.ink) }) },
+        topBar = { PageHeader(sub.title, subtitle = if (sub == Sub.Hub) me.user.email else null, leading = { BarIcon(Lu.Back, "Kembali", { back() }, tint = c.ink) }) },
     ) { pad ->
         AnimatedContent(sub, Modifier.padding(pad).fillMaxSize(), label = "settings", transitionSpec = {
             val deeper = targetState != Sub.Hub
@@ -144,7 +146,8 @@ fun SettingsScreen(api: Api, me: Me, isAdmin: Boolean, onBack: () -> Unit, onLog
                 Sub.Profile -> ProfilePage(api, me, say, onLogout)
                 Sub.Security -> SecurityPage(api, say)
                 Sub.Private -> PrivatePage(api, me, say)
-                Sub.Backup -> BackupPage(say)
+                Sub.Backup -> BackupPage(say) { sub = Sub.BackupAlbums }
+                Sub.BackupAlbums -> BackupAlbumsPage(say) { sub = Sub.Backup }
                 Sub.App -> AppPage(say)
                 Sub.Appearance -> AppearancePage()
                 Sub.Storage -> StoragePage(api, say)
@@ -323,30 +326,28 @@ private fun AppPage(say: (String) -> Unit) {
 }
 
 @Composable
-private fun BackupPage(say: (String) -> Unit) {
+private fun BackupPage(say: (String) -> Unit, pickAlbums: () -> Unit) {
     val c = MaterialTheme.sd; val context = LocalContext.current
     var on by remember { mutableStateOf(BackupStore.enabled(context)) }
     var wifi by remember { mutableStateOf(BackupStore.wifiOnly(context)) }
     var videos by remember { mutableStateOf(BackupStore.videos(context)) }
     var existing by remember { mutableStateOf(BackupStore.existing(context)) }
-    var chosen by remember { mutableStateOf(BackupStore.albums(context)) } // null = every album
-    var albums by remember { mutableStateOf<List<Triple<String, String, Int>>?>(null) }
+    var parallel by remember { mutableStateOf(BackupStore.parallel(context)) }
+    val chosen = remember { BackupStore.albums(context) } // null = every album; changed on its own page
     var pending by remember { mutableStateOf<Int?>(null) }
     var tick by remember { mutableStateOf(0) }
     fun save(o: Boolean = on, w: Boolean = wifi, v: Boolean = videos, e: Boolean = existing) { BackupStore.save(context, o, w, v, e); BackupScheduler.apply(context); tick++ }
     val askPerms = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { _ ->
         if (BackupStore.hasPermission(context)) { on = true; save(o = true); BackupScheduler.now(context) } else say("Izin akses foto diperlukan.")
     }
-    LaunchedEffect(on, videos, tick) {
-        if (on && BackupStore.hasPermission(context)) withContext(Dispatchers.IO) {
-            albums = try { BackupWorker.albums(context) } catch (e: Exception) { emptyList() }
-            pending = try { BackupWorker.pending(context) } catch (e: Exception) { null }
-        }
+    val live = remember(tick) { BackupLive.snapshot() }
+    val paused = remember(tick) { BackupStore.paused(context) }
+    LaunchedEffect(on, videos, existing, live.running) {
+        if (on && BackupStore.hasPermission(context)) withContext(Dispatchers.IO) { pending = try { BackupWorker.pending(context) } catch (e: Exception) { null } }
     }
     val st = remember(tick, on) { BackupStore.state(context) }
-    // While a backup runs, refresh every second so the bar and file name move.
-    val running = remember(tick) { BackupStore.progress(context) }
-    LaunchedEffect(on, running != null) { while (on) { kotlinx.coroutines.delay(if (BackupStore.progress(context) != null) 1000 else 4000); tick++ } }
+    // While a backup runs, refresh often so the bars move.
+    LaunchedEffect(on, live.running) { while (on) { kotlinx.coroutines.delay(if (BackupLive.running) 700 else 4000); tick++ } }
     var notifOk by remember(tick) { mutableStateOf(android.os.Build.VERSION.SDK_INT < 33 || androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED) }
     val askNotif = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { tick++ }
     Page {
@@ -357,49 +358,119 @@ private fun BackupPage(say: (String) -> Unit) {
         }
         if (on && !notifOk) Notice("Notifikasi dimatikan, jadi progres pencadangan tidak tampil di bilah notifikasi.", c.warnSoft to c.warnInk, Lu.Bell)
         if (on && !notifOk) SdButton("Izinkan notifikasi", { if (android.os.Build.VERSION.SDK_INT >= 33) askNotif.launch(android.Manifest.permission.POST_NOTIFICATIONS) else context.startActivity(Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)) }, kind = BtnKind.Secondary, icon = Lu.Bell)
-        if (on && running == null) BackupStore.networkBlocked(context)?.let { Notice(it, c.warnSoft to c.warnInk, Lu.Link) }
-        running?.let { r ->
-            SdCard(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconTile(Lu.Upload, c.primarySoft, c.primaryInk, size = 36.dp, iconSize = 18.dp)
-                        Column(Modifier.weight(1f).padding(horizontal = 12.dp)) { Text("Sedang mencadangkan", style = MaterialTheme.typography.titleSmall, color = c.ink); Text("${r.done} dari ${r.total} file", style = MaterialTheme.typography.bodySmall, color = c.muted) }
-                        Text("${r.percent}%", style = MaterialTheme.typography.labelLarge, color = c.primaryInk)
-                    }
-                    SdProgress(r.percent / 100f)
-                    if (r.name.isNotBlank()) Text(r.name, style = MaterialTheme.typography.bodySmall, color = c.faint, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-            }
-        }
+        if (on && !live.running && paused) Notice("Pencadangan dijeda. Bagian file yang sudah terkirim disimpan, jadi saat dilanjutkan tidak mengulang dari awal.", c.warnSoft to c.warnInk, Lu.Clock)
+        else if (on && !live.running) BackupStore.networkBlocked(context)?.let { Notice(it, c.warnSoft to c.warnInk, Lu.Link) }
+        if (live.running) LiveCard(live, onPause = { BackupLive.pause(context); say("Dijeda. Lanjutkan kapan saja."); tick++ }, onSkip = { key -> BackupLive.skip(key); say("File dilewati, dicoba lagi pada pencadangan berikutnya"); tick++ })
         if (on) {
             Group("Pilihan", 1) {
                 SettingRow(Lu.Link, "Hanya lewat Wi-Fi", detail = "Hemat kuota seluler", trailing = { SdSwitch(wifi, onChange = { wifi = it; save(w = it) }) }); Divider()
                 SettingRow(Lu.FileVideo, "Sertakan video", trailing = { SdSwitch(videos, onChange = { videos = it; save(v = it) }) }); Divider()
-                SettingRow(Lu.Clock, "Termasuk foto yang sudah ada", detail = "Mati: hanya foto yang diambil mulai sekarang", trailing = { SdSwitch(existing, onChange = { existing = it; save(e = it) }) })
-            }
-            Group("Album galeri", 2) {
-                SettingRow(Lu.Images, "Semua album", detail = "Cadangkan seluruh galeri", trailing = { SdSwitch(chosen == null, onChange = { all -> chosen = if (all) null else (albums ?: emptyList()).map { it.first }.toSet(); BackupStore.setAlbums(context, chosen); tick++ }) })
-                if (chosen != null) {
-                    val list = albums
-                    if (list == null) Box(Modifier.padding(14.dp)) { Skeleton(Modifier.fillMaxWidth().height(40.dp), 10.dp) }
-                    else list.forEach { (id, name, n) ->
-                        Divider(14.dp)
-                        Row(Modifier.fillMaxWidth().pressable(onClick = { val cur = chosen ?: emptySet(); chosen = if (id in cur) cur - id else cur + id; BackupStore.setAlbums(context, chosen) }).padding(horizontal = 6.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Checkbox(id in (chosen ?: emptySet()), { v -> val cur = chosen ?: emptySet(); chosen = if (v) cur + id else cur - id; BackupStore.setAlbums(context, chosen) })
-                            Text(name, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text("$n", Modifier.padding(end = 12.dp), style = MaterialTheme.typography.bodySmall, color = c.faint)
+                SettingRow(Lu.Clock, "Termasuk foto yang sudah ada", detail = "Mati: hanya foto yang diambil mulai sekarang", trailing = { SdSwitch(existing, onChange = { existing = it; save(e = it) }) }); Divider()
+                SettingRow(Lu.Upload, "Unggah bersamaan", detail = "$parallel file sekaligus · berlaku di pencadangan berikutnya", trailing = {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        (1..4).forEach { n ->
+                            Box(Modifier.size(30.dp).clip(RoundedCornerShape(8.dp)).background(if (parallel == n) c.primary else c.surface2).pressable(onClick = { parallel = n; BackupStore.setParallel(context, n) }), contentAlignment = Alignment.Center) {
+                                Text("$n", style = MaterialTheme.typography.labelLarge, color = if (parallel == n) Color.White else c.muted)
+                            }
                         }
                     }
-                }
+                })
+            }
+            Group("Album galeri", 2) {
+                SettingRow(Lu.Images, "Album yang dicadangkan", detail = if (chosen == null) "Semua album" else if (chosen.isEmpty()) "Belum ada album dipilih" else "${chosen.size} album dipilih", onClick = pickAlbums)
             }
             val last = st.optLong("lastRun", 0L); val err = st.optString("error", "").takeIf { it.isNotBlank() && it != "null" }
             Panel("Status") {
-                if (running == null) Text(if (last > 0) "Terakhir berjalan ${timeAgo(java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US).apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }.format(java.util.Date(last)))} · ${st.optInt("lastCount")} file terunggah" else "Belum pernah berjalan", style = MaterialTheme.typography.bodyMedium, color = c.muted)
+                if (!live.running) Text(if (last > 0) "Terakhir berjalan ${timeAgo(java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US).apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }.format(java.util.Date(last)))} · ${st.optInt("lastCount")} file terunggah" else "Belum pernah berjalan", style = MaterialTheme.typography.bodyMedium, color = c.muted)
                 pending?.let { Text("$it file menunggu dicadangkan", style = MaterialTheme.typography.bodySmall, color = c.faint) }
                 err?.let { Notice(it, c.dangerSoft to c.dangerInk) }
-                SdButton("Cadangkan sekarang", { BackupScheduler.now(context); say("Pencadangan dimulai"); tick++ }, kind = BtnKind.Secondary, icon = Lu.Upload)
+                if (live.running) SdButton("Jeda", { BackupLive.pause(context); say("Dijeda. Lanjutkan kapan saja."); tick++ }, kind = BtnKind.Secondary, icon = Lu.Clock)
+                else if (paused) SdButton("Lanjutkan", { BackupLive.resume(context); say("Pencadangan dilanjutkan"); tick++ }, icon = Lu.Upload)
+                else SdButton("Cadangkan sekarang", { BackupScheduler.now(context); say("Pencadangan dimulai"); tick++ }, kind = BtnKind.Secondary, icon = Lu.Upload)
             }
         }
+    }
+}
+
+/** The files being sent right now, each with its own bar and a way to leave it for later. */
+@Composable
+private fun LiveCard(s: BackupLive.Snapshot, onPause: () -> Unit, onSkip: (String) -> Unit) {
+    val c = MaterialTheme.sd; val context = LocalContext.current
+    fun size(n: Long) = Formatter.formatShortFileSize(context, n)
+    SdCard(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconTile(Lu.Upload, c.primarySoft, c.primaryInk, size = 36.dp, iconSize = 18.dp)
+                Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                    Text("Sedang mencadangkan", style = MaterialTheme.typography.titleSmall, color = c.ink)
+                    Text("${s.done} dari ${s.total} file" + (if (s.skipped > 0) " · ${s.skipped} dilewati" else "") + (if (s.failed > 0) " · ${s.failed} gagal" else ""), style = MaterialTheme.typography.bodySmall, color = c.muted)
+                }
+                Text("${s.percent}%", style = MaterialTheme.typography.labelLarge, color = c.primaryInk)
+            }
+            SdProgress(s.percent / 100f)
+            if (s.files.isEmpty()) Text("Menyiapkan file…", style = MaterialTheme.typography.bodySmall, color = c.faint)
+            s.files.forEach { f ->
+                val frac = if (f.size > 0) (f.sent.toFloat() / f.size).coerceIn(0f, 1f) else 0f
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(f.name, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        TextButton(onClick = { onSkip(f.key) }) { Text("Lewati") }
+                    }
+                    SdProgress(frac, height = 4.dp)
+                    val quiet = f.quiet && !f.finishing
+                    Text(
+                        when { f.finishing -> "Menyelesaikan di server…"; quiet -> "Tidak ada kemajuan. Ketuk Lewati jika macet."; else -> "${size(f.sent)} dari ${size(f.size)} · ${(frac * 100).toInt()}%" },
+                        style = MaterialTheme.typography.labelSmall, color = if (quiet) c.warnInk else c.faint,
+                    )
+                }
+            }
+            SdButton("Jeda", onPause, kind = BtnKind.Secondary, icon = Lu.Clock)
+        }
+    }
+}
+
+/** Which gallery albums are backed up. Changes apply only after "Simpan". */
+@Composable
+private fun BackupAlbumsPage(say: (String) -> Unit, onDone: () -> Unit) {
+    val c = MaterialTheme.sd; val context = LocalContext.current
+    val saved = remember { BackupStore.albums(context) }
+    var all by remember { mutableStateOf(saved == null) }
+    var sel by remember { mutableStateOf(saved ?: emptySet()) }
+    var albums by remember { mutableStateOf<List<Triple<String, String, Int>>?>(null) }
+    LaunchedEffect(Unit) { albums = withContext(Dispatchers.IO) { try { BackupWorker.albums(context) } catch (e: Exception) { emptyList() } } }
+    val changed = all != (saved == null) || (!all && sel != saved)
+    val canSave = changed && (all || sel.isNotEmpty())
+    Page {
+        Group("Cakupan", 0) {
+            SettingRow(Lu.Images, "Semua album", detail = "Cadangkan seluruh galeri, termasuk album baru", trailing = {
+                SdSwitch(all, onChange = { v -> all = v; if (!v && sel.isEmpty()) sel = (albums ?: emptyList()).map { it.first }.toSet() })
+            })
+        }
+        if (!all) {
+            val list = albums
+            Group("Pilih album", 1) {
+                if (list == null) Box(Modifier.padding(14.dp)) { Skeleton(Modifier.fillMaxWidth().height(40.dp), 10.dp) }
+                else if (list.isEmpty()) Text("Tidak ada album di galeri.", Modifier.padding(16.dp), style = MaterialTheme.typography.bodyMedium, color = c.muted)
+                else list.forEachIndexed { i, (id, name, n) ->
+                    if (i > 0) Divider(14.dp)
+                    Row(Modifier.fillMaxWidth().pressable(onClick = { sel = if (id in sel) sel - id else sel + id }).padding(horizontal = 6.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(id in sel, { v -> sel = if (v) sel + id else sel - id })
+                        Text(name, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text("$n", Modifier.padding(end = 12.dp), style = MaterialTheme.typography.bodySmall, color = c.faint)
+                    }
+                }
+            }
+            if (list != null && list.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = { sel = list.map { it.first }.toSet() }) { Text("Pilih semua") }
+                TextButton(onClick = { sel = emptySet() }) { Text("Kosongkan") }
+            }
+            if (sel.isEmpty()) Notice("Pilih sedikitnya satu album, atau nyalakan “Semua album”.", c.warnSoft to c.warnInk)
+        }
+        SdButton("Simpan", {
+            BackupStore.setAlbums(context, if (all) null else sel)
+            say("Pilihan album disimpan")
+            onDone()
+        }, enabled = canSave, icon = Lu.Check)
     }
 }
 
