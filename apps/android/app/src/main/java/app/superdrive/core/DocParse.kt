@@ -71,7 +71,7 @@ data class ZipItem(val name: String, val size: Long, val isDir: Boolean)
 fun zipEntries(bytes: ByteArray, max: Int = 1000): List<ZipItem> {
     val out = ArrayList<ZipItem>()
     ZipInputStream(ByteArrayInputStream(bytes)).use { z ->
-        while (out.size < max) { val e = z.nextEntry ?: break; val size = if (e.size >= 0) e.size else z.readBytes().size.toLong(); out.add(ZipItem(e.name, size, e.isDirectory)) }
+        while (out.size < max) { val e = z.nextEntry ?: break; val size = if (e.size >= 0) e.size else { var n = 0L; val buf = ByteArray(8192); while (true) { val r = z.read(buf); if (r < 0) break; n += r }; n }; out.add(ZipItem(e.name, size, e.isDirectory)) }
     }
     return out
 }
