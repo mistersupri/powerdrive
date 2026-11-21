@@ -38,6 +38,8 @@ data class FilesState(
     val share: ShareLink? = null,
     /** An item to bring into view and highlight after "locate". */
     val focus: String? = null,
+    /** A Google editor address to open in the browser or the Google app. */
+    val openUrl: String? = null,
 )
 
 /** Folders first, then by name the way a person reads it ("file 2" before "file 10"). */
@@ -137,6 +139,17 @@ class FilesViewModel(private val api: Api, private val ops: FileOps = FileOps(ap
         }
     }
     fun clearFocus() = _state.update { it.copy(focus = null) }
+
+    /** Opens a Word, Excel or PowerPoint file (or a Google file) from Google Drive in Google's own editor. */
+    fun openInGoogle(f: FileEntry) {
+        viewModelScope.launch {
+            try { val i = ops.driveInfo(f); if (i.editUrl != null) _state.update { it.copy(openUrl = i.editUrl) } else say("File ini tidak bisa dibuka di editor Google.") }
+            catch (e: ApiException) { say(e.message ?: "Gagal membuka di Google.") }
+        }
+    }
+    fun urlOpened() = _state.update { it.copy(openUrl = null) }
+    /** Makes a copy of a shared-with-me item in the person's own Drive. It runs as a transfer, so progress shows on the Transfer tab. */
+    fun claim(f: FileEntry) = act("Disalin ke Drive Anda, folder “Dimiliki saya”. Progresnya ada di tab Transfer.") { ops.claim(f) }
 
     // ---- selection ----
     fun toggle(f: FileEntry) = _state.update { it.copy(selection = if (f.id in it.selection) it.selection - f.id else it.selection + f.id) }

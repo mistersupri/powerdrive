@@ -141,6 +141,7 @@ fun FilesScreen(vm: FilesViewModel, api: Api, imageLoader: ImageLoader, isAdmin:
     BackHandler(enabled = selecting) { vm.clearSelection() }
     BackHandler(enabled = !selecting && s.stack.isNotEmpty()) { vm.up() }
     LaunchedEffect(s.notice) { s.notice?.let { snack.showSnackbar(it); vm.noticeShown() } }
+    LaunchedEffect(s.openUrl) { s.openUrl?.let { u -> try { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(u))) } catch (_: Exception) { vm.say("Tidak ada aplikasi untuk membuka tautan Google.") }; vm.urlOpened() } }
 
     Scaffold(
         containerColor = c.canvas,
@@ -244,6 +245,7 @@ fun FilesScreen(vm: FilesViewModel, api: Api, imageLoader: ImageLoader, isAdmin:
         is Dialog.Delete -> ConfirmDialog("Pindahkan ke sampah?", if (d.items.size == 1) "“${d.items.first().name}” akan dipindahkan ke sampah." else "${d.items.size} item akan dipindahkan ke sampah.", "Hapus", { vm.trash(d.items) }) { dialog = null }
         is Dialog.Pick -> FolderPickerDialog(api, s.storages, s.storage, if (d.type == "MOVE") "Pindahkan" else "Salin", { sid, fid -> vm.transfer(d.type, d.items, sid, fid) }) { dialog = null }
         is Dialog.Share -> ShareOptionsSheet(d.items, { role, days, pw, title -> vm.createShare(d.items, role, days, pw, title) }) { dialog = null }
+        is Dialog.Claim -> ConfirmDialog("Jadikan milik saya?", "Salinan “${d.f.name}” dibuat di Google Drive Anda (folder “Dimiliki saya”) dan menjadi milik Anda. File aslinya tetap milik pemiliknya. Folder disalin beserta isinya. Penyalinan gagal bila pemilik melarangnya.", "Salin", { vm.claim(d.f) }) { dialog = null }
         is Dialog.Details -> DetailsSheet(d.f, vm.ops(), d.f.size?.let { Formatter.formatShortFileSize(context, it) } ?: "-", dateOf(d.f.modifiedAt)) { dialog = null }
     } }
     s.share?.let { ShareResultDialog(it, onDismiss = vm::shareShown) }
@@ -285,6 +287,10 @@ private fun RowWithMenu(
             MenuRow("Salin ke…", Lu.Copy) { setRowMenu(null); setDialog(Dialog.Pick("COPY", listOf(f))) }
             MenuRow("Pindahkan ke…", Lu.Move) { setRowMenu(null); setDialog(Dialog.Pick("MOVE", listOf(f))) }
             if (!f.isFolder) MenuRow("Unduh", Lu.Download) { setRowMenu(null); enqueueDownload(context, api.download(f), f.name, f.mimeType) }
+            if (s.storage?.provider == "GOOGLE_DRIVE") {
+                app.superdrive.core.googleEditorLabel(f)?.let { lbl -> MenuRow("Buka di $lbl", Lu.Link) { setRowMenu(null); vm.openInGoogle(f) } }
+                MenuRow("Jadikan milik saya", Lu.User) { setRowMenu(null); setDialog(Dialog.Claim(f)) }
+            }
             MenuRow("Hapus", Lu.Trash) { setRowMenu(null); setDialog(Dialog.Delete(listOf(f))) }
         }
     }
@@ -331,6 +337,7 @@ private sealed interface Dialog {
     data class Pick(val type: String, val items: List<FileEntry>) : Dialog
     data class Share(val items: List<FileEntry>) : Dialog
     data class Details(val f: FileEntry) : Dialog
+    data class Claim(val f: FileEntry) : Dialog
 }
 
 /** Images and videos open in the gallery viewer (swipe through the folder's media); returns null for anything else so the caller shows the document previewer. */
@@ -362,6 +369,10 @@ private fun CellWithMenu(
             MenuRow("Salin ke…", Lu.Copy) { setRowMenu(null); setDialog(Dialog.Pick("COPY", listOf(f))) }
             MenuRow("Pindahkan ke…", Lu.Move) { setRowMenu(null); setDialog(Dialog.Pick("MOVE", listOf(f))) }
             if (!f.isFolder) MenuRow("Unduh", Lu.Download) { setRowMenu(null); enqueueDownload(context, api.download(f), f.name, f.mimeType) }
+            if (s.storage?.provider == "GOOGLE_DRIVE") {
+                app.superdrive.core.googleEditorLabel(f)?.let { lbl -> MenuRow("Buka di $lbl", Lu.Link) { setRowMenu(null); vm.openInGoogle(f) } }
+                MenuRow("Jadikan milik saya", Lu.User) { setRowMenu(null); setDialog(Dialog.Claim(f)) }
+            }
             MenuRow("Hapus", Lu.Trash) { setRowMenu(null); setDialog(Dialog.Delete(listOf(f))) }
         }
     }

@@ -16,6 +16,22 @@ import java.util.UUID
 @Serializable data class FolderStats(val files: Int = 0, val folders: Int = 0, val bytes: Long = 0, val truncated: Boolean = false)
 @Serializable data class Comment(val id: String, val body: String, val authorName: String = "", val createdAt: String = "", val mine: Boolean = false)
 
+@Serializable data class DriveOwner(val name: String = "", val email: String = "")
+/** Google Drive extras for one file: who owns it and where Google's editor opens it. drive is false for other storages. */
+@Serializable data class DriveInfo(val drive: Boolean = false, val ownedByMe: Boolean = true, val owner: DriveOwner? = null, val canCopy: Boolean = true, val canEdit: Boolean = false, val editUrl: String? = null)
+
+/** Which Google editor a file opens in, as a label for the menu; null when none fits. */
+fun googleEditorLabel(f: FileEntry): String? {
+    if (f.isFolder) return null
+    val ext = f.name.substringAfterLast('.', "").lowercase(); val mime = f.mimeType.orEmpty()
+    return when {
+        mime == "application/vnd.google-apps.document" || ext in setOf("doc", "docx", "odt", "rtf") -> "Google Dokumen"
+        mime == "application/vnd.google-apps.spreadsheet" || ext in setOf("xls", "xlsx", "ods", "csv") -> "Google Spreadsheet"
+        mime == "application/vnd.google-apps.presentation" || ext in setOf("ppt", "pptx", "odp") -> "Google Slide"
+        else -> null
+    }
+}
+
 /** Everything a person can do to a file or folder. Each call is one request; the server decides what is allowed. */
 class FileOps(private val api: Api) {
     suspend fun rename(f: FileEntry, name: String) { api.send("POST", "/files/rename", buildJsonObject { put("storageId", f.storageId); put("fileId", f.id); put("name", name) }) }
@@ -44,6 +60,10 @@ class FileOps(private val api: Api) {
             put("password", password?.takeIf { it.isNotBlank() }?.let { JsonPrimitive(it) } ?: JsonNull)
             put("title", title?.takeIf { it.isNotBlank() }?.let { JsonPrimitive(it) } ?: JsonNull)
         })
+
+    suspend fun driveInfo(f: FileEntry): DriveInfo = api.get("/files/${f.storageId}/${f.id}/drive")
+    /** Copies something another person owns into this account's own Drive, so the copy is theirs. */
+    suspend fun claim(f: FileEntry) { api.send("POST", "/files/${f.storageId}/${f.id}/claim", buildJsonObject { }) }
 
     /** EXIF and video details; empty for other files. */
     suspend fun metadata(f: FileEntry): List<MetaGroup> = api.get("/files/${f.storageId}/${f.id}/metadata")

@@ -114,11 +114,18 @@ private class PdfDoc(file: File) : AutoCloseable {
 @Composable
 fun DocumentViewer(f: FileEntry, api: Api, onClose: () -> Unit, onDownload: () -> Unit) {
     BackHandler(onBack = onClose)
+    // Word, Excel and PowerPoint files that live in Google Drive can be opened in Google's editors.
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var googleUrl by androidx.compose.runtime.remember(f.id) { androidx.compose.runtime.mutableStateOf<String?>(null) }
+    androidx.compose.runtime.LaunchedEffect(f.id) {
+        if (app.superdrive.core.googleEditorLabel(f) != null) googleUrl = try { app.superdrive.core.FileOps(api).driveInfo(f).editUrl } catch (_: Exception) { null }
+    }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background, contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             app.superdrive.ui.design.PageHeader(f.name, subtitle = listOfNotNull(f.size?.let { android.text.format.Formatter.formatShortFileSize(androidx.compose.ui.platform.LocalContext.current, it) }, f.mimeType).joinToString(" · ").ifEmpty { null },
                 leading = { app.superdrive.ui.design.BarIcon(app.superdrive.ui.design.Lu.Back, "Tutup", onClose, tint = MaterialTheme.colorScheme.onSurface) }) {
+                googleUrl?.let { u -> app.superdrive.ui.design.BarIcon(app.superdrive.ui.design.Lu.Link, "Buka di ${app.superdrive.core.googleEditorLabel(f) ?: "Google"}", { try { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(u))) } catch (_: Exception) { } }, tint = MaterialTheme.colorScheme.primary) }
                 app.superdrive.ui.design.BarIcon(app.superdrive.ui.design.Lu.Download, "Unduh", onDownload, tint = MaterialTheme.colorScheme.primary)
             }
         },
