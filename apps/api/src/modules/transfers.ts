@@ -9,7 +9,7 @@ import { audit, notify } from "../lib/audit.ts";
 import { newId } from "../lib/crypto.ts";
 import { AppError, badRequest, conflict, notFound } from "../lib/errors.ts";
 import { decodeId, isRetryable, ProviderError, type RemoteFile, type StorageProvider } from "../providers/types.ts";
-import { bustListCache, indexItems, unindex, uniqueName } from "./files.ts";
+import { bustListCache, indexItems, placeOfFolder, placeOfItem, unindex, uniqueName } from "./files.ts";
 import { trashRaw } from "./trash.ts";
 import { prewarmThumbnail } from "./thumbnails.ts";
 import { can, type AuthCtx } from "./permissions.ts";
@@ -35,7 +35,18 @@ function jobDto(r: any): TransferJobDto {
     sourceStorageName: r.source_name ?? "—", destinationStorageName: r.dest_name ?? "—", title: r.title, totalFiles: r.total_files, completedFiles: r.completed_files,
     failedFiles: r.failed_files, skippedFiles: r.skipped_files, totalBytes: r.total_bytes, transferredBytes: r.transferred_bytes, errorMessage: r.error_message,
     retryCount: r.retry_count, startedAt: r.started_at, completedAt: r.completed_at, createdAt: r.created_at, userId: r.user_id,
+    ...places(r),
   };
+}
+/** Where the job's first item came from and where it went, so the app can open those folders. */
+function places(r: any): Pick<TransferJobDto, "sourcePlace" | "destinationPlace"> {
+  try {
+    const rq = JSON.parse(r.request) as { fileIds?: string[]; destinationFolderId?: string };
+    return {
+      sourcePlace: rq.fileIds?.[0] ? placeOfItem(r.source_storage_id, rq.fileIds[0]) : undefined,
+      destinationPlace: rq.destinationFolderId ? placeOfFolder(r.destination_storage_id, rq.destinationFolderId) : undefined,
+    };
+  } catch { return {}; }
 }
 const JOB_SQL = `SELECT j.*, s.name AS source_name, d.name AS dest_name FROM transfer_jobs j
   LEFT JOIN storages s ON s.id = j.source_storage_id LEFT JOIN storages d ON d.id = j.destination_storage_id`;

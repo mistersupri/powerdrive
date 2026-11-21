@@ -1,5 +1,5 @@
 import { issueTicket, readTicket } from "../modules/tickets.ts";
-import { listMedia, listMediaFolders, listMediaHighlights } from "../modules/files.ts";
+import { listMedia, listMediaFolders, listMediaHighlights, mediaTimeline } from "../modules/files.ts";
 import { albumFor } from "../modules/albums.ts";
 import { markSeen } from "../modules/activity.ts";
 import { addComment, addTag, deleteComment, listActivity, listComments, listTags, removeTag, workspaceTags } from "../modules/activity.ts";
@@ -16,7 +16,7 @@ import { sendFile, sendFolderZip, sendThumbnail, sendZip } from "../modules/deli
 import { createFolder, deleteFile, listFolder, renameFile, searchIndex, setStar, toEntry } from "../modules/files.ts";
 import { requireStorage } from "../modules/permissions.ts";
 import { getThumbnail, pickSize } from "../modules/thumbnails.ts";
-import { cancelUpload, createUpload, getUpload, receiveChunk, retryUpload } from "../modules/uploads.ts";
+import { cancelUpload, createUpload, getUpload, receiveChunk, retryUpload, uploadHistory } from "../modules/uploads.ts";
 import { mapProviderError, providerFor } from "../modules/storages.ts";
 import { createTransfer } from "../modules/transfers.ts";
 import { decodeId, ROOT, type RemoteFile } from "../providers/types.ts";
@@ -194,10 +194,17 @@ export async function fileRoutes(app: FastifyInstance) {
   });
   app.get("/media", async (req) => {
     const ctx = requireAuth(req);
-    const q = z.object({ kind: z.enum(["all", "image", "video"]).optional(), storageId: z.string().optional(), cursor: z.string().max(600).optional(), limit: z.coerce.number().int().optional(), sort: z.enum(["date", "name", "size"]).optional(), dir: z.enum(["asc", "desc"]).optional(), folderId: z.string().max(2000).optional(), albumId: z.string().max(60).optional() }).parse(req.query);
+    const q = z.object({ kind: z.enum(["all", "image", "video"]).optional(), storageId: z.string().optional(), cursor: z.string().max(600).optional(), limit: z.coerce.number().int().optional(), sort: z.enum(["date", "name", "size"]).optional(), dir: z.enum(["asc", "desc"]).optional(), folderId: z.string().max(2000).optional(), albumId: z.string().max(60).optional(), after: z.string().max(40).optional(), before: z.string().max(40).optional() }).parse(req.query);
     if (q.albumId) albumFor(ctx, req.sessionToken, q.albumId); // owner only; a private album only while unlocked
     return ok(req, listMedia(ctx, { ...q, folderId: q.folderId ? decodeId(q.folderId) : undefined }));
   });
+  app.get("/media/timeline", async (req) => {
+    const ctx = requireAuth(req);
+    const q = z.object({ kind: z.enum(["all", "image", "video"]).optional(), storageId: z.string().optional(), folderId: z.string().max(2000).optional(), albumId: z.string().max(60).optional(), after: z.string().max(40).optional(), before: z.string().max(40).optional() }).parse(req.query);
+    if (q.albumId) albumFor(ctx, req.sessionToken, q.albumId);
+    return ok(req, mediaTimeline(ctx, { ...q, folderId: q.folderId ? decodeId(q.folderId) : undefined }));
+  });
+  app.get("/uploads/history", async (req) => ok(req, uploadHistory(requireAuth(req), z.object({ page: z.coerce.number().int().optional(), limit: z.coerce.number().int().optional() }).parse(req.query))));
   app.get("/search", async (req) => {
     const ctx = requireAuth(req);
     const q = z.object({

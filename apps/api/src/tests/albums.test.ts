@@ -150,3 +150,27 @@ describe("upload dates", () => {
     assert.ok(new Date(g.modifiedAt).getTime() < Date.now() + 60_000, "an implausible date is ignored");
   });
 });
+
+describe("gallery filters and places", () => {
+  it("counts photos per month and narrows by date", async () => {
+    await seed();
+    const tl = (await t.call("ana", "GET", "/media/timeline")).data.months as any[];
+    assert.ok(tl.length >= 1);
+    const all = (await names("")).length;
+    assert.equal(tl.reduce((n, m) => n + m.count, 0), all);
+    assert.equal(((await t.call("ana", "GET", "/media/timeline?kind=video")).data.months as any[]).reduce((n, m) => n + m.count, 0), (await names("&kind=video")).length);
+    assert.equal((await names("&before=2000-01-01")).length, 0, "nothing was taken before 2000");
+    assert.equal((await names("&after=2000-01-01")).length, all);
+    assert.equal(((await t.call("ana", "GET", "/media/timeline?before=2000-01-01")).data.months as any[]).length, 0);
+  });
+  it("tells where a shared item and an upload live", async () => {
+    const { dirs, by } = await seed();
+    const photo = by("a.jpg");
+    await t.call("ana", "POST", "/shares", { storageId: sid, fileId: photo.id, role: "VIEWER" });
+    const shares = (await t.call("ana", "GET", "/shares/all")).data.items as any[];
+    const mine = shares.find((s) => s.name === "a.jpg");
+    assert.equal(mine.place.path, "/Camera"); assert.equal(mine.place.folderId, dirs.Camera);
+    const hist = (await t.call("ana", "GET", "/uploads/history")).data;
+    assert.ok(Array.isArray(hist.items));
+  });
+});

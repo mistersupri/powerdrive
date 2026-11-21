@@ -92,6 +92,9 @@ export interface StorageConnectionDto {
   index?: { status: "IDLE" | "RUNNING" | "DONE" | "PARTIAL" | "FAILED"; filesIndexed: number; foldersScanned: number; startedAt: string | null; finishedAt: string | null; count: number; error: string | null };
 }
 
+/** Where something lives: the folder it is in (null at the top of the storage) and that folder's readable path. */
+export interface PlaceDto { storageId: string; folderId: string | null; path: string }
+
 export interface TransferJobDto {
   id: string;
   type: TransferType;
@@ -114,6 +117,9 @@ export interface TransferJobDto {
   completedAt: string | null;
   createdAt: string;
   userId: string;
+  /** The folder the first item came from, and the folder it was sent to (when the index knows them). */
+  sourcePlace?: PlaceDto;
+  destinationPlace?: PlaceDto;
 }
 
 export interface TransferItemDto {
@@ -133,6 +139,7 @@ export interface TrashItemDto {
 }
 
 export interface ShareLinkDto {
+  /** The folder the shared item lives in (the first item of a bundle). */ place?: PlaceDto;
   id: string; /** Free text for the owner: who this link was made for. Never shown to visitors. */ title: string | null;
   /** "bundle" = several items under one link. */ kind: "single" | "bundle"; itemCount: number; items: { name: string; isFolder: boolean }[];
   /** Set when shared directly with a workspace member instead of by link. */ recipient: { id: string; name: string; email: string } | null; storageId: string; storageName: string; fileId: string; name: string; isFolder: boolean; role: "VIEWER" | "EDITOR";
@@ -143,6 +150,11 @@ export interface ShareLinkDto {
 export interface PublicShareDto {
   name: string; isFolder: boolean; isBundle?: boolean; itemCount?: number; role: "VIEWER" | "EDITOR"; requiresPassword: boolean; unlocked: boolean; expiresAt: string | null;
   maxUploadBytes: number | null; uploadedBytes: number;
+}
+
+export interface UploadHistoryDto {
+  id: string; storageId: string; storageName: string; fileId: string | null; name: string; size: number; status: "DONE" | "FAILED" | "SKIPPED"; errorMessage: string | null; createdAt: string;
+  place?: PlaceDto;
 }
 
 export interface FolderStats { files: number; folders: number; bytes: number; truncated: boolean }

@@ -1,6 +1,6 @@
 import { actorOf, changedFolders, logActivity, markSeen, touchFolder } from "./activity.ts";
 import path from "node:path";
-import type { FileEntry, FileListing } from "@superdrive/shared";
+import type { FileEntry, FileListing, PlaceDto } from "@superdrive/shared";
 import { db, now } from "../db.ts";
 import { audit } from "../lib/audit.ts";
 import { badRequest, conflict } from "../lib/errors.ts";
@@ -161,6 +161,20 @@ const TYPE_FILTERS: Record<string, string> = {
   archive: "f.ext IN ('zip','rar','7z','tar','gz','tgz','bz2','xz')",
 };
 
+/** Readable path of a folder from the metadata index ("/" at the top of a storage). */
+export function indexPath(storageId: string, folder: string | null): string {
+  const names: string[] = []; let cur = folder;
+  for (let i = 0; cur && cur !== ROOT && i < 40; i++) { const r = db.get<{ name: string; parent_id: string | null }>("SELECT name, parent_id FROM files WHERE storage_id = ? AND file_id = ?", storageId, cur); if (!r) break; names.unshift(r.name); cur = r.parent_id; }
+  return "/" + names.join("/");
+}
+/** The folder an item lives in, if the index has seen the item. */
+export function placeOfItem(storageId: string, fileRaw: string): PlaceDto | undefined {
+  const r = db.get<{ parent_id: string | null }>("SELECT parent_id FROM files WHERE storage_id = ? AND file_id = ?", storageId, fileRaw);
+  if (!r) return undefined;
+  return { storageId, folderId: r.parent_id && r.parent_id !== ROOT ? encodeId(r.parent_id) : null, path: indexPath(storageId, r.parent_id) };
+}
+export const placeOfFolder = (storageId: string, folderRaw: string): PlaceDto => ({ storageId, folderId: folderRaw && folderRaw !== ROOT ? encodeId(folderRaw) : null, path: indexPath(storageId, folderRaw) });
+
 export interface SearchParams {
   q?: string; storageId?: string; type?: string; ext?: string; minSize?: number; maxSize?: number;
   modifiedAfter?: string; modifiedBefore?: string; folderId?: string; sort?: string; page?: number; limit?: number;
@@ -224,7 +238,7 @@ export function searchIndex(ctx: AuthCtx, s: SearchParams) {
  */
 /** Gallery order: what the rows are sorted on, expressed so a cursor can resume exactly after the last row. */
 const MEDIA_SORT = { date: "COALESCE(f.modified_at, '')", name: "LOWER(f.name)", size: "COALESCE(f.size, 0)" } as const;
-export function listMedia(ctx: AuthCtx, q: { kind?: "all" | "image" | "video"; storageId?: string; cursor?: string; limit?: number; sort?: keyof typeof MEDIA_SORT; dir?: "asc" | "desc"; /** raw provider id of a folder (needs storageId) */ folderId?: string; /** only the items of this album (the caller has already checked it) */ albumId?: string }) {
+export function listMedia(ctx: AuthCtx, q: { kind?: "all" | "image" | "video"; storageId?: string; cursor?: string; limit?: number; sort?: keyof typeof MEDIA_SORT; dir?: "asc" | "desc"; /** raw provider id of a folder (needs storageId) */ folderId?: string; /** only the items of this album (the caller has already checked it) */ albumId?: string; /** taken on or after / before this instant (ISO) */ after?: string; before?: string }) {
   const storages = db.all<{ id: string }>("SELECT id FROM storages WHERE workspace_id = ? AND status = 'CONNECTED'", ctx.workspaceId).map((r) => r.id).filter((id) => permissionsFor(ctx, id).includes("READ") && (!q.storageId || q.storageId === id));
   if (!storages.length) return { items: [] as FileEntry[], nextCursor: null as string | null, counts: { image: 0, video: 0 } };
   const base: string[] = [`f.storage_id IN (${storages.map(() => "?").join(",")})`, "f.is_folder = 0"]; const bargs: (string | number)[] = [...storages];
@@ -232,6 +246,8 @@ export function listMedia(ctx: AuthCtx, q: { kind?: "all" | "image" | "video"; s
   if (q.albumId) { base.push("EXISTS (SELECT 1 FROM album_items ai WHERE ai.album_id = ? AND ai.storage_id = f.storage_id AND ai.file_id = f.file_id)"); bargs.push(q.albumId); }
   else { const hide = notPrivateSql(ctx); base.push(hide.sql); bargs.push(...hide.args); }
   if (q.folderId && q.storageId) { base.push("f.parent_id = ?"); bargs.push(q.folderId); }
+  if (q.after) { base.push("f.modified_at >= ?"); bargs.push(q.after); }
+  if (q.before) { base.push("f.modified_at < ?"); bargs.push(q.before); }
   const kinds = q.kind === "image" ? [TYPE_FILTERS.image!] : q.kind === "video" ? [TYPE_FILTERS.video!] : [TYPE_FILTERS.image!, TYPE_FILTERS.video!];
   const where = [...base, `(${kinds.join(" OR ")})`]; const args = [...bargs];
   const sortKey = q.sort ?? "date"; const expr = MEDIA_SORT[sortKey]; const dir = q.dir === "asc" ? "ASC" : "DESC";
@@ -249,6 +265,22 @@ export function listMedia(ctx: AuthCtx, q: { kind?: "all" | "image" | "video"; s
   const last = page.at(-1);
   const c = (kind: string) => db.get<{ n: number }>(`SELECT COUNT(*) n FROM files f WHERE ${base.join(" AND ")} AND (${TYPE_FILTERS[kind]})`, ...bargs)!.n;
   return { items, nextCursor: more && last ? `${sortKey === "date" ? last.modified_at ?? "" : sortKey === "name" ? String(last.name).toLowerCase() : last.size ?? 0}\u0001${last.storage_id}\u0001${last.file_id}` : null, counts: { image: c("image"), video: c("video") } };
+}
+
+/** How many photos and videos fall in each month (newest first), for the gallery's date scrubber. Same filters as listMedia. */
+export function mediaTimeline(ctx: AuthCtx, q: { kind?: "all" | "image" | "video"; storageId?: string; folderId?: string; albumId?: string; after?: string; before?: string }) {
+  const storages = db.all<{ id: string }>("SELECT id FROM storages WHERE workspace_id = ? AND status = 'CONNECTED'", ctx.workspaceId).map((r) => r.id).filter((id) => permissionsFor(ctx, id).includes("READ") && (!q.storageId || q.storageId === id));
+  if (!storages.length) return { months: [] as { month: string; count: number }[] };
+  const where: string[] = [`f.storage_id IN (${storages.map(() => "?").join(",")})`, "f.is_folder = 0"]; const args: (string | number)[] = [...storages];
+  if (q.albumId) { where.push("EXISTS (SELECT 1 FROM album_items ai WHERE ai.album_id = ? AND ai.storage_id = f.storage_id AND ai.file_id = f.file_id)"); args.push(q.albumId); }
+  else { const hide = notPrivateSql(ctx); where.push(hide.sql); args.push(...hide.args); }
+  if (q.folderId && q.storageId) { where.push("f.parent_id = ?"); args.push(q.folderId); }
+  if (q.after) { where.push("f.modified_at >= ?"); args.push(q.after); }
+  if (q.before) { where.push("f.modified_at < ?"); args.push(q.before); }
+  const kinds = q.kind === "image" ? [TYPE_FILTERS.image!] : q.kind === "video" ? [TYPE_FILTERS.video!] : [TYPE_FILTERS.image!, TYPE_FILTERS.video!];
+  where.push(`(${kinds.join(" OR ")})`);
+  const rows = db.all<{ m: string | null; n: number }>(`SELECT substr(f.modified_at, 1, 7) AS m, COUNT(*) AS n FROM files f WHERE ${where.join(" AND ")} GROUP BY m ORDER BY m DESC`, ...args);
+  return { months: rows.map((r) => ({ month: r.m ?? "", count: r.n })) };
 }
 
 /** "On this day" for the gallery: see mediaHighlights. */

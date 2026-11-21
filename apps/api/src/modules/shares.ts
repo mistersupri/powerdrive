@@ -10,6 +10,7 @@ import { deriveSecret, newId, open, randomToken, seal, sha256 } from "../lib/cry
 import { AppError, badRequest, forbidden, notFound } from "../lib/errors.ts";
 import { decodeId, encodeId, ROOT, type RemoteFile, type StorageProvider } from "../providers/types.ts";
 import { ARGON } from "./auth.ts";
+import { placeOfItem } from "./files.ts";
 import type { AuthCtx } from "./permissions.ts";
 import { providerFor } from "./storages.ts";
 
@@ -34,6 +35,7 @@ export function toShareDto(r: any): ShareLinkDto {
     url: `${config.appUrl}/share/${token}`, hasPassword: !!r.password_hash, expiresAt: r.expires_at, maxUploadBytes: r.max_upload_bytes, uploadedBytes: r.uploaded_bytes,
     accessCount: r.access_count, lastAccessAt: r.last_access_at, createdAt: r.created_at, createdByName: r.creator_name ?? null, revokedAt: r.revoked_at,
     expired: !!r.expires_at && r.expires_at < now(),
+    place: placeOfItem(r.storage_id, r.kind === "bundle" ? shareItems(r.id)[0]?.file_id ?? "" : r.file_id),
   };
 }
 const SELECT = `SELECT l.*, s.name AS storage_name, u.name AS creator_name, r.name AS recipient_name, r.email AS recipient_email, (SELECT COUNT(*) FROM share_items i WHERE i.share_id = l.id) AS item_count FROM share_links l LEFT JOIN storages s ON s.id = l.storage_id LEFT JOIN users u ON u.id = l.created_by LEFT JOIN users r ON r.id = l.recipient_user_id`;
@@ -123,7 +125,8 @@ export async function createDirectShares(ctx: AuthCtx, p: StorageProvider, input
 /** Items other members shared with this user (and are still valid). */
 export function listSharedWithMe(ctx: AuthCtx) {
   const rows = db.all<any>(`${SELECT} WHERE l.workspace_id = ? AND l.recipient_user_id = ? AND l.revoked_at IS NULL AND (l.expires_at IS NULL OR l.expires_at > ?) ORDER BY l.created_at DESC`, ctx.workspaceId, ctx.userId, now());
-  return rows.map((r) => ({ ...toShareDto(r), url: `/shared/${r.id}` }));
+  // The folder they were shared from is the sender's business, so it is left out here.
+  return rows.map((r) => ({ ...toShareDto(r), url: `/shared/${r.id}`, place: undefined }));
 }
 
 export const listSharesForTarget = (storageId: string, fileRaw: string) =>

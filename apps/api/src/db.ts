@@ -271,6 +271,14 @@ const MIGRATIONS: string[] = [
   /* 10 */ `
   ALTER TABLE uploads ADD COLUMN last_modified INTEGER;
   `,
+  /* 11 */ `
+  CREATE TABLE upload_history (
+    id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, user_id TEXT NOT NULL, storage_id TEXT NOT NULL, parent_id TEXT NOT NULL, file_id TEXT,
+    name TEXT NOT NULL, size INTEGER NOT NULL, status TEXT NOT NULL, error_message TEXT,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+  );
+  CREATE INDEX idx_upload_history ON upload_history(workspace_id, user_id, created_at DESC);
+  `,
 ];
 
 function migrate(d: Database) {

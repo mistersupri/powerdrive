@@ -4,7 +4,7 @@ import fsp from "node:fs/promises";
 import path from "node:path";
 import { PassThrough, Transform, type Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import type { ConflictPolicy, UploadDto } from "@superdrive/shared";
+import type { ConflictPolicy, UploadDto, UploadHistoryDto } from "@superdrive/shared";
 import { config } from "../config.ts";
 import { db, now } from "../db.ts";
 import { audit } from "../lib/audit.ts";
@@ -12,11 +12,11 @@ import { newId } from "../lib/crypto.ts";
 import { AppError, badRequest, conflict, notFound } from "../lib/errors.ts";
 import { LocalProvider } from "../providers/local.ts";
 import { type StorageProvider } from "../providers/types.ts";
-import { bustListCache, indexItems, toEntry, uniqueName, validName } from "./files.ts";
+import { bustListCache, indexItems, placeOfFolder, toEntry, uniqueName, validName } from "./files.ts";
 import { prewarmThumbnail } from "./thumbnails.ts";
 import type { AuthCtx } from "./permissions.ts";
 import { mapProviderError, providerFor } from "./storages.ts";
-import { decodeId } from "../providers/types.ts";
+import { decodeId, encodeId } from "../providers/types.ts";
 
 const pushed = new Map<string, number>();
 const finalizing = new Set<string>();
@@ -148,6 +148,7 @@ async function finalize(ctx: AuthCtx, r: any) {
       if (r.conflict_policy === "SKIP") {
         await fsp.rm(r.staging_path, { force: true });
         db.run("UPDATE uploads SET status='DONE', result=?, updated_at=? WHERE id=?", JSON.stringify({ skipped: true }), now(), r.id);
+        remember(r, "SKIPPED", existing.id, null);
         return;
       }
       if (r.conflict_policy === "RENAME") name = await uniqueName(p, r.parent_id, name);
@@ -172,11 +173,32 @@ async function finalize(ctx: AuthCtx, r: any) {
     prewarmThumbnail(r.storage_id, p, file);
     audit({ workspaceId: r.workspace_id, userId: r.user_id, action: "file.upload", resourceType: "file", resourceId: file.id, metadata: { storageId: r.storage_id, name: file.name, size: r.size }, ip: ctx.ip });
     db.run("UPDATE uploads SET status='DONE', result=?, updated_at=? WHERE id=?", JSON.stringify({ file: toEntry(r.storage_id, file) }), now(), r.id);
+    remember(r, "DONE", file.id, null, file.name);
   } catch (e) {
     let msg = e instanceof Error ? e.message : String(e);
     try { mapProviderError(e, r.storage_id); } catch (m) { msg = (m as Error).message; }
     db.run("UPDATE uploads SET status='FAILED', error_message=?, updated_at=? WHERE id=?", msg, now(), r.id);
+    remember(r, "FAILED", null, msg);
   }
+}
+
+/** Keeps a line in the upload history (the "Riwayat unggahan" list) after the staged upload itself is gone. Uploads made through share links are not the signed-in person's history. */
+function remember(r: any, status: "DONE" | "FAILED" | "SKIPPED", fileId: string | null, error: string | null, name?: string) {
+  if (r.share_id) return;
+  try {
+    db.run("INSERT OR REPLACE INTO upload_history(id,workspace_id,user_id,storage_id,parent_id,file_id,name,size,status,error_message) VALUES (?,?,?,?,?,?,?,?,?,?)", r.id, r.workspace_id, r.user_id, r.storage_id, r.parent_id, fileId, name ?? r.name, r.size, status, error);
+  } catch { /* history is a convenience: never fail an upload over it */ }
+}
+
+export function uploadHistory(ctx: AuthCtx, q: { page?: number; limit?: number }) {
+  const limit = Math.min(Math.max(q.limit ?? 50, 1), 200), offset = (Math.max(q.page ?? 1, 1) - 1) * limit;
+  const total = db.get<{ n: number }>("SELECT COUNT(*) n FROM upload_history WHERE workspace_id = ? AND user_id = ?", ctx.workspaceId, ctx.userId)!.n;
+  const rows = db.all<any>(`SELECT h.*, s.name AS storage_name FROM upload_history h LEFT JOIN storages s ON s.id = h.storage_id WHERE h.workspace_id = ? AND h.user_id = ? ORDER BY h.created_at DESC LIMIT ? OFFSET ?`, ctx.workspaceId, ctx.userId, limit, offset);
+  const items: UploadHistoryDto[] = rows.map((r) => ({
+    id: r.id, storageId: r.storage_id, storageName: r.storage_name ?? "—", fileId: r.file_id ? encodeId(r.file_id) : null, name: r.name, size: r.size, status: r.status, errorMessage: r.error_message, createdAt: r.created_at,
+    place: placeOfFolder(r.storage_id, r.parent_id),
+  }));
+  return { items, total };
 }
 
 /** On boot: resume finalization of uploads that were interrupted by a restart. */
@@ -193,4 +215,5 @@ export async function sweepStaleUploads() {
     await fsp.rm(r.staging_path, { force: true }); releaseQuota(r); db.run("DELETE FROM uploads WHERE id = ?", r.id);
   }
   db.run("DELETE FROM uploads WHERE status = 'DONE' AND updated_at < ?", cutoff);
+  db.run("DELETE FROM upload_history WHERE created_at < ?", new Date(Date.now() - 90 * 86_400_000).toISOString());
 }
