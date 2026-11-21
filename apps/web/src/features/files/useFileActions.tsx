@@ -1,6 +1,6 @@
 import type { ConflictPolicy, FileEntry, Permission, StorageConnectionDto, TransferJobDto } from "@superdrive/shared";
 import { useQueryClient } from "@tanstack/react-query";
-import { Copy, Download, Eye, FolderInput, FolderOpen, FolderPlus, Pencil, RefreshCw, Share2, Star, Trash2, Upload, Info } from "lucide-react";
+import { Copy, Download, ExternalLink, Eye, FolderInput, FolderOpen, FolderPlus, Pencil, RefreshCw, Share2, Star, Trash2, Upload, Info, UserCheck } from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
@@ -12,6 +12,18 @@ import { DeleteDialog, NameDialog, TransferDialog } from "./dialogs";
 import { Preview } from "@/features/preview/Preview";
 import { ShareDialog } from "@/features/share/ShareDialog";
 import { type Selection } from "./selection";
+import { Dialog } from "@/ui/Dialog";
+import { Button } from "@/ui/Button";
+
+/** Which Google editor a file opens in; null when none fits. */
+export function googleEditorLabel(e: FileEntry): string | null {
+  if (e.isFolder) return null;
+  const ext = e.name.toLowerCase().split(".").pop() ?? ""; const mime = e.mimeType ?? "";
+  if (mime === "application/vnd.google-apps.document" || ["doc", "docx", "odt", "rtf"].includes(ext)) return "Google Dokumen";
+  if (mime === "application/vnd.google-apps.spreadsheet" || ["xls", "xlsx", "ods", "csv"].includes(ext)) return "Google Spreadsheet";
+  if (mime === "application/vnd.google-apps.presentation" || ["ppt", "pptx", "odp"].includes(ext)) return "Google Slide";
+  return null;
+}
 
 export { startTransfer, triggerDownload };
 interface Args {
@@ -27,7 +39,7 @@ export function useFileActions({ storage, folderId, folderName, location, onDeta
   const perms = useMemo(() => new Set<Permission>(storage?.permissions ?? []), [storage]);
   const can = (p: Permission) => perms.has(p);
   const [shareTarget, setShareTarget] = useState<FileEntry[]>([]);
-  const [dlg, setDlg] = useState<null | { t: "folder" } | { t: "rename"; e: FileEntry } | { t: "delete"; list: FileEntry[] } | { t: "transfer"; mode: "COPY" | "MOVE"; list: FileEntry[] }>(null);
+  const [dlg, setDlg] = useState<null | { t: "folder" } | { t: "rename"; e: FileEntry } | { t: "delete"; list: FileEntry[] } | { t: "transfer"; mode: "COPY" | "MOVE"; list: FileEntry[] } | { t: "claim"; e: FileEntry }>(null);
   const [preview, setPreview] = useState<number | null>(null);
   const fileInput = useRef<HTMLInputElement>(null); const dirInput = useRef<HTMLInputElement>(null);
   const storageId = storage?.id ?? "";
@@ -35,6 +47,20 @@ export function useFileActions({ storage, folderId, folderName, location, onDeta
   const previewList = useMemo(() => entries.filter((e) => previewable(e)), [entries]);
 
   const refresh = useCallback(() => qc.invalidateQueries({ queryKey: ["files", storageId] }), [qc, storageId]);
+
+  /** Opens a Word, Excel or PowerPoint file from Google Drive in Google's own editor. */
+  const openInGoogle = useCallback(async (e: FileEntry) => {
+    const w = window.open("", "_blank"); // opened first so the browser does not treat it as a pop-up
+    try {
+      const r = await api<{ editUrl?: string | null }>(`/files/${storageId}/${e.id}/drive`);
+      if (!r.editUrl) { w?.close(); return toast.error("File ini tidak bisa dibuka di editor Google."); }
+      if (w) { w.opener = null; w.location.href = r.editUrl; } else window.location.href = r.editUrl;
+    } catch (err) { w?.close(); toast.error((err as Error).message); }
+  }, [storageId]);
+  const claim = useCallback(async (e: FileEntry) => {
+    try { await api(`/files/${storageId}/${e.id}/claim`, { method: "POST", body: {} }); toast.success("Disalin ke Drive Anda, folder “Dimiliki saya”. Progresnya ada di halaman Transfer."); }
+    catch (err) { toast.error((err as Error).message); }
+  }, [storageId]);
 
   const open = useCallback((e: FileEntry) => {
     if (e.isFolder) return onOpenFolder(e.id);
@@ -81,10 +107,14 @@ export function useFileActions({ storage, folderId, folderName, location, onDeta
       { label: "Ganti nama", icon: <Pencil />, shortcut: "F2", hidden: multi || !can("RENAME"), onSelect: () => setDlg({ t: "rename", e }) },
       { label: "Detail", icon: <Info />, hidden: multi || !onDetails, onSelect: () => onDetails?.(e) },
       { label: "Bagikan…", icon: <Share2 />, hidden: !can("SHARE"), onSelect: () => setShareTarget(list) },
+      ...(storage?.provider === "GOOGLE_DRIVE" ? [
+        { label: `Buka di ${googleEditorLabel(e) ?? "Google"}`, icon: <ExternalLink />, hidden: multi || !googleEditorLabel(e), onSelect: () => { void openInGoogle(e); } },
+        { label: "Jadikan milik saya…", icon: <UserCheck />, hidden: multi || !can("UPLOAD"), onSelect: () => setDlg({ t: "claim", e }) },
+      ] : []),
       { label: e.starred ? "Hapus bintang" : "Beri bintang", icon: <Star />, hidden: multi, onSelect: () => { void star(e); } },
       { label: "Hapus", icon: <Trash2 />, danger: true, divider: true, hidden: !can("DELETE"), shortcut: "Del", onSelect: () => setDlg({ t: "delete", list }) },
     ];
-  }, [perms, selection.selected, selectedEntries, open, star, refresh, onDetails]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [perms, selection.selected, selectedEntries, open, star, refresh, onDetails, storage?.provider, openInGoogle]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const keyAction = useCallback((a: "selectAll" | "delete" | "rename" | "clear") => {
     if (a === "selectAll") selection.selectAll(entries);
@@ -110,6 +140,9 @@ export function useFileActions({ storage, folderId, folderName, location, onDeta
     <TransferDialog open={dlg?.t === "transfer"} mode={dlg?.t === "transfer" ? dlg.mode : "COPY"} entries={dlg?.t === "transfer" ? dlg.list : []} fromStorageId={storageId} initialStorageId={storageId} initialFolderId={folderId} onClose={() => setDlg(null)}
       onConfirm={async (dest, policy) => { if (dlg?.t !== "transfer") return; await startTransfer(dlg.mode, storageId, dlg.list.map((e) => e.id), dest, policy); selection.clear(); }} />
     {preview !== null && <Preview location={location} storageName={storage?.isDefault ? "Semua file" : storage?.name} items={previewList} index={preview} onIndex={setPreview} onClose={() => setPreview(null)} onShare={can("SHARE") ? (f) => { setPreview(null); setShareTarget([f]); } : undefined} canDownload={can("DOWNLOAD")} />}
+    <Dialog open={dlg?.t === "claim"} onClose={() => setDlg(null)} width="max-w-sm" title="Jadikan milik saya?" footer={<><Button onClick={() => setDlg(null)}>Batal</Button><Button variant="primary" onClick={() => { if (dlg?.t === "claim") void claim(dlg.e); setDlg(null); }}>Salin</Button></>}>
+      <p className="text-[14px] text-muted">Salinan <b className="text-ink">{dlg?.t === "claim" ? dlg.e.name : ""}</b> dibuat di Google Drive Anda (folder “Dimiliki saya”) dan menjadi milik Anda. File aslinya tetap milik pemiliknya. Folder disalin beserta isinya. Penyalinan gagal bila pemilik melarangnya.</p>
+    </Dialog>
     <ShareDialog open={shareTarget.length > 0} storageId={storageId} files={shareTarget} onClose={() => setShareTarget([])} />
   </>);
 
