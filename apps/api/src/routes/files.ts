@@ -19,7 +19,17 @@ import { getThumbnail, pickSize } from "../modules/thumbnails.ts";
 import { cancelUpload, createUpload, getUpload, receiveChunk, retryUpload, uploadHistory } from "../modules/uploads.ts";
 import { mapProviderError, providerFor } from "../modules/storages.ts";
 import { createTransfer } from "../modules/transfers.ts";
-import { decodeId, ROOT, type RemoteFile } from "../providers/types.ts";
+import { decodeId, encodeId, ROOT, type RemoteFile } from "../providers/types.ts";
+import type { GoogleDriveProvider } from "../providers/google.ts";
+
+/** Which Google editor opens a file: by extension for Office files, by mime type for files made in Google's own apps. */
+export function googleEditor(name: string, mime: string): "document" | "spreadsheets" | "presentation" | null {
+  const ext = name.toLowerCase().split(".").pop() ?? "";
+  if (mime === "application/vnd.google-apps.document" || ["doc", "docx", "odt", "rtf"].includes(ext)) return "document";
+  if (mime === "application/vnd.google-apps.spreadsheet" || ["xls", "xlsx", "ods", "csv"].includes(ext)) return "spreadsheets";
+  if (mime === "application/vnd.google-apps.presentation" || ["ppt", "pptx", "odp"].includes(ext)) return "presentation";
+  return null;
+}
 
 const conflictPolicy = z.enum(["SKIP", "OVERWRITE", "RENAME", "FAIL"]);
 
@@ -83,6 +93,33 @@ export async function fileRoutes(app: FastifyInstance) {
       }
     } catch (e) { mapProviderError(e, storageId); }
     return ok(req, out);
+  });
+
+  // Google Drive extras: who owns the file, and links into Google's editors.
+  app.get("/files/:storageId/:fileId/drive", async (req) => {
+    const { storageId, fileId } = req.params as any;
+    const { row, p } = open(req, "READ", storageId);
+    if (row.provider !== "GOOGLE_DRIVE") return ok(req, { drive: false });
+    try {
+      const raw = decodeId(fileId); const info = await (p as unknown as GoogleDriveProvider).driveInfo(raw);
+      const f = await metaOf(storageId, p, raw);
+      const editor = f.isFolder ? null : googleEditor(f.name, info.mimeType || f.mimeType || "");
+      return ok(req, { drive: true, ...info, editUrl: editor ? `https://docs.google.com/${editor}/d/${encodeURIComponent(raw)}/edit` : null });
+    } catch (e) { mapProviderError(e, storageId); }
+  });
+
+  // "Make it mine": copies a file or folder that someone else owns into the signed-in account's own Drive. Drive does the copy itself, and the copy belongs to this account.
+  app.post("/files/:storageId/:fileId/claim", async (req) => {
+    const { storageId, fileId } = req.params as any;
+    const { ctx, row, p } = open(req, "UPLOAD", storageId);
+    if (row.provider !== "GOOGLE_DRIVE") throw badRequest("Hanya untuk penyimpanan Google Drive.");
+    const body = z.object({ folderId: z.string().optional() }).parse(req.body ?? {});
+    let dest = body.folderId ? decodeId(body.folderId) : "";
+    if (!dest) {
+      const name = "Dimiliki saya";
+      dest = (await p.findChild?.(ROOT, name))?.id ?? decodeId((await createFolder(ctx, storageId, p, ROOT, name)).id);
+    }
+    return ok(req, await createTransfer(ctx, { type: "COPY", source: { storageId, fileIds: [fileId] }, destination: { storageId, folderId: encodeId(dest) }, conflictPolicy: "RENAME" }));
   });
 
   app.post("/files/folders", async (req) => {

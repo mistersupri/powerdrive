@@ -66,6 +66,13 @@ export class GoogleDriveProvider implements StorageProvider {
     return { items: (r.files ?? []).map((f: any) => this.toRemote(f, pid === "root" ? undefined : pid)), nextPageToken: r.nextPageToken ?? null };
   }
 
+  /** Who owns a file, whether the signed-in account may copy or edit it, and its Drive mime type (for "open in Google Docs" and "make it mine"). */
+  async driveInfo(id: string): Promise<{ ownedByMe: boolean; owner: { name: string; email: string } | null; canCopy: boolean; canEdit: boolean; mimeType: string; webViewLink: string | null }> {
+    const r = await this.api<any>(`/files/${encodeURIComponent(this.id(id))}?fields=${encodeURIComponent("ownedByMe,owners(displayName,emailAddress),capabilities(canCopy,canEdit),mimeType,webViewLink")}&supportsAllDrives=true`);
+    const o = r.owners?.[0];
+    return { ownedByMe: !!r.ownedByMe, owner: o ? { name: o.displayName ?? o.emailAddress ?? "", email: o.emailAddress ?? "" } : null, canCopy: r.capabilities?.canCopy !== false, canEdit: !!r.capabilities?.canEdit, mimeType: r.mimeType ?? "", webViewLink: r.webViewLink ?? null };
+  }
+
   async stat(id: string): Promise<RemoteFile> {
     return this.toRemote(await this.api<any>(`/files/${encodeURIComponent(this.id(id))}?fields=${FIELDS}&supportsAllDrives=true`));
   }

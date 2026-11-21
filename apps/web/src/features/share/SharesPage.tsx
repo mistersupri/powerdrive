@@ -1,18 +1,21 @@
 import { Pagination } from "@/ui/Pagination";
 import type { Paged, ShareLinkDto } from "@superdrive/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Copy, Eye, Link2, Pencil, Search, Trash2 } from "lucide-react";
+import { Check, Copy, Eye, Link2, MapPin, Pencil, Search, Trash2 } from "lucide-react";
+import { Link } from "react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { dateTime } from "@/lib/format";
-import { PageHeader } from "@/features/layout/Shell";
+import { PageHeader, useStorages } from "@/features/layout/Shell";
+import { placeHref } from "@/lib/place";
 import { Button } from "@/ui/Button";
 import { Input, Select } from "@/ui/Field";
 import { Badge, Card, EmptyState, Skeleton } from "@/ui/misc";
 import { useDebounced } from "@/lib/useDebounced";
 
 export default function SharesPage() {
+  const storages = useStorages().data ?? [];
   const qc = useQueryClient(); const [page, setPage] = useState(1); const [copied, setCopied] = useState("");
   const [text, setText] = useState(""); const term = useDebounced(text, 300);
   const q = useQuery({ queryKey: ["shares-all", page, term], queryFn: () => api<Paged<ShareLinkDto>>(`/shares/all?page=${page}&limit=25${term ? `&q=${encodeURIComponent(term)}` : ""}`), placeholderData: (p) => p });
@@ -30,7 +33,8 @@ export default function SharesPage() {
               <li key={l.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
                 <span className={`grid size-9 place-items-center rounded-lg ${l.role === "EDITOR" ? "bg-warn-soft text-warn-ink" : "bg-primary-soft text-primary-ink"}`}>{l.role === "EDITOR" ? <Pencil className="size-4" /> : <Eye className="size-4" />}</span>
                 <div className="min-w-0 flex-1 basis-[calc(100%-3.5rem)] sm:basis-0"><p className="text-[14px] font-medium break-words sm:truncate" title={l.title ?? l.name}>{l.title ?? l.name}{l.kind === "bundle" && <span className="ml-2 text-[12px] font-normal text-muted">{l.itemCount} item</span>}</p>
-                  <p className="tnum text-[12px] text-muted sm:truncate">{l.recipient ? `Ke anggota ${l.recipient.name} · ` : ""}{l.title && l.kind !== "bundle" ? `${l.name} · ` : l.kind === "bundle" ? `${l.items.map((i) => i.name).join(", ")} · ` : ""}{l.storageName} · {l.createdByName ?? "–"} · {l.accessCount}× dibuka · {l.expiresAt ? `sampai ${dateTime(l.expiresAt)}` : "tanpa batas"}</p></div>
+                  <p className="tnum text-[12px] text-muted sm:truncate">{l.recipient ? `Ke anggota ${l.recipient.name} · ` : ""}{l.title && l.kind !== "bundle" ? `${l.name} · ` : l.kind === "bundle" ? `${l.items.map((i) => i.name).join(", ")} · ` : ""}{l.storageName} · {l.createdByName ?? "–"} · {l.accessCount}× dibuka · {l.expiresAt ? `sampai ${dateTime(l.expiresAt)}` : "tanpa batas"}</p>
+                  {l.place && <Link to={placeHref(storages, l.place)} className="mt-0.5 inline-flex max-w-full items-center gap-1 text-[12px] text-faint hover:text-primary-ink" title="Buka folder tempat item ini berada"><MapPin className="size-3 shrink-0" aria-hidden /><span className="truncate">{l.place.path}</span></Link>}</div>
                 <Select aria-label={`Izin tautan ${l.title ?? l.name}`} value={l.role} onChange={(e) => setRole.mutate({ id: l.id, role: e.target.value as "VIEWER" | "EDITOR" })} className="h-9 w-[130px] pr-6 pl-2 text-[13px]"><option value="VIEWER">Penonton</option><option value="EDITOR" disabled={!l.isFolder && l.kind !== "bundle"}>{l.isFolder || l.kind === "bundle" ? "Editor" : "Editor (folder)"}</option></Select>{l.hasPassword && <Badge>Sandi</Badge>}{l.expired && <Badge tone="danger">Kedaluwarsa</Badge>}
                 {!l.recipient && <Button size="sm" icon={copied === l.id ? <Check className="size-3.5" /> : <Copy className="size-3.5" />} onClick={async () => { await navigator.clipboard.writeText(l.url); setCopied(l.id); setTimeout(() => setCopied(""), 1500); }}>Salin</Button>}
                 <Button size="sm" variant="ghost" className="text-danger-ink hover:bg-danger-soft" aria-label={`Matikan tautan ${l.name}`} icon={<Trash2 className="size-3.5" />} onClick={() => revoke.mutate(l.id)}><span className="hidden sm:inline">Matikan</span></Button>

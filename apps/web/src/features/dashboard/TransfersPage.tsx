@@ -1,8 +1,8 @@
 import { Pagination } from "@/ui/Pagination";
-import type { Paged, TransferItemDto, TransferJobDto } from "@superdrive/shared";
+import type { Paged, PlaceDto, TransferItemDto, TransferJobDto, UploadHistoryDto } from "@superdrive/shared";
 import { formatBytes } from "@superdrive/shared";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, ChevronDown, Columns2, Eraser, FilterX, Pause, Play, RotateCcw, Search, SlidersHorizontal, X } from "lucide-react";
+import { ArrowRight, ChevronDown, Columns2, Eraser, FilterX, MapPin, Pause, Play, RotateCcw, Search, SlidersHorizontal, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 import { toast } from "sonner";
@@ -11,6 +11,7 @@ import { cn } from "@/lib/cn";
 import { dateTime, formatEta, formatSpeed, percent } from "@/lib/format";
 import { PageHeader, useStorages } from "@/features/layout/Shell";
 import { useDebounced } from "@/lib/useDebounced";
+import { placeHref } from "@/lib/place";
 import { Dialog } from "@/ui/Dialog";
 import { Input, Select } from "@/ui/Field";
 import { transferActions, transferStore, type JobView } from "@/features/transfers/store";
@@ -43,6 +44,12 @@ function Items({ id }: { id: string }) {
   );
 }
 
+/** A folder as a link that opens it in the file manager. */
+function PlaceLink({ label, place, storageName }: { label?: string; place: PlaceDto; storageName?: string }) {
+  const storages = useStorages().data ?? [];
+  return <Link to={placeHref(storages, place)} className="inline-flex max-w-full items-center gap-1 text-[12px] text-muted hover:text-primary-ink" title="Buka folder ini"><MapPin className="size-3 shrink-0" aria-hidden />{label && <span className="shrink-0 text-faint">{label}</span>}<span className="truncate">{storageName ? `${storageName} · ` : ""}{place.path}</span></Link>;
+}
+
 function JobCard({ j }: { j: JobView }) {
   const [open, setOpen] = useState(false);
   const live = ACTIVE.includes(j.status); const paused = j.status === "PAUSED";
@@ -58,6 +65,7 @@ function JobCard({ j }: { j: JobView }) {
       </div>
       {(live || paused || j.status === "COMPLETED") && <div className="mt-3 flex items-center gap-3"><Progress value={j.status === "COMPLETED" ? 100 : pct} tone={tone} className="flex-1" /><span className="tnum w-9 text-right text-[12px] font-medium">{j.status === "COMPLETED" ? 100 : pct}%</span></div>}
       {j.errorMessage && <p className="mt-2 text-[12px] text-danger-ink">{j.errorMessage}</p>}
+      {(j.sourcePlace || j.destinationPlace) && <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1">{j.sourcePlace && <PlaceLink label="Dari" place={j.sourcePlace} storageName={j.sourceStorageName} />}{j.destinationPlace && <PlaceLink label="Ke" place={j.destinationPlace} storageName={j.destinationStorageName} />}</div>}
       <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5">
         <Metric label="File" value={`${j.completedFiles + j.skippedFiles}/${j.totalFiles}${j.failedFiles ? ` · ${j.failedFiles} gagal` : ""}`} />
         <Metric label="Ukuran" value={formatBytes(j.totalBytes)} />
@@ -75,6 +83,28 @@ function JobCard({ j }: { j: JobView }) {
       </div>
       {open && <Items id={j.id} />}
     </li>
+  );
+}
+
+/** What this account has uploaded lately (kept on the server for 90 days), with a link to the folder each file went to. */
+function UploadHistory() {
+  const q = useQuery({ queryKey: ["upload-history"], queryFn: () => api<Paged<UploadHistoryDto>>("/uploads/history?limit=30"), staleTime: 15_000 });
+  const items = q.data?.items ?? [];
+  if (!items.length) return null;
+  return (
+    <section aria-label="Riwayat unggahan" className="rounded-[10px] border border-line bg-surface-2/50">
+      <div className="flex flex-wrap items-center gap-x-3 p-4 pb-2"><h3 className="flex-1 text-[14px] font-semibold">Riwayat unggahan</h3><span className="tnum text-[12px] text-muted">{q.data?.total ?? 0} file · 90 hari terakhir</span></div>
+      <ul className="scroll-thin max-h-[24rem] divide-y divide-line overflow-y-auto">
+        {items.map((h) => (
+          <li key={h.id} className="flex flex-wrap items-center gap-x-3 gap-y-0.5 px-4 py-2 text-[13px]">
+            <span className="min-w-0 flex-1 basis-full break-all sm:basis-0 sm:truncate" title={h.name}>{h.name}</span>
+            <span className="tnum text-[12px] text-muted">{formatBytes(h.size)}</span>
+            <span className={cn("text-[12px]", h.status === "FAILED" ? "text-danger-ink" : "text-muted")}>{h.status === "FAILED" ? "Gagal" : h.status === "SKIPPED" ? "Dilewati" : dateTime(h.createdAt)}</span>
+            {h.place && <PlaceLink place={h.place} storageName={h.storageName} />}
+            {h.errorMessage && <span className="basis-full text-[12px] text-danger-ink">{h.errorMessage}</span>}
+          </li>))}
+      </ul>
+    </section>
   );
 }
 
@@ -154,8 +184,8 @@ export default function TransfersPage() {
         </div>
       </div>
       <div className="scroll-thin flex-1 overflow-y-auto p-4 sm:p-8">
-        {res.isLoading ? <Skeleton className="mx-auto h-48 max-w-4xl" /> : items.length === 0 && uploads.length === 0 ? <EmptyState icon={Columns2} title={dirty ? "Tidak ada transfer yang cocok" : "Belum ada transfer"} action={dirty ? <Button onClick={() => setF(EMPTY)}>Reset filter</Button> : <Link to="/dual"><Button variant="primary">Salin dua panel</Button></Link>}>{dirty ? "Ubah atau reset filter." : "Pilih file di file manager lalu pilih Salin atau Pindahkan, atau gunakan tampilan dua panel."}</EmptyState>
-          : <div className="mx-auto max-w-4xl space-y-3">{uploads.length > 0 && page === 1 && <UploadsCard tasks={uploads} />}<ul className="space-y-3">{items.map((j) => <JobCard key={j.id} j={j} />)}</ul></div>}
+        {res.isLoading ? <Skeleton className="mx-auto h-48 max-w-4xl" /> : items.length === 0 && uploads.length === 0 ? <><EmptyState icon={Columns2} title={dirty ? "Tidak ada transfer yang cocok" : "Belum ada transfer"} action={dirty ? <Button onClick={() => setF(EMPTY)}>Reset filter</Button> : <Link to="/dual"><Button variant="primary">Salin dua panel</Button></Link>}>{dirty ? "Ubah atau reset filter." : "Pilih file di file manager lalu pilih Salin atau Pindahkan, atau gunakan tampilan dua panel."}</EmptyState>{page === 1 && !dirty && <div className="mx-auto mt-6 max-w-4xl"><UploadHistory /></div>}</>
+          : <div className="mx-auto max-w-4xl space-y-3">{uploads.length > 0 && page === 1 && <UploadsCard tasks={uploads} />}<ul className="space-y-3">{items.map((j) => <JobCard key={j.id} j={j} />)}</ul>{page === 1 && !dirty && <UploadHistory />}</div>}
       </div>
       <Pagination className="border-t border-line bg-surface px-4 py-2.5 sm:px-8" page={page} pages={pages} total={res.data?.total ?? 0} noun="transfer" note={res.isFetching ? " · memperbarui…" : ""} onPage={setPage} limit={limit} limits={[10, 20, 50, 100]} onLimit={setLimit} />
       <Dialog open={clear !== null} onClose={() => setClear(null)} width="max-w-sm" title="Bersihkan riwayat" footer={<><Button onClick={() => setClear(null)}>Batal</Button><Button variant="danger" icon={<Eraser className="size-4" />} onClick={clearHistory}>Bersihkan</Button></>}>

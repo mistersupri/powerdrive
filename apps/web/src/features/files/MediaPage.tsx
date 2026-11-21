@@ -1,5 +1,5 @@
 import type { FileEntry, StorageConnectionDto } from "@superdrive/shared";
-import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ArrowLeft, Check, Download, FolderMinus, FolderPlus, Images, Lock, Pencil, Play, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -24,6 +24,20 @@ import { Input } from "@/ui/Field";
 type Kind = "all" | "image" | "video";
 type Mode = "all" | "folders" | "albums";
 type Scope = { kind: "folder"; storageId: string; folderId: string; name: string } | { kind: "album"; id: string; name: string; isPrivate: boolean };
+const PERIODS = [["all", "Semua waktu"], ["today", "Hari ini"], ["week", "7 hari terakhir"], ["month", "30 hari terakhir"], ["year", "Tahun ini"], ["range", "Rentang tanggal…"]] as const;
+type Period = (typeof PERIODS)[number][0];
+/** The period as the instants the server compares against (the browser's own days, as UTC). */
+function periodRange(p: Period, from: string, to: string): { after?: string; before?: string } {
+  const day = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const now = new Date();
+  if (p === "today") return { after: day(now).toISOString() };
+  if (p === "week") { const d = day(now); d.setDate(d.getDate() - 6); return { after: d.toISOString() }; }
+  if (p === "month") { const d = day(now); d.setDate(d.getDate() - 29); return { after: d.toISOString() }; }
+  if (p === "year") return { after: new Date(now.getFullYear(), 0, 1).toISOString() };
+  if (p === "range") return { after: from ? new Date(`${from}T00:00:00`).toISOString() : undefined, before: to ? new Date(new Date(`${to}T00:00:00`).getTime() + 86_400_000).toISOString() : undefined };
+  return {};
+}
+const monthName = (m: string) => (m.length >= 7 ? new Date(`${m.slice(0, 7)}-01T12:00:00`).toLocaleDateString("id-ID", { month: "short", year: "numeric" }) : "Tanpa tanggal");
 interface Page { items: FileEntry[]; nextCursor: string | null; counts: { image: number; video: number } }
 const GAP = 4;
 const SORTS = [["date:desc", "Terbaru"], ["date:asc", "Terlama"], ["name:asc", "Nama A–Z"], ["name:desc", "Nama Z–A"], ["size:desc", "Terbesar"], ["size:asc", "Terkecil"]] as const;
@@ -46,9 +60,15 @@ export default function MediaPage() {
   const showGallery = mode === "all" || scope !== null;
   const [sort, setSort] = useState<(typeof SORTS)[number][0]>("date:desc"); const [confirmDelete, setConfirmDelete] = useState(false); const qc = useQueryClient();
   const [sortKey, sortDir] = sort.split(":") as [string, string];
+  const [period, setPeriod] = useState<Period>("all"); const [from, setFrom] = useState(""); const [to, setTo] = useState("");
+  const { after, before } = useMemo(() => periodRange(period, from, to), [period, from, to]);
+  const dateQs = `${after ? `&after=${encodeURIComponent(after)}` : ""}${before ? `&before=${encodeURIComponent(before)}` : ""}`;
+  const scopeKey = scope?.kind === "album" ? scope.id : scope ? `${scope.storageId}/${scope.folderId}` : "";
+  const scopeQs = `${scope?.kind === "folder" ? `&storageId=${scope.storageId}&folderId=${encodeURIComponent(scope.folderId)}` : storageId ? `&storageId=${storageId}` : ""}${scope?.kind === "album" ? `&albumId=${scope.id}` : ""}`;
+  const timeline = useQuery({ enabled: showGallery, queryKey: ["media-timeline", kind, storageId, scopeKey, after, before], queryFn: () => api<{ months: { month: string; count: number }[] }>(`/media/timeline?kind=${kind}${scopeQs}${dateQs}`).then((r) => r.months), staleTime: 30_000 });
   const q = useInfiniteQuery({
-    enabled: showGallery, queryKey: ["media", kind, storageId, sort, scope?.kind === "album" ? scope.id : scope ? `${scope.storageId}/${scope.folderId}` : ""], initialPageParam: "", getNextPageParam: (p: Page) => p.nextCursor ?? undefined, staleTime: 30_000,
-    queryFn: ({ pageParam }) => api<Page>(`/media?kind=${kind}&limit=150&sort=${sortKey}&dir=${sortDir}${scope?.kind === "folder" ? `&storageId=${scope.storageId}&folderId=${encodeURIComponent(scope.folderId)}` : storageId ? `&storageId=${storageId}` : ""}${scope?.kind === "album" ? `&albumId=${scope.id}` : ""}${pageParam ? `&cursor=${encodeURIComponent(pageParam)}` : ""}`),
+    enabled: showGallery, queryKey: ["media", kind, storageId, sort, scopeKey, after, before], initialPageParam: "", getNextPageParam: (p: Page) => p.nextCursor ?? undefined, staleTime: 30_000,
+    queryFn: ({ pageParam }) => api<Page>(`/media?kind=${kind}&limit=150&sort=${sortKey}&dir=${sortDir}${dateQs}${scope?.kind === "folder" ? `&storageId=${scope.storageId}&folderId=${encodeURIComponent(scope.folderId)}` : storageId ? `&storageId=${storageId}` : ""}${scope?.kind === "album" ? `&albumId=${scope.id}` : ""}${pageParam ? `&cursor=${encodeURIComponent(pageParam)}` : ""}`),
   });
   const items = useMemo(() => q.data?.pages.flatMap((p) => p.items) ?? [], [q.data]); const counts = q.data?.pages[0]?.counts;
   const key = (e: FileEntry) => `${e.storageId}:${e.id}`;
@@ -89,6 +109,23 @@ export default function MediaPage() {
   };
   const removeAlbum = async () => { if (scope?.kind !== "album") return; try { await api(`/albums/${scope.id}`, { method: "DELETE" }); toast.success("Album dihapus. Foto di dalamnya tidak ikut terhapus."); setScope(null); setDropAlbum(false); await qc.invalidateQueries({ queryKey: ["albums"] }); await qc.invalidateQueries({ queryKey: ["media"] }); } catch (e) { toast.error((e as Error).message); } };
   const renameAlbum = async () => { if (scope?.kind !== "album" || renaming === null || !renaming.trim()) return; try { await api(`/albums/${scope.id}`, { method: "PATCH", body: { name: renaming } }); setScope({ ...scope, name: renaming.trim() }); setRenaming(null); await qc.invalidateQueries({ queryKey: ["albums"] }); } catch (e) { toast.error((e as Error).message); } };
+  // Date scrubber: a handle on the right edge that drags through the whole library and names the month under it.
+  const rowStart = useMemo(() => { let n = 0; return rows.map((r) => { const at = n; if (r.kind === "tiles") n += r.items.length; return at; }); }, [rows]);
+  const total = kind === "image" ? (counts?.image ?? 0) : kind === "video" ? (counts?.video ?? 0) : counts ? counts.image + counts.video : 0;
+  const months = useMemo(() => (sortDir === "asc" ? [...(timeline.data ?? [])].reverse() : (timeline.data ?? [])), [timeline.data, sortDir]);
+  const monthAt = (idx: number) => { let acc = 0; for (const m of months) { acc += m.count; if (idx < acc) return monthName(m.month); } return months.length ? monthName(months[months.length - 1]!.month) : ""; };
+  const [target, setTarget] = useState(-1); const [scrub, setScrub] = useState(false); const [label, setLabel] = useState("");
+  useEffect(() => {
+    if (target < 0 || !rows.length) return;
+    if (target < items.length) { const r = rows.findIndex((x, i) => x.kind === "tiles" && rowStart[i]! <= target && target < rowStart[i]! + x.items.length); if (r >= 0) virt.scrollToIndex(r, { align: "start" }); if (!scrub) setTarget(-1); }
+    else if (q.hasNextPage) { if (!q.isFetchingNextPage) void q.fetchNextPage(); }
+    else { virt.scrollToIndex(rows.length - 1); if (!scrub) setTarget(-1); }
+  }, [target, items.length, scrub, q.hasNextPage, q.isFetchingNextPage]); // eslint-disable-line react-hooks/exhaustive-deps
+  const showScrubber = sortKey === "date" && total > 80 && months.length > 0 && rows.length > 0;
+  const here = total > 1 ? (rowStart[vi[0]?.index ?? 0] ?? 0) / (total - 1) : 0;
+  const shown = Math.min(1, Math.max(0, scrub && target >= 0 && total > 1 ? target / (total - 1) : here));
+  const moveTo = (f: number) => { const idx = Math.round(Math.min(1, Math.max(0, f)) * Math.max(0, total - 1)); setTarget(idx); setLabel(monthAt(idx)); };
+
   const pickMode = (m: Mode) => { setMode(m); setScope(null); setSel(new Set()); };
   const empty = !q.isLoading && !items.length;
   const chip = (k: Kind, label: string, n?: number) => <button key={k} type="button" aria-pressed={kind === k} onClick={() => { setKind(k); setSel(new Set()); }} className={cn("h-9 rounded-full px-3.5 text-[13px] font-medium pointer-coarse:h-11", kind === k ? "bg-primary-soft text-primary-ink" : "text-muted hover:bg-surface-2")}>{label}{n !== undefined ? <span className="tnum ml-1.5 text-[12px] opacity-70">{n.toLocaleString("id-ID")}</span> : null}</button>;
@@ -109,6 +146,8 @@ export default function MediaPage() {
       {showGallery && <div className="flex flex-wrap items-center gap-2 border-b border-line bg-surface px-4 py-2 sm:px-8">
         {kindChips(chip, counts)}
         <span className="flex-1" />
+        <Select aria-label="Periode" value={period} onChange={(e) => { setPeriod(e.target.value as Period); setSel(new Set()); }} className={cn("h-9 w-40 text-[13px]", period !== "all" && "border-primary")}>{PERIODS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</Select>
+        {period === "range" && <><Input type="date" aria-label="Dari tanggal" className="h-9 w-36 text-[13px]" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} /><span className="text-muted" aria-hidden>–</span><Input type="date" aria-label="Sampai tanggal" className="h-9 w-36 text-[13px]" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} /></>}
         <Select aria-label="Urutkan" value={sort} onChange={(e) => { setSort(e.target.value as typeof sort); setSel(new Set()); }} className="h-9 w-32 text-[13px] sm:w-36">{SORTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</Select>
         {chosen.length > 0 ? (<>
           <span className="tnum inline-flex items-center gap-1 rounded-lg bg-primary-soft py-1 pr-1 pl-2.5 text-[13px] font-medium text-primary-ink">{chosen.length} dipilih<IconButton label="Batal pilih" className="size-6" onClick={() => setSel(new Set())}><X className="size-3.5" /></IconButton></span>
@@ -124,7 +163,8 @@ export default function MediaPage() {
       {!showGallery && <div className="scroll-thin min-h-0 flex-1 overflow-y-auto px-4 sm:px-8" role="region" aria-label={mode === "folders" ? "Folder berisi media" : "Album"}>
         {mode === "folders" ? <FolderGrid storageId="" onOpen={(f: MediaFolder) => setScope({ kind: "folder", storageId: f.storageId, folderId: f.folderId, name: f.name })} /> : <AlbumGrid onOpen={(a: Album) => setScope({ kind: "album", id: a.id, name: a.name, isPrivate: a.isPrivate })} />}
       </div>}
-      <div ref={box} className={cn("scroll-thin relative min-h-0 flex-1 overflow-y-auto px-4 pb-24 sm:px-8", !showGallery && "hidden")} role="region" aria-label="Galeri media">
+      <div className={cn("relative flex min-h-0 flex-1", !showGallery && "hidden")}>
+      <div ref={box} className="scroll-thin relative min-h-0 min-w-0 flex-1 overflow-y-auto px-4 pb-24 sm:px-8" role="region" aria-label="Galeri media">
         {q.isLoading ? <div className="grid grid-cols-3 gap-1 pt-4 sm:grid-cols-5">{Array.from({ length: 15 }, (_, i) => <Skeleton key={i} className="aspect-square" />)}</div>
           : q.error ? <EmptyState icon={Images} title="Tidak dapat memuat media">{(q.error as Error).message}</EmptyState>
           : empty ? <EmptyState icon={Images} title="Belum ada foto atau video">Foto dan video muncul setelah penyimpanan Anda selesai diindeks. Penyimpanan cloud butuh beberapa saat; progresnya terlihat di banner di atas.</EmptyState> : (
@@ -145,6 +185,17 @@ export default function MediaPage() {
                 </div>); })}
             </div>)}
         {q.isFetchingNextPage && <p className="py-4 text-center text-[12px] text-muted" role="status">Memuat lebih banyak…</p>}
+      </div>
+      {showScrubber && (
+        <div role="slider" tabIndex={0} aria-label="Gulir berdasarkan tanggal" aria-orientation="vertical" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(shown * 100)} aria-valuetext={label || monthAt(Math.round(shown * Math.max(0, total - 1)))}
+          className="group absolute top-2 right-0 bottom-24 w-7 cursor-grab touch-none select-none outline-none"
+          onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); setScrub(true); const r = e.currentTarget.getBoundingClientRect(); moveTo((e.clientY - r.top - 20) / Math.max(1, r.height - 40)); }}
+          onPointerMove={(e) => { if (!scrub) return; const r = e.currentTarget.getBoundingClientRect(); moveTo((e.clientY - r.top - 20) / Math.max(1, r.height - 40)); }}
+          onPointerUp={() => { setScrub(false); setLabel(""); }} onPointerCancel={() => { setScrub(false); setLabel(""); }}
+          onKeyDown={(e) => { if (e.key === "ArrowDown" || e.key === "PageDown") { e.preventDefault(); moveTo(shown + (e.key === "PageDown" ? 0.1 : 0.02)); } else if (e.key === "ArrowUp" || e.key === "PageUp") { e.preventDefault(); moveTo(shown - (e.key === "PageUp" ? 0.1 : 0.02)); } }}>
+          <span aria-hidden className={cn("absolute right-1 h-10 w-1.5 rounded-full transition-opacity group-focus-visible:ring-2 group-focus-visible:ring-primary", scrub ? "w-2 bg-primary opacity-100" : "bg-muted opacity-0 group-hover:opacity-70 group-focus-visible:opacity-80")} style={{ top: `calc((100% - 40px) * ${shown})` }} />
+          {scrub && label && <span aria-hidden className="pointer-events-none absolute right-6 rounded-lg bg-primary px-3 py-1.5 text-[13px] font-medium whitespace-nowrap text-white shadow-float" style={{ top: `calc((100% - 40px) * ${shown} + 6px)` }}>{label}</span>}
+        </div>)}
       </div>
       {memory && <Preview items={memory.items} index={memory.index} onIndex={(i) => setMemory({ ...memory, index: i })} onClose={() => setMemory(null)} storageName={names[memory.items[0]!.storageId]} location={undefined} />}
       <AddToAlbumDialog open={addOpen} items={chosen} onClose={() => setAddOpen(false)} onDone={() => setSel(new Set())} />
