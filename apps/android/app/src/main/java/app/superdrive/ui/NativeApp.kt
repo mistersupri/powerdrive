@@ -87,6 +87,8 @@ private fun Shell(session: Session, me: app.superdrive.core.Me, onLogout: () -> 
     val transfers: app.superdrive.ui.transfers.TransfersViewModel = viewModel(factory = viewModelFactory { initializer { app.superdrive.ui.transfers.TransfersViewModel(api) } })
     val shared: app.superdrive.ui.shared.SharedViewModel = viewModel(factory = viewModelFactory { initializer { app.superdrive.ui.shared.SharedViewModel(api) } })
     val homeState by home.state.collectAsStateWithLifecycle()
+    // Open a folder (and highlight an item) in the File tab, from search, shares, transfers or upload history.
+    val locate: (String, String?, String?) -> Unit = { sid, folder, focus -> files.locate(sid, folder, focus); tab = 1 }
     var settings by remember { mutableStateOf(false) }
     var preview by remember { mutableStateOf<Pair<app.superdrive.core.FileEntry, List<app.superdrive.core.FileEntry>>?>(null) }
     var fullscreen by remember { mutableStateOf(false) } // the media viewer covers the bottom bar
@@ -113,9 +115,9 @@ private fun Shell(session: Session, me: app.superdrive.core.Me, onLogout: () -> 
             },
         ) { i ->
             Box(Modifier.fillMaxSize().then(Modifier).padding(pad)) {
-                if (i == 0) app.superdrive.ui.home.HomeScreen(home, me.user.name, onOpenFiles = { tab = 1 }, onOpenStorage = { id -> files.openStorage(id); tab = 1 }, onOpenFile = { f, list -> preview = f to list }, onOpenTransfers = { tab = 4 }, onSettings = { settings = true })
-                else if (i == 3) app.superdrive.ui.shared.SharedScreen(shared, session.server!!)
-                else if (i == 4) app.superdrive.ui.transfers.TransfersScreen(transfers)
+                if (i == 0) app.superdrive.ui.home.HomeScreen(home, me.user.name, onOpenFiles = { tab = 1 }, onOpenStorage = { id -> files.openStorage(id); tab = 1 }, onOpenFile = { f, list -> preview = f to list }, onOpenTransfers = { tab = 4 }, onSettings = { settings = true }, onLocate = locate)
+                else if (i == 3) app.superdrive.ui.shared.SharedScreen(shared, session.server!!, onLocate = locate)
+                else if (i == 4) app.superdrive.ui.transfers.TransfersScreen(transfers, onLocate = locate)
                 else if (i == 1) FilesScreen(files, api, imageLoader, isAdmin = me.workspaces.firstOrNull { it.id == me.activeWorkspaceId }?.role in listOf("OWNER", "ADMIN"), onLogout = onLogout, onFullscreen = { fullscreen = it })
                 else if (i == 2) MediaScreen(media, api, imageLoader, me.user.id, onFullscreen = { fullscreen = it })
             }

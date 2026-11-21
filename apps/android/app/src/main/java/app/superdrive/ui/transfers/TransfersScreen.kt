@@ -55,13 +55,24 @@ import app.superdrive.core.Api
 import app.superdrive.core.ApiException
 import app.superdrive.core.TransferJob
 import app.superdrive.core.TransferPage
+import app.superdrive.core.UploadHistoryItem
+import app.superdrive.core.UploadHistoryPage
+import app.superdrive.ui.design.PlaceLine
+import app.superdrive.ui.design.SlidingTabs
+import app.superdrive.ui.design.timeAgo
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import android.text.format.Formatter
+import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-data class TransfersState(val jobs: List<TransferJob> = emptyList(), val loading: Boolean = true, val refreshing: Boolean = false, val error: String? = null, val notice: String? = null)
+data class TransfersState(val jobs: List<TransferJob> = emptyList(), val history: List<UploadHistoryItem> = emptyList(), val historyLoading: Boolean = true, val loading: Boolean = true, val refreshing: Boolean = false, val error: String? = null, val notice: String? = null)
 
 class TransfersViewModel(private val api: Api) : ViewModel() {
     private val _state = MutableStateFlow(TransfersState())
@@ -71,7 +82,11 @@ class TransfersViewModel(private val api: Api) : ViewModel() {
         try { val page = api.get<TransferPage>("/transfers?limit=60"); _state.update { it.copy(jobs = page.items, loading = false, refreshing = false, error = null) } }
         catch (e: ApiException) { _state.update { it.copy(loading = false, refreshing = false, error = if (it.jobs.isEmpty()) e.message else null) } }
     }
-    fun refresh() { _state.update { it.copy(refreshing = true) }; viewModelScope.launch { poll() } }
+    suspend fun loadHistory() {
+        try { val page = api.get<UploadHistoryPage>("/uploads/history?limit=100"); _state.update { it.copy(history = page.items, historyLoading = false) } }
+        catch (e: ApiException) { _state.update { it.copy(historyLoading = false) } }
+    }
+    fun refresh() { _state.update { it.copy(refreshing = true) }; viewModelScope.launch { poll(); loadHistory() } }
     /** action is pause, resume, cancel or retry. */
     fun act(j: TransferJob, action: String) {
         viewModelScope.launch {
@@ -89,23 +104,55 @@ private fun statusText(j: TransferJob) = when (j.status) {
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-fun TransfersScreen(vm: TransfersViewModel) {
+fun TransfersScreen(vm: TransfersViewModel, onLocate: (String, String?, String?) -> Unit = { _, _, _ -> }) {
     val s by vm.state.collectAsStateWithLifecycle()
     val c = MaterialTheme.sd
     // Live while this tab is on screen: quick while something is moving, slow otherwise.
     LaunchedEffect(Unit) { while (true) { vm.poll(); delay(if (vm.state.value.jobs.any { it.active || it.paused }) 2000 else 10000) } }
+    var tab by remember { mutableIntStateOf(0) }
+    // The history only changes when an upload ends, so it is read when the tab opens and now and then after.
+    LaunchedEffect(tab) { if (tab == 1) while (true) { vm.loadHistory(); delay(15000) } }
     val running = s.jobs.count { it.active }
     Scaffold(
         containerColor = c.canvas, contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = { PageHeader("Transfer", subtitle = if (s.loading) null else if (running > 0) "$running berjalan" else "Tidak ada yang berjalan") },
     ) { pad ->
-        PullToRefreshBox(isRefreshing = s.refreshing, onRefresh = vm::refresh, modifier = Modifier.padding(pad).fillMaxSize()) {
+        Column(Modifier.padding(pad).fillMaxSize()) {
+        SlidingTabs(listOf("Transfer", "Riwayat unggahan"), tab, { tab = it }, Modifier.padding(horizontal = 16.dp, vertical = 10.dp))
+        PullToRefreshBox(isRefreshing = s.refreshing, onRefresh = vm::refresh, modifier = Modifier.fillMaxSize()) {
+            if (tab == 1) HistoryList(s, onLocate) else
             when {
                 s.loading -> Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) { repeat(4) { Skeleton(Modifier.fillMaxWidth().height(96.dp), 14.dp) } }
                 s.error != null -> EmptyState(Lu.Info, "Tidak dapat memuat transfer", s.error)
                 s.jobs.isEmpty() -> EmptyState(Lu.Transfer, "Belum ada transfer", "Salin atau pindahkan file antar penyimpanan, progresnya muncul di sini.")
                 else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    itemsIndexed(s.jobs, key = { _, j -> j.id }) { i, j -> JobCard(j, vm, Modifier.riseIn(i)) }
+                    itemsIndexed(s.jobs, key = { _, j -> j.id }) { i, j -> JobCard(j, vm, Modifier.riseIn(i), onLocate) }
+                }
+            }
+        }
+        }
+    }
+}
+
+@Composable
+private fun HistoryList(s: TransfersState, onLocate: (String, String?, String?) -> Unit) {
+    val c = MaterialTheme.sd; val context = LocalContext.current
+    when {
+        s.historyLoading -> Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) { repeat(5) { Skeleton(Modifier.fillMaxWidth().height(72.dp), 14.dp) } }
+        s.history.isEmpty() -> EmptyState(Lu.Clock, "Belum ada riwayat unggahan", "File yang Anda unggah dari aplikasi atau web tercatat di sini selama 90 hari.")
+        else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            itemsIndexed(s.history, key = { _, h -> h.id }) { i, h ->
+                val ok = h.status != "FAILED"
+                SdCard(Modifier.fillMaxWidth().riseIn(minOf(i, 8))) {
+                    Row(Modifier.padding(14.dp), verticalAlignment = Alignment.Top) {
+                        IconTile(if (ok) Lu.Upload else Lu.X, if (ok) c.okSoft else c.dangerSoft, if (ok) c.okInk else c.dangerInk, size = 38.dp, iconSize = 19.dp)
+                        Column(Modifier.weight(1f).padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(h.name, style = MaterialTheme.typography.titleSmall, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(listOfNotNull(if (h.status == "SKIPPED") "Dilewati (sudah ada)" else if (ok) "Terunggah" else "Gagal", Formatter.formatShortFileSize(context, h.size), timeAgo(h.createdAt)).joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = if (ok) c.muted else c.dangerInk, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            if (!ok && !h.errorMessage.isNullOrBlank()) Text(h.errorMessage, style = MaterialTheme.typography.bodySmall, color = c.dangerInk, maxLines = 2)
+                            h.place?.let { pl -> PlaceLine(pl.path, h.storageName, onClick = { onLocate(pl.storageId, pl.folderId, h.fileId) }) }
+                        }
+                    }
                 }
             }
         }
@@ -113,7 +160,7 @@ fun TransfersScreen(vm: TransfersViewModel) {
 }
 
 @Composable
-private fun JobCard(j: TransferJob, vm: TransfersViewModel, modifier: Modifier) {
+private fun JobCard(j: TransferJob, vm: TransfersViewModel, modifier: Modifier, onLocate: (String, String?, String?) -> Unit = { _, _, _ -> }) {
     val c = MaterialTheme.sd; val live = j.active || j.paused
     val (pillBg, pillFg) = when (j.status) {
         "COMPLETED", "COPY_COMPLETED_SOURCE_RETAINED" -> c.okSoft to c.okInk
@@ -136,6 +183,9 @@ private fun JobCard(j: TransferJob, vm: TransfersViewModel, modifier: Modifier) 
                 }
                 StatusPill(statusText(j).let { if (it.length > 18) it.take(16) + "…" else it }, pillBg, pillFg)
             }
+            // Where it came from and where it went; tapping opens that folder.
+            j.sourcePlace?.let { pl -> Row(verticalAlignment = Alignment.CenterVertically) { Text("Dari", Modifier.width(34.dp), style = MaterialTheme.typography.labelMedium, color = c.muted); PlaceLine(pl.path, j.sourceStorageName, Modifier.weight(1f), onClick = { onLocate(pl.storageId, pl.folderId, null) }) } }
+            j.destinationPlace?.let { pl -> Row(verticalAlignment = Alignment.CenterVertically) { Text("Ke", Modifier.width(34.dp), style = MaterialTheme.typography.labelMedium, color = c.muted); PlaceLine(pl.path, j.destinationStorageName, Modifier.weight(1f), onClick = { onLocate(pl.storageId, pl.folderId, null) }) } }
             if (live) {
                 SdProgress(j.percent / 100f, color = if (j.status == "RETRYING") c.warnInk else c.primary)
                 Row(verticalAlignment = Alignment.CenterVertically) {

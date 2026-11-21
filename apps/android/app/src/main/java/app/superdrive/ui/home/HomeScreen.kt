@@ -129,7 +129,7 @@ class HomeViewModel(private val api: Api) : ViewModel() {
 private enum class Page { Home, Notifications, Search }
 
 @Composable
-fun HomeScreen(vm: HomeViewModel, userName: String, onOpenFiles: () -> Unit, onOpenStorage: (String) -> Unit, onOpenFile: (FileEntry, List<FileEntry>) -> Unit, onOpenTransfers: () -> Unit, onSettings: () -> Unit) {
+fun HomeScreen(vm: HomeViewModel, userName: String, onOpenFiles: () -> Unit, onOpenStorage: (String) -> Unit, onOpenFile: (FileEntry, List<FileEntry>) -> Unit, onOpenTransfers: () -> Unit, onSettings: () -> Unit, onLocate: (String, String?, String?) -> Unit = { _, _, _ -> }) {
     val s by vm.state.collectAsStateWithLifecycle()
     var page by remember { mutableStateOf(Page.Home) }
     val c = MaterialTheme.sd
@@ -153,7 +153,7 @@ fun HomeScreen(vm: HomeViewModel, userName: String, onOpenFiles: () -> Unit, onO
         Box(Modifier.padding(pad).fillMaxSize()) {
             AnimatedContent(page, label = "home-page", transitionSpec = { (fadeIn(tween(220, easing = Motion.EaseOut)) + slideInHorizontally(tween(280, easing = Motion.EaseOut)) { if (targetState == Page.Home) -it / 12 else it / 12 }) togetherWith (fadeOut(tween(120)) + slideOutHorizontally(tween(200)) { if (targetState == Page.Home) it / 14 else -it / 14 }) }) { p ->
                 when (p) {
-                    Page.Search -> SearchResults(s, onOpenFiles, onOpenFile)
+                    Page.Search -> SearchResults(s, onLocate, onOpenFile)
                     Page.Notifications -> NotificationList(s.notifications.items)
                     Page.Home -> HomeBody(s, vm, onOpenFiles, onOpenStorage, onOpenFile, onOpenTransfers)
                 }
@@ -299,21 +299,29 @@ private fun Stat(modifier: Modifier, icon: androidx.compose.ui.graphics.vector.I
 }
 
 @Composable
-private fun SearchResults(s: HomeState, onOpenFiles: () -> Unit, onOpenFile: (FileEntry, List<FileEntry>) -> Unit) {
+private fun SearchResults(s: HomeState, onLocate: (String, String?, String?) -> Unit, onOpenFile: (FileEntry, List<FileEntry>) -> Unit) {
     val context = LocalContext.current; val c = MaterialTheme.sd
     val r = s.results
+    val storages = remember(s.dashboard) { (s.dashboard?.storageList ?: emptyList()).associate { it.id to it.name } }
     when {
         s.searching -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-        r == null -> EmptyState(Lu.Search, "Cari di semua penyimpanan", "Ketik nama file lalu tekan tombol cari di keyboard.")
+        r == null -> EmptyState(Lu.Search, "Cari di semua penyimpanan", "Ketik nama file atau folder lalu tekan tombol cari di keyboard.")
         r.isEmpty() -> EmptyState(Lu.Search, "Tidak ada hasil", "Coba kata kunci lain.")
-        else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp)) {
-            items(r, key = { it.id }) { f ->
+        else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            item(key = "count") { Text("${r.size} hasil${if (r.size >= 50) " (50 teratas)" else ""}", Modifier.padding(horizontal = 4.dp), style = MaterialTheme.typography.labelMedium, color = c.faint) }
+            items(r, key = { it.storageId + it.id }) { f ->
                 val k = kindStyle(f)
-                Row(Modifier.fillMaxWidth().padding(vertical = 2.dp).pressable(onClick = { if (f.isFolder) onOpenFiles() else onOpenFile(f, r) }, shape = RoundedCornerShape(14.dp)).padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconTile(k.icon, k.bg, k.fg, size = 44.dp)
-                    Column(Modifier.weight(1f).padding(start = 12.dp)) {
-                        Text(f.name, style = MaterialTheme.typography.titleSmall, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(if (f.isFolder) "Folder" else f.size?.let { Formatter.formatShortFileSize(context, it) } ?: "", style = MaterialTheme.typography.bodySmall, color = c.muted)
+                // The folder it sits in: opens that folder with the item highlighted. A folder result opens the folder itself.
+                val parent = f.parentId?.takeIf { it != "root" }
+                SdCard(Modifier.fillMaxWidth()) {
+                    Row(Modifier.pressable(onClick = { if (f.isFolder) onLocate(f.storageId, f.id, null) else onOpenFile(f, r.filter { !it.isFolder }) }, shape = RoundedCornerShape(16.dp)).padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        IconTile(k.icon, k.bg, k.fg, size = 44.dp)
+                        Column(Modifier.weight(1f).padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(f.name, style = MaterialTheme.typography.titleSmall, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(listOfNotNull(if (f.isFolder) "Folder" else app.superdrive.ui.design.typeLabel(f), if (f.isFolder) null else f.size?.let { Formatter.formatShortFileSize(context, it) }, app.superdrive.ui.design.formatDate(f.modifiedAt)).joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = c.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            app.superdrive.ui.design.PlaceLine(f.path ?: "/", storages[f.storageId], onClick = { onLocate(f.storageId, parent, f.id) })
+                        }
+                        BarIcon(Lu.MapPin, "Buka lokasi ${f.name}", { onLocate(f.storageId, parent, f.id) })
                     }
                 }
             }

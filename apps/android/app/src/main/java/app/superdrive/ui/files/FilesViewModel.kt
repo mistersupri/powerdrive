@@ -36,6 +36,8 @@ data class FilesState(
     val notice: String? = null,
     val upload: UploadProgress? = null,
     val share: ShareLink? = null,
+    /** An item to bring into view and highlight after "locate". */
+    val focus: String? = null,
 )
 
 /** Folders first, then by name the way a person reads it ("file 2" before "file 10"). */
@@ -73,6 +75,7 @@ class FilesViewModel(private val api: Api, private val ops: FileOps = FileOps(ap
                 val all = api.get<List<Storage>>("/storages").filter { it.status == "CONNECTED" }
                 val first = all.firstOrNull { it.isDefault } ?: all.firstOrNull()
                 _state.update { it.copy(storages = all, storage = first, error = if (first == null) "Belum ada penyimpanan yang terhubung." else null, loading = first != null) }
+                pendingLocate?.let { (sid, folder, focus) -> pendingLocate = null; locate(sid, folder, focus); return@launch }
                 val target = pendingStorage?.let { id -> all.firstOrNull { it.id == id } }; pendingStorage = null
                 if (target != null) switchStorage(target) else if (first != null) load(refresh = false)
             } catch (e: ApiException) { _state.update { it.copy(loading = false, error = e.message) } }
@@ -113,6 +116,27 @@ class FilesViewModel(private val api: Api, private val ops: FileOps = FileOps(ap
     fun switchStorage(s: Storage) { _state.update { it.copy(storage = s, stack = emptyList(), items = emptyList(), folderName = storageTitle(s)) }; load(refresh = false) }
 
     private fun storageTitle(s: Storage) = if (s.isDefault) "Semua file" else s.name
+
+    /**
+     * Opens a folder somewhere in a storage (from search, shares, transfers or upload history) and, when given, highlights one item in it.
+     * folderId null means the top of the storage.
+     */
+    private var pendingLocate: Triple<String, String?, String?>? = null
+    fun locate(storageId: String, folderId: String?, focusId: String? = null) {
+        val st = _state.value.storages.firstOrNull { it.id == storageId }
+        if (st == null) { pendingLocate = Triple(storageId, folderId, focusId); return }
+        pendingLocate = null
+        job?.cancel()
+        _state.update { it.copy(storage = st, stack = emptyList(), items = emptyList(), folderName = storageTitle(st), loading = true, refreshing = false, error = null, selection = emptySet(), focus = null) }
+        val target = folderId?.takeIf { it != "root" && it.isNotBlank() }
+        job = viewModelScope.launch {
+            try {
+                val page = api.get<FileListing>("/files?storageId=${st.id}&folderId=${java.net.URLEncoder.encode(target ?: "root", "UTF-8")}&limit=200")
+                _state.update { it.copy(stack = if (target == null) emptyList() else page.folder.path.map { c -> c.id }, items = sortedForDisplay(page.items), folderName = if (target == null) storageTitle(st) else page.folder.name, nextPage = page.nextPageToken, loading = false, focus = focusId) }
+            } catch (e: ApiException) { _state.update { it.copy(loading = false, error = e.message) } }
+        }
+    }
+    fun clearFocus() = _state.update { it.copy(focus = null) }
 
     // ---- selection ----
     fun toggle(f: FileEntry) = _state.update { it.copy(selection = if (f.id in it.selection) it.selection - f.id else it.selection + f.id) }

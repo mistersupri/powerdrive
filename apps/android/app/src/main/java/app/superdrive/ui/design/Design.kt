@@ -348,3 +348,14 @@ fun typeLabel(f: FileEntry): String {
         else -> f.mimeType?.substringAfter('/')?.uppercase()?.take(8) ?: "Berkas"
     }
 }
+
+/** Where something lives ("Penyimpanan · /folder/path") with a pin. When it has a click handler, tapping opens that place. */
+@Composable
+fun PlaceLine(path: String, storage: String? = null, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
+    val c = MaterialTheme.sd
+    val text = listOfNotNull(storage?.takeIf { it.isNotBlank() }, path.ifBlank { "/" }).joinToString(" · ")
+    Row(modifier.then(if (onClick != null) Modifier.clip(RoundedCornerShape(8.dp)).pressable(onClick = onClick, shape = RoundedCornerShape(8.dp), scaleTo = 0.97f) else Modifier), verticalAlignment = Alignment.CenterVertically) {
+        Icon(Lu.MapPin, null, tint = c.faint, modifier = Modifier.size(12.dp))
+        Text(text, Modifier.padding(start = 4.dp), style = MaterialTheme.typography.labelMedium, color = c.faint, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}

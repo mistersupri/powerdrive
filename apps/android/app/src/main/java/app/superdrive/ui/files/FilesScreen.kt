@@ -58,6 +58,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import kotlinx.coroutines.delay
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -115,6 +118,22 @@ fun FilesScreen(vm: FilesViewModel, api: Api, imageLoader: ImageLoader, isAdmin:
     var lastStorage by remember { mutableStateOf(s.storage?.id) }
     LaunchedEffect(s.storage?.id) { if (s.storage?.id != lastStorage) { view = FileView.All; lastStorage = s.storage?.id } }
     val selecting = s.selection.isNotEmpty()
+    // Filter inside the open folder: reset whenever another folder or storage opens.
+    var filter by remember(s.stack, s.storage?.id) { mutableStateOf(FolderFilter()) }
+    var filterOpen by remember(s.stack, s.storage?.id) { mutableStateOf(false) }
+    val shown = remember(s.items, filter) { applyFilter(s.items, filter) }
+    val listState = rememberLazyListState(); val gridState = rememberLazyGridState()
+    // A filter only sees what is loaded, so keep loading the rest of the folder while one is on.
+    LaunchedEffect(filter.active, s.nextPage, s.items.size, s.loadingMore) { if (filter.active && s.nextPage != null && !s.loadingMore) vm.loadMore() }
+    // "Locate" lands here: bring the item into view and mark it for a few seconds.
+    LaunchedEffect(s.focus, s.loading, s.items.size, grid) {
+        val id = s.focus ?: return@LaunchedEffect
+        if (s.loading) return@LaunchedEffect
+        val fo = s.items.filter { it.isFolder }; val fi = s.items.filter { !it.isFolder }
+        val at = fo.indexOfFirst { it.id == id }.let { i -> if (i >= 0) 1 + i else fi.indexOfFirst { it.id == id }.let { j -> if (j >= 0) (if (fo.isNotEmpty()) 1 + fo.size else 0) + 1 + j else -1 } }
+        if (at >= 0) { try { if (grid) gridState.animateScrollToItem(at) else listState.animateScrollToItem(at) } catch (_: Exception) {} }
+        delay(3500); vm.clearFocus()
+    }
     DisposableEffect(viewing, gallery) { onFullscreen(viewing != null || gallery != null); onDispose { onFullscreen(false) } }
     gallery?.let { (items, idx) -> app.superdrive.ui.media.MediaViewer(items, idx, api, imageLoader, onClose = { gallery = null }); return }
     viewing?.let { v -> DocumentViewer(v, api, onClose = { viewing = null }, onDownload = { enqueueDownload(context, api.download(v), v.name, v.mimeType) }); return }
@@ -148,6 +167,7 @@ fun FilesScreen(vm: FilesViewModel, api: Api, imageLoader: ImageLoader, isAdmin:
                     subtitle = if (view != FileView.All) null else if (s.loading) null else "${s.items.count { it.isFolder }} folder · ${s.items.count { !it.isFolder }} file${if (s.nextPage != null) "+" else ""}",
                     leading = if (s.stack.isNotEmpty()) ({ BarIcon(Lu.Back, "Naik satu folder", { vm.up() }, tint = c.ink) }) else null,
                     actions = {
+                        if (view == FileView.All) BarIcon(Lu.Filter, "Filter", { filterOpen = !filterOpen }, tint = if (filter.active) c.primary else c.muted)
                         if (view == FileView.All) BarIcon(if (grid) Lu.List else Lu.Grid, if (grid) "Tampilan daftar" else "Tampilan grid", { grid = !grid; prefs.edit().putBoolean("files_grid", grid).apply() })
                         if (s.stack.isEmpty() && s.storages.size > 1) Box {
                             BarIcon(Lu.HardDrive, "Pilih penyimpanan", { storageMenu = true })
@@ -172,6 +192,7 @@ fun FilesScreen(vm: FilesViewModel, api: Api, imageLoader: ImageLoader, isAdmin:
             if (view != FileView.All && s.stack.isEmpty()) {
                 CollectionView(view, api, isAdmin, say = { m -> vm.say(m) }) { f, list -> if (open(f, list) { g -> gallery = g } == null) viewing = f }
             } else {
+            if (filterOpen) FolderFilterBar(filter, { filter = it }, shown.size, s.items.size, s.loadingMore)
             s.upload?.let { u ->
                 Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp).clip(RoundedCornerShape(14.dp)).background(c.primarySoft).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -188,9 +209,10 @@ fun FilesScreen(vm: FilesViewModel, api: Api, imageLoader: ImageLoader, isAdmin:
                     s.loading -> SkeletonRows()
                     s.error != null && s.items.isEmpty() -> EmptyState(Lu.Info, "Tidak dapat memuat folder", s.error) { Button(onClick = vm::retry, shape = RoundedCornerShape(12.dp)) { Text("Coba lagi") } }
                     s.items.isEmpty() -> EmptyState(Lu.Folder, "Folder ini masih kosong", "Unggah file atau buat folder baru lewat tombol Tambah.")
+                    shown.isEmpty() -> EmptyState(Lu.Filter, "Tidak ada yang cocok", "Ubah kata kunci atau pilihan filter.")
                     else -> {
-                        val folders = s.items.filter { it.isFolder }; val files = s.items.filter { !it.isFolder }
-                        if (grid) LazyVerticalGrid(GridCells.Adaptive(140.dp), Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 96.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        val folders = shown.filter { it.isFolder }; val files = shown.filter { !it.isFolder }
+                        if (grid) LazyVerticalGrid(GridCells.Adaptive(140.dp), Modifier.fillMaxSize(), state = gridState, contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 96.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             if (folders.isNotEmpty()) item(key = "h-folder", span = { GridItemSpan(maxLineSpan) }) { SectionLabel("Folder", Modifier.padding(top = 6.dp)) }
                             gridItems(folders, key = { it.id }) { f -> CellWithMenu(f, folders.indexOf(f), s, vm, api, imageLoader, selecting, rowMenu, { rowMenu = it }, { dialog = it }, { gallery = it }, { viewing = it }) }
                             if (files.isNotEmpty()) item(key = "h-file", span = { GridItemSpan(maxLineSpan) }) { SectionLabel("File", Modifier.padding(top = 6.dp)) }
@@ -199,7 +221,7 @@ fun FilesScreen(vm: FilesViewModel, api: Api, imageLoader: ImageLoader, isAdmin:
                                 CellWithMenu(f, folders.size + files.indexOf(f), s, vm, api, imageLoader, selecting, rowMenu, { rowMenu = it }, { dialog = it }, { gallery = it }, { viewing = it })
                             }
                             if (s.loadingMore) item(span = { GridItemSpan(maxLineSpan) }) { Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp) } }
-                        } else LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 96.dp)) {
+                        } else LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 96.dp)) {
                             if (folders.isNotEmpty()) item(key = "h-folder") { SectionLabel("Folder", Modifier.padding(top = 6.dp, bottom = 6.dp)) }
                             items(folders, key = { it.id }) { f -> RowWithMenu(f, folders.indexOf(f), s, vm, api, imageLoader, selecting, rowMenu, { rowMenu = it }, { dialog = it }, { gallery = it }, { viewing = it }) }
                             if (files.isNotEmpty()) item(key = "h-file") { SectionLabel("File", Modifier.padding(top = 14.dp, bottom = 6.dp)) }
@@ -252,7 +274,7 @@ private fun RowWithMenu(
 ) {
     val context = LocalContext.current
     Box(Modifier.riseIn(index)) {
-        FileRow(f, api, imageLoader, selecting = selecting, checked = f.id in s.selection,
+        FileRow(f, api, imageLoader, selecting = selecting, checked = f.id in s.selection, focused = f.id == s.focus,
             onClick = { if (selecting) vm.toggle(f) else if (f.isFolder) vm.open(f) else open(f, s.items) { g -> setGallery(g) } ?: run { setViewing(f) } },
             onLongClick = { vm.toggle(f) }, onMore = { setRowMenu(f) })
         DropdownMenu(expanded = rowMenu?.id == f.id, onDismissRequest = { setRowMenu(null) }, shape = RoundedCornerShape(14.dp)) {
@@ -270,12 +292,12 @@ private fun RowWithMenu(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun FileRow(f: FileEntry, api: Api, imageLoader: ImageLoader, selecting: Boolean, checked: Boolean, onClick: () -> Unit, onLongClick: () -> Unit, onMore: () -> Unit) {
+private fun FileRow(f: FileEntry, api: Api, imageLoader: ImageLoader, selecting: Boolean, checked: Boolean, focused: Boolean, onClick: () -> Unit, onLongClick: () -> Unit, onMore: () -> Unit) {
     val context = LocalContext.current; val c = MaterialTheme.sd
     val kind = kindStyle(f)
     val shape = RoundedCornerShape(14.dp)
     Row(
-        Modifier.fillMaxWidth().padding(vertical = 2.dp).clip(shape).background(if (checked) c.primarySoft else Color.Transparent).pressable(onClick = onClick, onLongClick = onLongClick, shape = shape).padding(horizontal = 8.dp, vertical = 8.dp),
+        Modifier.fillMaxWidth().padding(vertical = 2.dp).clip(shape).background(if (checked || focused) c.primarySoft else Color.Transparent).border(if (focused) 1.5.dp else 0.dp, c.primary, shape).pressable(onClick = onClick, onLongClick = onLongClick, shape = shape).padding(horizontal = 8.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.size(46.dp).clip(RoundedCornerShape(12.dp)).background(kind.bg), contentAlignment = Alignment.Center) {
@@ -329,7 +351,7 @@ private fun CellWithMenu(
 ) {
     val context = LocalContext.current
     Box(Modifier.riseIn(index)) {
-        GridCell(f, api, imageLoader, selecting = selecting, checked = f.id in s.selection,
+        GridCell(f, api, imageLoader, selecting = selecting, checked = f.id in s.selection, focused = f.id == s.focus,
             onClick = { if (selecting) vm.toggle(f) else if (f.isFolder) vm.open(f) else open(f, s.items) { g -> setGallery(g) } ?: run { setViewing(f) } },
             onLongClick = { vm.toggle(f) }, onMore = { setRowMenu(f) })
         DropdownMenu(expanded = rowMenu?.id == f.id, onDismissRequest = { setRowMenu(null) }, shape = RoundedCornerShape(14.dp)) {
@@ -346,10 +368,10 @@ private fun CellWithMenu(
 }
 
 @Composable
-private fun GridCell(f: FileEntry, api: Api, imageLoader: ImageLoader, selecting: Boolean, checked: Boolean, onClick: () -> Unit, onLongClick: () -> Unit, onMore: () -> Unit) {
+private fun GridCell(f: FileEntry, api: Api, imageLoader: ImageLoader, selecting: Boolean, checked: Boolean, focused: Boolean, onClick: () -> Unit, onLongClick: () -> Unit, onMore: () -> Unit) {
     val context = LocalContext.current; val c = MaterialTheme.sd
     val kind = kindStyle(f); val shape = RoundedCornerShape(16.dp)
-    Column(Modifier.fillMaxWidth().clip(shape).background(if (checked) c.primarySoft else Color.Transparent).pressable(onClick = onClick, onLongClick = onLongClick, shape = shape, scaleTo = 0.97f).padding(6.dp)) {
+    Column(Modifier.fillMaxWidth().clip(shape).background(if (checked || focused) c.primarySoft else Color.Transparent).border(if (focused) 1.5.dp else 0.dp, c.primary, shape).pressable(onClick = onClick, onLongClick = onLongClick, shape = shape, scaleTo = 0.97f).padding(6.dp)) {
         Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(12.dp)).background(kind.bg), contentAlignment = Alignment.Center) {
             Icon(kind.icon, contentDescription = null, tint = kind.fg, modifier = Modifier.size(if (f.isFolder) 44.dp else 36.dp))
             if (!f.isFolder && f.hasThumbnail) AsyncImage(model = ImageRequest.Builder(context).data(api.thumbnail(f, 384)).crossfade(true).build(), imageLoader = imageLoader, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())

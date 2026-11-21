@@ -110,7 +110,7 @@ private fun absolute(server: String, url: String) = if (url.startsWith("http")) 
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-fun SharedScreen(vm: SharedViewModel, server: String) {
+fun SharedScreen(vm: SharedViewModel, server: String, onLocate: (String, String?, String?) -> Unit = { _, _, _ -> }) {
     val s by vm.state.collectAsStateWithLifecycle()
     val context = LocalContext.current; val c = MaterialTheme.sd
     var tab by remember { mutableIntStateOf(0) }
@@ -141,6 +141,8 @@ fun SharedScreen(vm: SharedViewModel, server: String) {
                                             Text(listOfNotNull(sh.storageName.takeIf { it.isNotBlank() }, if (tab == 0) "${sh.accessCount}× dibuka" else sh.createdByName?.let { "Dari $it" }).joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = c.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                         }
                                     }
+                                    // Where the shared item lives, so it can be found again; tapping opens that folder with the item highlighted.
+                                    sh.place?.let { pl -> app.superdrive.ui.design.PlaceLine(pl.path, sh.storageName, onClick = { onLocate(pl.storageId, pl.folderId, sh.fileId.takeIf { it.isNotBlank() }) }) }
                                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                         StatusPill(if (sh.role == "EDITOR") "Boleh mengubah" else "Hanya lihat", c.surface2, c.muted)
                                         if (sh.hasPassword) StatusPill("Berkata sandi", c.warnSoft, c.warnInk)
@@ -150,6 +152,7 @@ fun SharedScreen(vm: SharedViewModel, server: String) {
                                         LinkChip("Salin", Lu.Copy) { val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager; cm.setPrimaryClip(ClipData.newPlainText("Tautan", absolute(server, sh.url))) }
                                         LinkChip("Kirim", Lu.Share) { context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, absolute(server, sh.url)), "Bagikan tautan")) }
                                         if (tab == 1) LinkChip("Buka", Lu.Link) { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(absolute(server, sh.url)))) }
+                                        if (tab == 0 && sh.place != null) LinkChip("Lokasi", Lu.MapPin) { sh.place?.let { pl -> onLocate(pl.storageId, pl.folderId, sh.fileId.takeIf { it.isNotBlank() }) } }
                                         if (tab == 0) LinkChip("Cabut", Lu.Trash, danger = true) { revoking = sh }
                                     }
                                 }

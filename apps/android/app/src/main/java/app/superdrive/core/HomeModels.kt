@@ -2,6 +2,10 @@ package app.superdrive.core
 
 import kotlinx.serialization.Serializable
 
+/** A folder somewhere in a storage: folderId is null at the top. */
+@Serializable data class Place(val storageId: String = "", val folderId: String? = null, val path: String = "/")
+@Serializable data class UploadHistoryItem(val id: String, val storageId: String = "", val storageName: String = "", val fileId: String? = null, val name: String, val size: Long = 0, val status: String = "DONE", val errorMessage: String? = null, val createdAt: String = "", val place: Place? = null)
+@Serializable data class UploadHistoryPage(val items: List<UploadHistoryItem> = emptyList(), val total: Int = 0)
 @Serializable data class Quota(val used: Long? = null, val total: Long? = null)
 @Serializable data class StorageInfo(val id: String, val name: String, val provider: String = "", val status: String = "CONNECTED", val quota: Quota? = null)
 @Serializable data class TransferCounts(val active: Int = 0, val completed: Int = 0, val failed: Int = 0)
@@ -16,6 +20,7 @@ import kotlinx.serialization.Serializable
     val sourceStorageName: String = "", val destinationStorageName: String = "",
     val totalFiles: Int = 0, val completedFiles: Int = 0, val skippedFiles: Int = 0,
     val totalBytes: Long? = null, val transferredBytes: Long = 0, val errorMessage: String? = null, val createdAt: String = "",
+    val sourcePlace: Place? = null, val destinationPlace: Place? = null,
 ) {
     val active get() = status in ACTIVE
     val paused get() = status == "PAUSED"
@@ -43,6 +48,6 @@ fun auditLabel(action: String): String = when (action) {
 @Serializable data class ShareItem(
     val id: String, val title: String? = null, val kind: String = "single", val itemCount: Int = 1, val storageId: String = "", val storageName: String = "",
     val fileId: String = "", val name: String = "", val isFolder: Boolean = false, val role: String = "VIEWER", val url: String = "",
-    val hasPassword: Boolean = false, val expiresAt: String? = null, val accessCount: Int = 0, val createdAt: String = "", val createdByName: String? = null, val expired: Boolean = false,
+    val hasPassword: Boolean = false, val expiresAt: String? = null, val accessCount: Int = 0, val createdAt: String = "", val createdByName: String? = null, val expired: Boolean = false, val place: Place? = null,
 )
 @Serializable data class SharePage(val items: List<ShareItem> = emptyList(), val total: Int = 0)
