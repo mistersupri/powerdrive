@@ -144,7 +144,7 @@ fun SharedScreen(vm: SharedViewModel, server: String, onLocate: (String, String?
                                     // Where the shared item lives, so it can be found again; tapping opens that folder with the item highlighted.
                                     sh.place?.let { pl -> app.superdrive.ui.design.PlaceLine(pl.path, sh.storageName, onClick = { onLocate(pl.storageId, pl.folderId, sh.fileId.takeIf { it.isNotBlank() }) }) }
                                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                        StatusPill(if (sh.role == "EDITOR") "Boleh mengubah" else "Hanya lihat", c.surface2, c.muted)
+                                        StatusPill(when (sh.role) { "EDITOR" -> "Boleh mengubah"; "UPLOADER" -> "Bisa unggah"; else -> "Hanya lihat" }, c.surface2, c.muted)
                                         if (sh.hasPassword) StatusPill("Berkata sandi", c.warnSoft, c.warnInk)
                                         if (sh.expired) StatusPill("Kedaluwarsa", c.dangerSoft, c.dangerInk) else sh.expiresAt?.let { StatusPill("Sampai ${it.take(10)}", c.okSoft, c.okInk) }
                                     }

@@ -489,3 +489,37 @@ describe("files with long names", () => {
     assert.ok(!(await list()).some((e: any) => e.id === f.id));
   });
 });
+
+describe("upload-only share links", () => {
+  let tok = ""; let id = ""; let dirId = ""; let docId = "";
+  const pub = (m: string, url: string, payload?: any) => t.call("", m, `/public/share/${tok}${url}`, payload);
+  before(async () => {
+    dirId = (await t.call("ana", "POST", "/files/folders", { storageId: sid, name: "Kotak masuk" })).data.id;
+    docId = (await mk("sudah-ada.txt", "isi", dirId)).id;
+    const r = await t.call("ana", "POST", "/shares", { storageId: sid, fileId: dirId, role: "UPLOADER", newLink: true, title: "Hanya unggah" });
+    assert.equal(r.status, 200, JSON.stringify(r.body)); assert.equal(r.data.role, "UPLOADER");
+    id = r.data.id; tok = r.data.url.split("/share/")[1];
+  });
+  it("lets a visitor add files and folders but not rename, delete or overwrite", async () => {
+    assert.equal((await pub("GET", "")).data.role, "UPLOADER");
+    assert.equal((await pub("POST", "/folders", { parentId: "root", name: "Baru" })).status, 200);
+    const buf = Buffer.from("kiriman");
+    const c = await pub("POST", "/uploads", { parentId: "root", name: "dari-tamu.txt", size: buf.length }); assert.equal(c.status, 201, JSON.stringify(c.body));
+    assert.equal((await t.call("", "PATCH", `/public/share/${tok}/uploads/${c.data.id}`, buf, { "upload-offset": "0", "content-type": "application/octet-stream" })).status, 200);
+    assert.ok((await list(sid, dirId)).some((f: any) => f.name === "dari-tamu.txt"));
+    assert.equal((await pub("POST", "/rename", { fileId: docId, name: "x.txt" })).status, 403);
+    assert.equal((await t.call("", "DELETE", `/public/share/${tok}/files/${docId}`)).status, 403);
+    assert.ok((await list(sid, dirId)).some((f: any) => f.name === "sudah-ada.txt"), "nothing was removed");
+  });
+  it("lets the visitor ask for a deletion, which reaches the owner as a notification", async () => {
+    assert.equal((await pub("POST", "/delete-requests", { fileId: docId })).status, 200);
+    const n = (await t.call("ana", "GET", "/notifications")).data.items as any[];
+    assert.ok(n.some((x) => x.type === "share.delete_request" && x.message.includes("sudah-ada.txt")));
+    assert.ok((await list(sid, dirId)).some((f: any) => f.name === "sudah-ada.txt"), "asking does not delete");
+  });
+  it("keeps viewers out of the request route and can switch the role later", async () => {
+    const v = await t.call("ana", "PATCH", `/shares/${id}`, { role: "VIEWER" }); assert.equal(v.data.role, "VIEWER");
+    assert.equal((await pub("POST", "/delete-requests", { fileId: docId })).status, 403);
+    assert.equal((await t.call("ana", "PATCH", `/shares/${id}`, { role: "UPLOADER" })).data.role, "UPLOADER");
+  });
+});

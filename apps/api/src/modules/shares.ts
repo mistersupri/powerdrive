@@ -2,7 +2,7 @@ import { getSettings } from "./settings.ts";
 import { logActivity } from "./activity.ts";
 import crypto from "node:crypto";
 import { hash, verify } from "@node-rs/argon2";
-import type { ShareLinkDto } from "@superdrive/shared";
+import type { ShareLinkDto, ShareRole } from "@superdrive/shared";
 import { config } from "../config.ts";
 import { db, now } from "../db.ts";
 import { audit, notify } from "../lib/audit.ts";
@@ -40,7 +40,7 @@ export function toShareDto(r: any): ShareLinkDto {
 }
 const SELECT = `SELECT l.*, s.name AS storage_name, u.name AS creator_name, r.name AS recipient_name, r.email AS recipient_email, (SELECT COUNT(*) FROM share_items i WHERE i.share_id = l.id) AS item_count FROM share_links l LEFT JOIN storages s ON s.id = l.storage_id LEFT JOIN users u ON u.id = l.created_by LEFT JOIN users r ON r.id = l.recipient_user_id`;
 
-export interface CreateShare { storageId: string; fileId?: string; /** Several items under one link. */ fileIds?: string[]; /** Share with these workspace members instead of making a link. */ recipientUserIds?: string[]; role: "VIEWER" | "EDITOR"; expiresInDays?: number | null; password?: string | null; maxUploadMb?: number | null; regenerate?: boolean; /** Always make an additional link (optionally with a title) instead of reusing the existing one. */ newLink?: boolean; title?: string | null }
+export interface CreateShare { storageId: string; fileId?: string; /** Several items under one link. */ fileIds?: string[]; /** Share with these workspace members instead of making a link. */ recipientUserIds?: string[]; role: ShareRole; expiresInDays?: number | null; password?: string | null; maxUploadMb?: number | null; regenerate?: boolean; /** Always make an additional link (optionally with a title) instead of reusing the existing one. */ newLink?: boolean; title?: string | null }
 
 /** Apply the guest-access policy to a requested expiry: a default when none was asked for, and never beyond the cap. */
 function policyExpiry(days?: number | null): number | null {
@@ -55,7 +55,7 @@ export async function createShare(ctx: AuthCtx, p: StorageProvider, input: Creat
   denyVisitor(ctx);
   const g = getSettings().guest;
   if (!g.allowLinks) throw forbidden("Tautan berbagi publik dimatikan oleh administrator. Anda masih bisa membagikan ke anggota workspace.");
-  if (input.role === "EDITOR" && !g.allowUploads) throw forbidden("Administrator tidak mengizinkan tamu mengunggah lewat tautan.");
+  if (input.role !== "VIEWER" && !g.allowUploads) throw forbidden("Administrator tidak mengizinkan tamu mengunggah lewat tautan.");
   if (g.requirePassword && !input.password) throw badRequest("Administrator mewajibkan kata sandi pada tautan publik.");
   input = { ...input, expiresInDays: policyExpiry(input.expiresInDays) };
   const rawIds = [...new Set((input.fileIds?.length ? input.fileIds : input.fileId ? [input.fileId] : []).map(decodeId))];
@@ -63,7 +63,7 @@ export async function createShare(ctx: AuthCtx, p: StorageProvider, input: Creat
   if (rawIds.length > 200) throw badRequest("Satu tautan maksimal 200 item.");
   const files: RemoteFile[] = []; for (const raw of rawIds) files.push(await p.stat(raw).catch(() => { throw notFound("File tidak ditemukan."); }));
   const bundle = files.length > 1;
-  if (input.role === "EDITOR" && !files.some((f) => f.isFolder)) throw badRequest(bundle ? "Tautan editor butuh minimal satu folder." : "Tautan editor hanya untuk folder.");
+  if (input.role !== "VIEWER" && !files.some((f) => f.isFolder)) throw badRequest(bundle ? "Tautan editor butuh minimal satu folder." : "Tautan editor hanya untuk folder.");
   const title = cleanTitle(input.title);
   const raw = bundle ? BUNDLE : rawIds[0]!; const f = files[0]!;
   if (!bundle && (input.newLink || title)) {
@@ -81,7 +81,7 @@ export async function createShare(ctx: AuthCtx, p: StorageProvider, input: Creat
     db.run(
       `INSERT INTO share_links(id,workspace_id,storage_id,file_id,is_folder,name,role,token_hash,token_enc,password_hash,expires_at,max_upload_bytes,created_by,title,kind) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       id, ctx.workspaceId, input.storageId, raw, bundle || f.isFolder ? 1 : 0, name, input.role, sha256(token), JSON.stringify(seal(token)), null, expiryOf(input.expiresInDays),
-      input.role === "EDITOR" && input.maxUploadMb ? Math.round(input.maxUploadMb * 1024 * 1024) : null, ctx.userId, title, bundle ? "bundle" : "single");
+      input.role !== "VIEWER" && input.maxUploadMb ? Math.round(input.maxUploadMb * 1024 * 1024) : null, ctx.userId, title, bundle ? "bundle" : "single");
     if (bundle) files.forEach((x, i) => db.run("INSERT INTO share_items(share_id, file_id, name, is_folder, position) VALUES (?,?,?,?,?)", id, x.id, x.name, x.isFolder ? 1 : 0, i));
   });
   if (input.password) db.run("UPDATE share_links SET password_hash = ? WHERE id = ?", await hash(input.password, ARGON), id);
@@ -101,7 +101,7 @@ export async function createDirectShares(ctx: AuthCtx, p: StorageProvider, input
   if (!rawIds.length) throw badRequest("Pilih minimal satu file atau folder.");
   const files: RemoteFile[] = []; for (const raw of rawIds) files.push(await p.stat(raw).catch(() => { throw notFound("File tidak ditemukan."); }));
   const bundle = files.length > 1;
-  if (input.role === "EDITOR" && !files.some((f) => f.isFolder)) throw badRequest("Izin editor butuh minimal satu folder.");
+  if (input.role !== "VIEWER" && !files.some((f) => f.isFolder)) throw badRequest("Izin editor butuh minimal satu folder.");
   const out: ShareLinkDto[] = []; const title = cleanTitle(input.title);
   for (const uid of recipients) {
     // One live direct share per recipient and item set: sharing again updates its permission instead of piling up duplicates.
@@ -114,7 +114,7 @@ export async function createDirectShares(ctx: AuthCtx, p: StorageProvider, input
         id, ctx.workspaceId, input.storageId, raw, bundle || files[0]!.isFolder ? 1 : 0, name, input.role, sha256(token), JSON.stringify(seal(token)), expiryOf(input.expiresInDays), ctx.userId, title, bundle ? "bundle" : "single", uid);
       if (bundle) files.forEach((x, i) => db.run("INSERT INTO share_items(share_id, file_id, name, is_folder, position) VALUES (?,?,?,?,?)", id, x.id, x.name, x.isFolder ? 1 : 0, i));
     });
-    notify(ctx.workspaceId, uid, "share.received", "Dibagikan ke Anda", `${ctx.userName} membagikan ${bundle ? `${files.length} item` : `“${name}”`} (${input.role === "EDITOR" ? "bisa mengedit" : "hanya melihat"}).`, { shareId: id });
+    notify(ctx.workspaceId, uid, "share.received", "Dibagikan ke Anda", `${ctx.userName} membagikan ${bundle ? `${files.length} item` : `“${name}”`} (${input.role === "EDITOR" ? "bisa mengedit" : input.role === "UPLOADER" ? "bisa mengunggah" : "hanya melihat"}).`, { shareId: id });
     out.push(toShareDto(db.get<any>(`${SELECT} WHERE l.id = ?`, id)));
   }
   for (const x of files) logActivity(ctx, input.storageId, x.id, "share", { role: input.role, to: recipients.length, direct: true });
@@ -149,24 +149,24 @@ function ownedShare(ctx: AuthCtx, id: string) {
   if (r.created_by !== ctx.userId && ctx.role !== "OWNER" && ctx.role !== "ADMIN") throw forbidden("Tautan ini dibuat pengguna lain.");
   return r;
 }
-export async function updateShare(ctx: AuthCtx, id: string, patch: { expiresInDays?: number | null; password?: string | null; maxUploadMb?: number | null; title?: string | null; role?: "VIEWER" | "EDITOR" }) {
+export async function updateShare(ctx: AuthCtx, id: string, patch: { expiresInDays?: number | null; password?: string | null; maxUploadMb?: number | null; title?: string | null; role?: ShareRole }) {
   const r = ownedShare(ctx, id);
   if (patch.title !== undefined) db.run("UPDATE share_links SET title = ? WHERE id = ?", cleanTitle(patch.title), id);
   // The permission can change at any time, even after the link has been used: the public routes read the role on every request.
   if (patch.role !== undefined && patch.role !== r.role) {
-    if (patch.role === "EDITOR" && !(isBundle(r) ? shareItems(id).some((i) => i.is_folder) : r.is_folder)) throw badRequest(isBundle(r) ? "Tautan editor butuh minimal satu folder." : "Tautan editor hanya untuk folder.");
-    db.run("UPDATE share_links SET role = ?, max_upload_bytes = CASE WHEN ? = 'EDITOR' THEN max_upload_bytes ELSE NULL END WHERE id = ?", patch.role, patch.role, id);
+    if (patch.role !== undefined && patch.role !== "VIEWER" && !(isBundle(r) ? shareItems(id).some((i) => i.is_folder) : r.is_folder)) throw badRequest(isBundle(r) ? "Tautan editor butuh minimal satu folder." : "Tautan editor hanya untuk folder.");
+    db.run("UPDATE share_links SET role = ?, max_upload_bytes = CASE WHEN ? <> 'VIEWER' THEN max_upload_bytes ELSE NULL END WHERE id = ?", patch.role, patch.role, id);
     audit({ workspaceId: ctx.workspaceId, userId: ctx.userId, action: "share.role", resourceType: "share", resourceId: id, metadata: { name: r.name, from: r.role, to: patch.role }, ip: ctx.ip });
     logActivity(ctx, r.storage_id, r.file_id, "share_role", { from: r.role, to: patch.role, title: r.title });
     r.role = patch.role;
   }
   const g = getSettings().guest; const link = !r.recipient_user_id;
-  if (link && patch.role === "EDITOR" && patch.role !== r.role && !g.allowUploads) throw forbidden("Administrator tidak mengizinkan tamu mengunggah lewat tautan.");
+  if (link && patch.role !== undefined && patch.role !== "VIEWER" && patch.role !== r.role && !g.allowUploads) throw forbidden("Administrator tidak mengizinkan tamu mengunggah lewat tautan.");
   if (link && patch.password === null && g.requirePassword) throw badRequest("Administrator mewajibkan kata sandi pada tautan publik.");
   if (link && patch.expiresInDays !== undefined) patch = { ...patch, expiresInDays: policyExpiry(patch.expiresInDays) };
   if (patch.expiresInDays !== undefined) db.run("UPDATE share_links SET expires_at = ? WHERE id = ?", patch.expiresInDays ? new Date(Date.now() + patch.expiresInDays * 86_400_000).toISOString() : null, id);
   if (patch.password !== undefined && !r.recipient_user_id) db.run("UPDATE share_links SET password_hash = ? WHERE id = ?", patch.password ? await hash(patch.password, ARGON) : null, id);
-  if (patch.maxUploadMb !== undefined && r.role === "EDITOR") db.run("UPDATE share_links SET max_upload_bytes = ? WHERE id = ?", patch.maxUploadMb ? Math.round(patch.maxUploadMb * 1048576) : null, id);
+  if (patch.maxUploadMb !== undefined && r.role !== "VIEWER") db.run("UPDATE share_links SET max_upload_bytes = ? WHERE id = ?", patch.maxUploadMb ? Math.round(patch.maxUploadMb * 1048576) : null, id);
   return toShareDto(db.get<any>(`${SELECT} WHERE l.id = ?`, id));
 }
 export function revokeShare(ctx: AuthCtx, id: string) {

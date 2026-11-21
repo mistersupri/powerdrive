@@ -131,10 +131,13 @@ fun ShareOptionsSheet(items: List<FileEntry>, onCreate: (role: String, days: Int
         Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 24.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(if (items.size == 1) "Bagikan “${items.first().name}”" else "Bagikan ${items.size} item", style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Text("Izin", style = MaterialTheme.typography.labelLarge)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+            androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(role == "VIEWER", { role = "VIEWER" }, label = { Text("Hanya lihat") })
+                FilterChip(role == "UPLOADER", { role = "UPLOADER" }, label = { Text("Bisa unggah") })
                 FilterChip(role == "EDITOR", { role = "EDITOR" }, label = { Text("Boleh mengubah") })
             }
+            if (role != "VIEWER") Text(if (role == "UPLOADER") "Tamu bisa mengunggah dan membuat folder, tidak bisa mengganti nama, memindahkan, atau menghapus. Mereka bisa meminta Anda menghapus. Hanya untuk folder." else "Tamu bisa mengunggah, mengganti nama, dan menghapus di dalam folder. Hanya untuk folder.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.sd.muted)
             Text("Berlaku", style = MaterialTheme.typography.labelLarge)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(1 to "1 hari", 7 to "7 hari", 30 to "30 hari").forEach { (d, l) -> FilterChip(days == d, { days = d }, label = { Text(l) }) }

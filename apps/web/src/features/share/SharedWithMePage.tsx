@@ -32,7 +32,7 @@ export default function SharedWithMePage() {
                         <span className="block truncate text-[12px] text-muted" title={names}>{s.kind === "bundle" ? `${s.itemCount} item: ${names}${s.itemCount > s.items.length ? ", …" : ""}` : s.name}</span>
                         <span className="block truncate text-[12px] text-muted" title={dateTime(s.createdAt)}>Dari {s.createdByName ?? "anggota"} · {timeAgo(s.createdAt)} · {s.storageName}{s.expiresAt ? ` · sampai ${dateTime(s.expiresAt)}` : ""}</span>
                       </span>
-                      <Badge tone={s.role === "EDITOR" ? "warn" : "primary"}>{s.role === "EDITOR" ? "Bisa mengedit" : "Hanya melihat"}</Badge>
+                      <Badge tone={s.role !== "VIEWER" ? "warn" : "primary"}>{s.role === "EDITOR" ? "Bisa mengedit" : s.role === "UPLOADER" ? "Bisa mengunggah" : "Hanya melihat"}</Badge>
                     </Link>
                   </li>);
               })}</ul>
@@ -50,7 +50,7 @@ export function DirectSharePage() {
   return (
     <FileUrlsProvider root={base}>
       <div className="flex min-h-0 flex-1 flex-col">
-        <PageHeader title={mine?.title ?? q.data?.name ?? "Dibagikan ke saya"} subtitle={mine ? `Dari ${mine.createdByName ?? "anggota"} · ${q.data?.role === "EDITOR" ? "Anda bisa mengedit isinya" : "Hanya melihat"}` : undefined}
+        <PageHeader title={mine?.title ?? q.data?.name ?? "Dibagikan ke saya"} subtitle={mine ? `Dari ${mine.createdByName ?? "anggota"} · ${q.data?.role === "EDITOR" ? "Anda bisa mengedit isinya" : q.data?.role === "UPLOADER" ? "Anda bisa menambah file" : "Hanya melihat"}` : undefined}
           actions={<Link to="/shared" aria-label="Semua yang dibagikan" className="inline-flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium text-muted hover:bg-surface-2 hover:text-ink pointer-coarse:h-11"><ArrowLeft className="size-4" aria-hidden /><span className="max-sm:sr-only">Semua yang dibagikan</span></Link>} />
         {gone ? <EmptyState icon={Link2Off} title="Item ini tidak lagi dibagikan ke Anda">Pemiliknya mungkin menghentikan berbagi atau masa berlakunya habis.</EmptyState>
           : q.isError ? <EmptyState icon={Link2Off} title="Tidak dapat membuka">{(q.error as Error).message}</EmptyState>

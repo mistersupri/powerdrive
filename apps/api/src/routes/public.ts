@@ -7,7 +7,7 @@ import type { PublicShareDto } from "@superdrive/shared";
 import { COOKIE_PATH_PREFIX, ok } from "./publicShared.ts";
 import { requireAuth } from "../app.ts";
 import { db, now } from "../db.ts";
-import { audit } from "../lib/audit.ts";
+import { audit, notify } from "../lib/audit.ts";
 import { AppError, badRequest, forbidden, notFound } from "../lib/errors.ts";
 import { sendFile, sendFolderZip, sendThumbnail, sendZip } from "../modules/delivery.ts";
 import { createFolder, listFolderShared, renameFile, toEntry } from "../modules/files.ts";
@@ -31,13 +31,14 @@ const makeShareRoutes = (direct: boolean) => async function shareRoutes(app: Fas
   /** Top-level items of a share can be neither renamed nor deleted through it. */
   const isTopLevel = (share: any, raw: string) => (isBundle(share) ? shareItems(share.id).some((i) => i.file_id === raw) : raw === share.file_id);
   /** Resolve the link and enforce the password gate. Never reveals why a link is unavailable. */
-  const gate = (req: FastifyRequest, needEditor = false): ResolvedShare => {
+  const gate = (req: FastifyRequest, need: false | "upload" | "edit" = false): ResolvedShare => {
     const { token } = req.params as any;
     const r = direct ? resolveDirectShare(requireAuth(req), token, req.ip) : resolveShare(token, req.ip);
     if (!direct && r.share.password_hash && !accessKeyValid(r.share.id, (req.cookies as any)[cookieName(r.share.id)]))
       throw new AppError(401, "PASSWORD_REQUIRED", "Tautan ini dilindungi kata sandi.");
-    if (needEditor && r.share.role !== "EDITOR") throw forbidden("Tautan ini hanya untuk melihat.");
-    if (needEditor && !direct && !getSettings().guest.allowUploads) throw forbidden("Unggahan lewat tautan sedang dimatikan oleh administrator.");
+    if (need === "upload" && r.share.role === "VIEWER") throw forbidden("Tautan ini hanya untuk melihat.");
+    if (need === "edit" && r.share.role !== "EDITOR") throw forbidden(r.share.role === "UPLOADER" ? "Tautan ini hanya boleh menambah file. Minta pemiliknya untuk mengubah atau menghapus." : "Tautan ini hanya untuk melihat.");
+    if (need && !direct && !getSettings().guest.allowUploads) throw forbidden("Unggahan lewat tautan sedang dimatikan oleh administrator.");
     return r;
   };
   const noStore = (reply: FastifyReply) => reply.header("cache-control", "private, no-store");
@@ -135,7 +136,7 @@ const makeShareRoutes = (direct: boolean) => async function shareRoutes(app: Fas
 
   /* ---- editor ---- */
   app.post("/share/:token/folders", lim(120), async (req) => {
-    const r = gate(req, true);
+    const r = gate(req, "upload");
     const b = z.object({ parentId: z.string().default("root"), name: z.string() }).parse(req.body);
     const parent = b.parentId === "root" ? rootParent(r.share) : decodeId(b.parentId);
     await assertWithin(r.share, r.p, parent);
@@ -143,7 +144,7 @@ const makeShareRoutes = (direct: boolean) => async function shareRoutes(app: Fas
     return ok(req, { ...e, storageId: "share" });
   });
   app.post("/share/:token/rename", lim(120), async (req) => {
-    const r = gate(req, true);
+    const r = gate(req, "edit");
     const b = z.object({ fileId: z.string(), name: z.string() }).parse(req.body);
     const raw = decodeId(b.fileId);
     if (isTopLevel(r.share, raw)) throw forbidden("Item utama tautan tidak bisa diganti namanya.");
@@ -151,7 +152,7 @@ const makeShareRoutes = (direct: boolean) => async function shareRoutes(app: Fas
     return ok(req, { ...(await renameFile(r.ctx, r.storage.id, r.p, raw, b.name)), storageId: "share" });
   });
   app.delete("/share/:token/files/:fileId", lim(120), async (req) => {
-    const r = gate(req, true);
+    const r = gate(req, "edit");
     const raw = decodeId((req.params as any).fileId);
     if (isTopLevel(r.share, raw)) throw forbidden("Item utama tautan tidak bisa dihapus.");
     await assertWithin(r.share, r.p, raw);
@@ -159,8 +160,23 @@ const makeShareRoutes = (direct: boolean) => async function shareRoutes(app: Fas
     return ok(req, {});
   });
 
+  // Someone who may add files but not remove them asks the owner to remove one: the owner gets a notification and decides.
+  app.post("/share/:token/delete-requests", lim(30), async (req) => {
+    const r = gate(req, "upload");
+    const b = z.object({ fileId: z.string() }).parse(req.body);
+    const raw = decodeId(b.fileId);
+    if (isTopLevel(r.share, raw)) throw forbidden("Item utama tautan tidak bisa diminta dihapus.");
+    await assertWithin(r.share, r.p, raw);
+    const f = await r.p.stat(raw).catch(() => { throw notFound("File tidak ditemukan."); });
+    const who = direct ? requireAuth(req).userName : "Pengunjung tautan";
+    const label = r.share.title ?? r.share.name;
+    notify(r.share.workspace_id, r.share.created_by, "share.delete_request", "Permintaan menghapus file", `${who} meminta “${f.name}” dihapus (tautan “${label}”).`, { shareId: r.share.id, storageId: r.storage.id, fileId: encodeId(raw) });
+    audit({ workspaceId: r.share.workspace_id, userId: r.share.created_by, action: "share.delete_request", resourceType: "share", resourceId: r.share.id, metadata: { name: f.name, by: who }, ip: req.ip });
+    return ok(req, {});
+  });
+
   app.post("/share/:token/uploads", lim(4000), async (req, reply) => {
-    const r = gate(req, true);
+    const r = gate(req, "upload");
     const b = z.object({ parentId: z.string().default("root"), name: z.string(), size: z.number().int().min(0), mimeType: z.string().nullish(), conflictPolicy: z.enum(["SKIP", "OVERWRITE", "RENAME", "FAIL"]).optional() }).parse(req.body);
     const parent = b.parentId === "root" ? rootParent(r.share) : decodeId(b.parentId);
     await assertWithin(r.share, r.p, parent);
@@ -168,15 +184,15 @@ const makeShareRoutes = (direct: boolean) => async function shareRoutes(app: Fas
     const up = await createUpload(r.ctx, { storageId: r.storage.id, parentId: encodeParent(parent), name: b.name, size: b.size, mimeType: b.mimeType, conflictPolicy: b.conflictPolicy === "SKIP" ? "SKIP" : "RENAME" }, r.share.id);
     return reply.status(201).send(ok(req, up));
   });
-  app.get("/share/:token/uploads/:id", lim(12000), async (req) => { const r = gate(req, true); return ok(req, getUpload(r.ctx, (req.params as any).id, r.share.id)); });
+  app.get("/share/:token/uploads/:id", lim(12000), async (req) => { const r = gate(req, "upload"); return ok(req, getUpload(r.ctx, (req.params as any).id, r.share.id)); });
   app.patch("/share/:token/uploads/:id", lim(12000), async (req, reply) => {
-    const r = gate(req, true);
+    const r = gate(req, "upload");
     const offset = Number(req.headers["upload-offset"]);
     if (!Number.isSafeInteger(offset) || offset < 0) throw badRequest("Header Upload-Offset wajib diisi.");
     return reply.send(ok(req, await receiveChunk(r.ctx, (req.params as any).id, offset, req.raw, r.share.id)));
   });
-  app.post("/share/:token/uploads/:id/retry", lim(120), async (req) => { const r = gate(req, true); return ok(req, retryUpload(r.ctx, (req.params as any).id, r.share.id)); });
-  app.delete("/share/:token/uploads/:id", lim(600), async (req) => { const r = gate(req, true); cancelUpload(r.ctx, (req.params as any).id, r.share.id); return ok(req, {}); });
+  app.post("/share/:token/uploads/:id/retry", lim(120), async (req) => { const r = gate(req, "upload"); return ok(req, retryUpload(r.ctx, (req.params as any).id, r.share.id)); });
+  app.delete("/share/:token/uploads/:id", lim(600), async (req) => { const r = gate(req, "upload"); cancelUpload(r.ctx, (req.params as any).id, r.share.id); return ok(req, {}); });
 }
 
 import { encodeId } from "../providers/types.ts";

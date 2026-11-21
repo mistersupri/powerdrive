@@ -138,17 +138,20 @@ export interface TrashItemDto {
   originalPath: string; trashedAt: string; trashedBy: string | null; expiresAt: string;
 }
 
+/** What a visitor of a share may do: look, look and add files (no rename, delete or move), or change things inside the folder. */
+export type ShareRole = "VIEWER" | "UPLOADER" | "EDITOR";
+
 export interface ShareLinkDto {
   /** The folder the shared item lives in (the first item of a bundle). */ place?: PlaceDto;
   id: string; /** Free text for the owner: who this link was made for. Never shown to visitors. */ title: string | null;
   /** "bundle" = several items under one link. */ kind: "single" | "bundle"; itemCount: number; items: { name: string; isFolder: boolean }[];
-  /** Set when shared directly with a workspace member instead of by link. */ recipient: { id: string; name: string; email: string } | null; storageId: string; storageName: string; fileId: string; name: string; isFolder: boolean; role: "VIEWER" | "EDITOR";
+  /** Set when shared directly with a workspace member instead of by link. */ recipient: { id: string; name: string; email: string } | null; storageId: string; storageName: string; fileId: string; name: string; isFolder: boolean; role: ShareRole;
   url: string; hasPassword: boolean; expiresAt: string | null; maxUploadBytes: number | null; uploadedBytes: number;
   accessCount: number; lastAccessAt: string | null; createdAt: string; createdByName: string | null; revokedAt: string | null; expired: boolean;
 }
 
 export interface PublicShareDto {
-  name: string; isFolder: boolean; isBundle?: boolean; itemCount?: number; role: "VIEWER" | "EDITOR"; requiresPassword: boolean; unlocked: boolean; expiresAt: string | null;
+  name: string; isFolder: boolean; isBundle?: boolean; itemCount?: number; role: ShareRole; requiresPassword: boolean; unlocked: boolean; expiresAt: string | null;
   maxUploadBytes: number | null; uploadedBytes: number;
 }
 

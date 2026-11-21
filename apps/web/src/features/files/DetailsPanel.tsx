@@ -26,8 +26,8 @@ const ACCESS = new Set(["view", "download"]);
 const ACTION: Record<string, { icon: typeof Eye; text: (m: Record<string, any>) => string }> = {
   view: { icon: Eye, text: () => "membuka" }, download: { icon: Download, text: () => "mengunduh" }, upload: { icon: UploadCloud, text: () => "mengunggah" }, create: { icon: FolderPlus, text: () => "membuat" },
   rename: { icon: Pencil, text: (m) => `mengganti nama dari “${m.from}” menjadi “${m.to}”` }, delete: { icon: Trash2, text: () => "memindahkan ke Sampah" }, restore: { icon: Undo2, text: () => "memulihkan" },
-  move: { icon: FilePlus2, text: () => "memindahkan" }, share: { icon: Link2, text: (m) => `membuat tautan berbagi${m.title ? ` untuk ${m.title}` : ""} (${m.role === "EDITOR" ? "editor" : "penonton"})` },
-  unshare: { icon: Link2, text: (m) => `mematikan tautan${m.title ? ` untuk ${m.title}` : ""}` }, share_role: { icon: Link2, text: (m) => `mengubah izin tautan${m.title ? ` ${m.title}` : ""} dari ${m.from === "EDITOR" ? "editor" : "penonton"} ke ${m.to === "EDITOR" ? "editor" : "penonton"}` },
+  move: { icon: FilePlus2, text: () => "memindahkan" }, share: { icon: Link2, text: (m) => `membuat tautan berbagi${m.title ? ` untuk ${m.title}` : ""} (${m.role === "EDITOR" ? "editor" : m.role === "UPLOADER" ? "bisa unggah" : "penonton"})` },
+  unshare: { icon: Link2, text: (m) => `mematikan tautan${m.title ? ` untuk ${m.title}` : ""}` }, share_role: { icon: Link2, text: (m) => `mengubah izin tautan${m.title ? ` ${m.title}` : ""} dari ${m.from === "EDITOR" ? "editor" : m.from === "UPLOADER" ? "bisa unggah" : "penonton"} ke ${m.to === "EDITOR" ? "editor" : m.to === "UPLOADER" ? "bisa unggah" : "penonton"}` },
   comment: { icon: MessageSquare, text: () => "menulis komentar" }, tag: { icon: Tag, text: (m) => (m.add ? `menambah tag “${m.add}”` : `menghapus tag “${m.remove}”`) },
 };
 

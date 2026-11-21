@@ -1,7 +1,7 @@
 import type { FileEntry, ShareLinkDto } from "@superdrive/shared";
 import { formatBytes } from "@superdrive/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Copy, Eye, KeyRound, Link2, Pencil, Plus, Trash2, Users } from "lucide-react";
+import { Check, Copy, Eye, KeyRound, Link2, Pencil, Plus, Trash2, Upload, Users } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
@@ -13,14 +13,16 @@ import { Dialog } from "@/ui/Dialog";
 import { Input, Select } from "@/ui/Field";
 import { Skeleton } from "@/ui/misc";
 
-type Role = "VIEWER" | "EDITOR";
+type Role = "VIEWER" | "UPLOADER" | "EDITOR";
+const ROLE_NAME: Record<Role, string> = { VIEWER: "penonton", UPLOADER: "bisa unggah", EDITOR: "editor" };
 const EXPIRY = [["", "Tanpa batas waktu"], ["1", "1 hari"], ["7", "7 hari"], ["30", "30 hari"], ["90", "90 hari"]] as const;
-const ROLE_HELP: Record<Role, string> = { VIEWER: "Bisa melihat, memutar, dan mengunduh. Tidak bisa mengubah apa pun.", EDITOR: "Bisa mengunggah, membuat folder, mengganti nama, dan menghapus di dalam folder ini." };
+const ROLE_HELP: Record<Role, string> = { VIEWER: "Bisa melihat, memutar, dan mengunduh. Tidak bisa mengubah apa pun.", UPLOADER: "Bisa melihat, mengunggah, dan membuat folder di dalam folder ini. Tidak bisa mengganti nama, memindahkan, atau menghapus; untuk menghapus, tamu bisa mengirim permintaan ke Anda.", EDITOR: "Bisa mengunggah, membuat folder, mengganti nama, dan menghapus di dalam folder ini." };
 
 function RoleSelect({ value, isFolder, onChange, label }: { value: Role; isFolder: boolean; onChange(r: Role): void; label: string }) {
   return (
     <Select aria-label={label} value={value} onChange={(e) => onChange(e.target.value as Role)} className="h-9 text-[13px]">
       <option value="VIEWER">Penonton</option>
+      <option value="UPLOADER" disabled={!isFolder}>{isFolder ? "Bisa unggah" : "Bisa unggah (hanya folder)"}</option>
       <option value="EDITOR" disabled={!isFolder}>{isFolder ? "Editor" : "Editor (hanya folder)"}</option>
     </Select>
   );
@@ -35,7 +37,7 @@ function LinkRow({ link, onChanged }: { link: ShareLinkDto; onChanged(): void })
   });
   const revoke = useMutation({ mutationFn: () => api(`/shares/${link.id}`, { method: "DELETE" }), onSuccess: () => { toast.success("Tautan dimatikan"); onChanged(); } });
   const copy = async () => { await navigator.clipboard.writeText(link.url); setCopied(true); setTimeout(() => setCopied(false), 1500); };
-  const editor = link.role === "EDITOR"; const Icon = editor ? Pencil : Eye;
+  const editor = link.role !== "VIEWER"; const Icon = link.role === "EDITOR" ? Pencil : link.role === "UPLOADER" ? Upload : Eye;
   const saveTitle = () => { if (title.trim() !== (link.title ?? "")) update.mutate({ title: title.trim() || null }, { onSuccess: () => toast.success("Judul disimpan") }); };
 
   return (
@@ -44,7 +46,7 @@ function LinkRow({ link, onChanged }: { link: ShareLinkDto; onChanged(): void })
         <span className={cn("grid size-9 shrink-0 place-items-center rounded-lg", editor ? "bg-warn-soft text-warn-ink" : "bg-primary-soft text-primary-ink")}><Icon className="size-[18px]" aria-hidden /></span>
         <div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-[minmax(0,1fr)_150px]">
           <Input aria-label="Judul tautan: untuk siapa" value={title} maxLength={80} onChange={(e) => setTitle(e.target.value)} onBlur={saveTitle} onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} placeholder="Untuk siapa? mis. Pak Budi, Tim audit" className="h-9 text-[14px] font-medium" />
-          <RoleSelect label="Izin tautan" value={link.role} isFolder={link.isFolder || link.kind === "bundle"} onChange={(role) => update.mutate({ role }, { onSuccess: () => toast.success(role === "EDITOR" ? "Izin diubah: editor" : "Izin diubah: penonton") })} />
+          <RoleSelect label="Izin tautan" value={link.role} isFolder={link.isFolder || link.kind === "bundle"} onChange={(role) => update.mutate({ role }, { onSuccess: () => toast.success(`Izin diubah: ${ROLE_NAME[role]}`) })} />
         </div>
       </div>
       <p className="text-[12px] text-muted">{ROLE_HELP[link.role]} Perubahan izin langsung berlaku, juga untuk orang yang sudah membuka tautan ini.</p>
@@ -77,7 +79,7 @@ function NewLink({ storageId, files, first, onCreated }: { storageId: string; fi
   const canEdit = files.some((f) => f.isFolder);
   const [open, setOpen] = useState(first); const [title, setTitle] = useState(""); const [role, setRole] = useState<Role>("VIEWER"); const [days, setDays] = useState(""); const [pw, setPw] = useState(""); const [mb, setMb] = useState("");
   const create = useMutation({
-    mutationFn: () => api<ShareLinkDto>("/shares", { body: { storageId, ...(files.length > 1 ? { fileIds: files.map((f) => f.id) } : { fileId: files[0]!.id }), role, newLink: true, title: title.trim() || null, expiresInDays: days ? Number(days) : null, password: pw || null, maxUploadMb: role === "EDITOR" && mb ? Number(mb) : null } }),
+    mutationFn: () => api<ShareLinkDto>("/shares", { body: { storageId, ...(files.length > 1 ? { fileIds: files.map((f) => f.id) } : { fileId: files[0]!.id }), role, newLink: true, title: title.trim() || null, expiresInDays: days ? Number(days) : null, password: pw || null, maxUploadMb: role !== "VIEWER" && mb ? Number(mb) : null } }),
     onSuccess: (l) => { setTitle(""); setPw(""); setMb(""); setRole("VIEWER"); setOpen(false); onCreated(l); }, onError: (e) => toast.error((e as Error).message),
   });
   if (!open) return <Button size="sm" icon={<Plus className="size-4" />} onClick={() => setOpen(true)}>Buat tautan baru</Button>;
@@ -89,7 +91,7 @@ function NewLink({ storageId, files, first, onCreated }: { storageId: string; fi
         <label className="text-[12px] text-muted">Izin<RoleSelect label="Izin" value={role} isFolder={canEdit} onChange={setRole} /></label>
         <label className="text-[12px] text-muted">Masa berlaku<Select value={days} onChange={(e) => setDays(e.target.value)} className="mt-1 h-9">{EXPIRY.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</Select></label>
         <label className="text-[12px] text-muted">Kata sandi (opsional)<Input type="password" autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} className="mt-1 h-9" /></label>
-        {role === "EDITOR" && <label className="text-[12px] text-muted sm:col-span-2">Kuota unggahan, MB (opsional)<Input inputMode="numeric" value={mb} onChange={(e) => setMb(e.target.value)} placeholder="Tanpa batas" className="mt-1 h-9" /></label>}
+        {role !== "VIEWER" && <label className="text-[12px] text-muted sm:col-span-2">Kuota unggahan, MB (opsional)<Input inputMode="numeric" value={mb} onChange={(e) => setMb(e.target.value)} placeholder="Tanpa batas" className="mt-1 h-9" /></label>}
       </div>
       <p className="text-[12px] text-muted">{ROLE_HELP[role]} Izin bisa diubah nanti.</p>
       <div className="flex flex-wrap gap-2"><Button type="submit" variant="primary" size="sm" icon={<Link2 className="size-4" />} loading={create.isPending}>Buat tautan</Button>{!first && <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>Batal</Button>}</div>

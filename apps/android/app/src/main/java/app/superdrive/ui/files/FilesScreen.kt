@@ -179,6 +179,19 @@ fun FilesScreen(vm: FilesViewModel, api: Api, imageLoader: ImageLoader, isAdmin:
                         Box {
                             BarIcon(Lu.More, "Lainnya", { menu = true })
                             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = RoundedCornerShape(14.dp)) {
+                                // Inside a folder, the first entries are that folder's own menu, the same as on its row in the list above.
+                                val here = s.folder
+                                if (s.stack.isNotEmpty() && here != null) {
+                                    MenuRow("Detail", Lu.Info) { menu = false; dialog = Dialog.Details(here) }
+                                    MenuRow("Ganti nama", Lu.Pencil) { menu = false; dialog = Dialog.Rename(here) }
+                                    MenuRow(if (here.starred) "Lepas bintang" else "Beri bintang", Lu.Star) { menu = false; vm.star(here) }
+                                    MenuRow("Bagikan", Lu.Share) { menu = false; dialog = Dialog.Share(listOf(here)) }
+                                    MenuRow("Salin ke…", Lu.Copy) { menu = false; dialog = Dialog.Pick("COPY", listOf(here)) }
+                                    MenuRow("Pindahkan ke…", Lu.Move) { menu = false; dialog = Dialog.Pick("MOVE", listOf(here)) }
+                                    if (s.storage?.provider == "GOOGLE_DRIVE") MenuRow("Jadikan milik saya", Lu.User) { menu = false; dialog = Dialog.Claim(here) }
+                                    MenuRow("Hapus", Lu.Trash) { menu = false; dialog = Dialog.Delete(listOf(here)) }
+                                    androidx.compose.material3.HorizontalDivider(color = c.line)
+                                }
                                 MenuRow("Muat ulang", Lu.Retry) { menu = false; vm.refresh() }
                                 MenuRow("Keluar", Lu.X) { menu = false; onLogout() }
                             }

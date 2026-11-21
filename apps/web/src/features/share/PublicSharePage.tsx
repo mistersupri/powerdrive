@@ -38,10 +38,10 @@ function Gate({ token, base, onDone }: { token: string; base: string; onDone(): 
 }
 
 export function Content({ token, base, meta }: { token: string; base: string; meta: PublicShareDto }) {
-  const qc = useQueryClient(); const editor = meta.role === "EDITOR";
+  const qc = useQueryClient(); const editor = meta.role === "EDITOR"; const uploader = meta.role !== "VIEWER"; // an uploader adds files; only an editor renames, moves and deletes
   const [folderId, setFolderId] = useState("root"); const [view, setView] = usePersistentState<"grid" | "list">("sd-view", "grid");
   const [sort, setSort] = usePersistentState<SortState>("sd-sort", { key: "name", dir: "asc" }); const [filter, setFilter] = useState(emptyFilter);
-  const canWrite = editor && !(meta.isBundle && folderId === "root"); // a bundle's top level is virtual: write inside one of its folders
+  const canWrite = uploader && !(meta.isBundle && folderId === "root"); // a bundle's top level is virtual: write inside one of its folders
   const selection = useSelection(); const menu = useMenu(); const fileInput = useRef<HTMLInputElement>(null);
   const [dlg, setDlg] = useState<null | { t: "folder" } | { t: "rename"; e: FileEntry } | { t: "delete"; e: FileEntry }>(null); const [preview, setPreview] = useState<number | null>(null);
 
@@ -87,6 +87,7 @@ export function Content({ token, base, meta }: { token: string; base: string; me
         onContext={(e, x, y) => e && menu.open(x, y, [
           { label: e.isFolder ? "Buka" : "Pratinjau", icon: <Eye />, onSelect: () => open(e) },
           { label: e.isFolder ? "Unduh sebagai ZIP" : "Unduh", icon: <Download />, onSelect: () => download([e.id]) },
+          { label: "Minta hapus…", icon: <Trash2 />, hidden: editor || !uploader || (meta.isBundle && folderId === "root"), divider: true, onSelect: () => { void api(`${base}/delete-requests`, { body: { fileId: e.id } }).then(() => toast.success("Permintaan dikirim ke pemilik tautan")).catch((err: Error) => toast.error(err.message)); } },
           { label: "Ganti nama", icon: <Pencil />, hidden: !editor || (meta.isBundle && folderId === "root"), divider: true, onSelect: () => setDlg({ t: "rename", e }) },
           { label: "Hapus", icon: <Trash2 />, danger: true, hidden: !editor || (meta.isBundle && folderId === "root"), onSelect: () => setDlg({ t: "delete", e }) },
         ])}
@@ -113,8 +114,8 @@ export default function PublicSharePage() {
         <header className="flex items-center gap-3 border-b border-line bg-surface px-4 py-3 sm:px-6">
           <Logo />
           <span className="mx-1 h-5 w-px bg-line" aria-hidden />
-          <div className="min-w-0 flex-1">{q.data ? <><p className="truncate text-[14px] font-semibold" title={q.data.name}>{q.data.name}</p><p className="text-[12px] text-muted">{q.data.role === "EDITOR" ? "Anda bisa mengunggah dan mengubah isi folder ini" : "Dibagikan kepada Anda"}{q.data.expiresAt ? ` · berlaku sampai ${new Date(q.data.expiresAt).toLocaleDateString("id-ID")}` : ""}</p></> : <Skeleton className="h-8 w-48" />}</div>
-          {q.data && <Badge tone={q.data.role === "EDITOR" ? "warn" : "primary"}>{q.data.role === "EDITOR" ? "Editor" : "Penonton"}</Badge>}
+          <div className="min-w-0 flex-1">{q.data ? <><p className="truncate text-[14px] font-semibold" title={q.data.name}>{q.data.name}</p><p className="text-[12px] text-muted">{q.data.role === "EDITOR" ? "Anda bisa mengunggah dan mengubah isi folder ini" : q.data.role === "UPLOADER" ? "Anda bisa menambah file; untuk menghapus, kirim permintaan ke pemilik" : "Dibagikan kepada Anda"}{q.data.expiresAt ? ` · berlaku sampai ${new Date(q.data.expiresAt).toLocaleDateString("id-ID")}` : ""}</p></> : <Skeleton className="h-8 w-48" />}</div>
+          {q.data && <Badge tone={q.data.role !== "VIEWER" ? "warn" : "primary"}>{q.data.role === "EDITOR" ? "Editor" : q.data.role === "UPLOADER" ? "Bisa unggah" : "Penonton"}</Badge>}
           {q.data?.maxUploadBytes ? <span className="tnum hidden text-[12px] text-muted sm:inline">Kuota {formatBytes(q.data.uploadedBytes)} / {formatBytes(q.data.maxUploadBytes)}</span> : null}
         </header>
         {gone ? <EmptyState icon={Link2Off} title="Tautan tidak berlaku">Tautan ini sudah dimatikan, kedaluwarsa, atau tidak pernah ada. Minta pemiliknya membagikan tautan baru.</EmptyState>

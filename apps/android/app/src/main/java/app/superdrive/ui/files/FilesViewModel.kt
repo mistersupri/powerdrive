@@ -40,6 +40,8 @@ data class FilesState(
     val focus: String? = null,
     /** A Google editor address to open in the browser or the Google app. */
     val openUrl: String? = null,
+    /** The folder being browsed, as an item, so its own menu (rename, share, move, delete…) can be offered from the header. */
+    val folder: FileEntry? = null,
 )
 
 /** Folders first, then by name the way a person reads it ("file 2" before "file 10"). */
@@ -86,6 +88,14 @@ class FilesViewModel(private val api: Api, private val ops: FileOps = FileOps(ap
 
     private fun folderId(s: FilesState) = s.stack.lastOrNull() ?: "root"
 
+    /** Reads the open folder as an item (name, star, dates) for the header menu. */
+    private fun loadFolderEntry(storageId: String, folderId: String) {
+        viewModelScope.launch {
+            try { val e = api.get<FileEntry>("/files/$storageId/$folderId"); _state.update { if (it.stack.lastOrNull() == folderId) it.copy(folder = e) else it } }
+            catch (_: ApiException) { /* the menu simply stays short */ }
+        }
+    }
+
     private fun load(refresh: Boolean) {
         val s = _state.value; val storage = s.storage ?: return
         job?.cancel()
@@ -93,7 +103,8 @@ class FilesViewModel(private val api: Api, private val ops: FileOps = FileOps(ap
         job = viewModelScope.launch {
             try {
                 val page = api.get<FileListing>("/files?storageId=${storage.id}&folderId=${java.net.URLEncoder.encode(folderId(s), "UTF-8")}&limit=200")
-                _state.update { it.copy(items = sortedForDisplay(page.items), folderName = if (it.stack.isEmpty()) storageTitle(storage) else page.folder.name, nextPage = page.nextPageToken, loading = false, refreshing = false) }
+                _state.update { it.copy(items = sortedForDisplay(page.items), folderName = if (it.stack.isEmpty()) storageTitle(storage) else page.folder.name, nextPage = page.nextPageToken, loading = false, refreshing = false, folder = it.folder?.takeIf { f -> f.id == folderId(it) }) }
+                if (s.stack.isNotEmpty()) loadFolderEntry(storage.id, folderId(s))
             } catch (e: ApiException) { _state.update { it.copy(loading = false, refreshing = false, error = e.message) } }
         }
     }
@@ -134,7 +145,8 @@ class FilesViewModel(private val api: Api, private val ops: FileOps = FileOps(ap
         job = viewModelScope.launch {
             try {
                 val page = api.get<FileListing>("/files?storageId=${st.id}&folderId=${java.net.URLEncoder.encode(target ?: "root", "UTF-8")}&limit=200")
-                _state.update { it.copy(stack = if (target == null) emptyList() else page.folder.path.map { c -> c.id }, items = sortedForDisplay(page.items), folderName = if (target == null) storageTitle(st) else page.folder.name, nextPage = page.nextPageToken, loading = false, focus = focusId) }
+                _state.update { it.copy(stack = if (target == null) emptyList() else page.folder.path.map { c -> c.id }, items = sortedForDisplay(page.items), folderName = if (target == null) storageTitle(st) else page.folder.name, nextPage = page.nextPageToken, loading = false, focus = focusId, folder = null) }
+                if (target != null) loadFolderEntry(st.id, page.folder.path.lastOrNull()?.id ?: target)
             } catch (e: ApiException) { _state.update { it.copy(loading = false, error = e.message) } }
         }
     }
@@ -161,23 +173,25 @@ class FilesViewModel(private val api: Api, private val ops: FileOps = FileOps(ap
     private fun picked(): List<FileEntry> = _state.value.let { s -> s.items.filter { it.id in s.selection } }
 
     /** Runs one action, reports the outcome as a notice and reloads the listing. */
-    private fun act(done: String, block: suspend () -> Unit) {
+    private fun act(done: String, leave: Boolean = false, block: suspend () -> Unit) {
         viewModelScope.launch {
-            try { block(); _state.update { it.copy(notice = done, selection = emptySet()) }; load(refresh = true) }
+            try { block(); _state.update { it.copy(notice = done, selection = emptySet()) }; if (leave) up() else load(refresh = true) }
             catch (e: ApiException) { _state.update { it.copy(notice = e.message ?: "Gagal.") } }
         }
     }
 
     fun rename(f: FileEntry, name: String) { if (name.isNotBlank() && name != f.name) act("Nama diubah") { ops.rename(f, name.trim()) } }
     fun star(f: FileEntry) = act(if (f.starred) "Bintang dilepas" else "Diberi bintang") { ops.star(f, !f.starred) }
-    fun trash(items: List<FileEntry> = picked()) { if (items.isNotEmpty()) act(if (items.size == 1) "Dipindahkan ke sampah" else "${items.size} item dipindahkan ke sampah") { items.forEach { ops.trash(it) } } }
+    /** True when one of these is the folder we are standing in: after it is gone, step out of it. */
+    private fun includesHere(items: List<FileEntry>) = items.any { it.id == _state.value.stack.lastOrNull() }
+    fun trash(items: List<FileEntry> = picked()) { if (items.isNotEmpty()) act(if (items.size == 1) "Dipindahkan ke sampah" else "${items.size} item dipindahkan ke sampah", leave = includesHere(items)) { items.forEach { ops.trash(it) } } }
     fun newFolder(name: String) {
         val s = _state.value; val st = s.storage ?: return
         if (name.isNotBlank()) act("Folder dibuat") { ops.newFolder(st.id, folderId(s), name.trim()) }
     }
     /** type is COPY or MOVE; the work runs on the server and shows on the Transfer tab. */
     fun transfer(type: String, items: List<FileEntry>, destStorageId: String, destFolderId: String) {
-        if (items.isNotEmpty()) act(if (type == "MOVE") "Pemindahan dimulai" else "Penyalinan dimulai") { ops.transfer(type, items, destStorageId, destFolderId) }
+        if (items.isNotEmpty()) act(if (type == "MOVE") "Pemindahan dimulai" else "Penyalinan dimulai", leave = type == "MOVE" && includesHere(items)) { ops.transfer(type, items, destStorageId, destFolderId) }
     }
     fun createShare(items: List<FileEntry>, role: String, days: Int?, password: String?, title: String?) {
         viewModelScope.launch {
