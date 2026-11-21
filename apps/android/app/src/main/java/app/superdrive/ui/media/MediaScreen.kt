@@ -52,6 +52,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -126,6 +127,7 @@ fun MediaScreen(vm: MediaViewModel, api: Api, imageLoader: ImageLoader, userId: 
     BackHandler(enabled = selecting) { vm.clearSelection() }
     var open by remember { mutableStateOf<Open?>(null) }
     var sortMenu by remember { mutableStateOf(false) }
+    var filterSheet by remember { mutableStateOf(false) }
     var unlocking by remember { mutableStateOf(false) }
     LaunchedEffect(open != null) { onFullscreen(open != null) }
     DisposableEffect(Unit) { onDispose { onFullscreen(false) } }
@@ -153,6 +155,7 @@ fun MediaScreen(vm: MediaViewModel, api: Api, imageLoader: ImageLoader, userId: 
                 actions = {
                     if (s.mode == MediaMode.Albums && s.scope == null) BarIcon(Lu.Plus, "Album baru", { newAlbum = true }, tint = MaterialTheme.sd.primaryInk)
                     if (s.mode == MediaMode.Albums && s.scope == null && s.privateStatus.unlocked) TextButton(onClick = vm::lockPrivate) { Icon(Lu.Lock, null, Modifier.size(16.dp)); Text("  Kunci") }
+                    if (inGallery) BarIcon(Lu.Filter, "Filter", { vm.loadStorages(); filterSheet = true }, tint = if (s.filter.active) MaterialTheme.sd.primary else MaterialTheme.sd.muted)
                     if (inGallery) Box {
                         BarIcon(Lu.More, "Urutkan", { sortMenu = true })
                         DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }, shape = RoundedCornerShape(14.dp)) {
@@ -177,6 +180,7 @@ fun MediaScreen(vm: MediaViewModel, api: Api, imageLoader: ImageLoader, userId: 
         }
     }
 
+    if (filterSheet) MediaFilterSheet(s.filter, s.storages, showStorage = s.scope == null, onChange = vm::setFilter, onDismiss = { filterSheet = false })
     open?.let { o -> MediaViewer(o.items, o.index, api, imageLoader, onClose = { open = null }) }
     if (unlocking) UnlockDialog(userId = userId, error = s.unlockError, hasPassword = s.privateStatus.hasPassword, onDismiss = { unlocking = false; vm.clearUnlockError() }, onUnlock = { vm.unlock(it) })
     LaunchedEffect(s.privateStatus.unlocked) { if (s.privateStatus.unlocked) unlocking = false }
@@ -252,6 +256,28 @@ private fun SkeletonGrid() = Column(Modifier.fillMaxSize().padding(horizontal = 
 private fun Gallery(s: MediaState, vm: MediaViewModel, api: Api, imageLoader: ImageLoader, onOpen: (List<FileEntry>, Int) -> Unit) {
     val rows = remember(s.items, s.sort) { cells(s.items, byDate = s.sort.sort == "date") }
     val gridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
+    val n = when (s.kind) { MediaKind.All -> s.photos + s.videos; MediaKind.Image -> s.photos; MediaKind.Video -> s.videos }
+    val lead = if (s.scope == null && s.kind == MediaKind.All && s.highlights.isNotEmpty()) 1 else 0
+    // photo number -> its row in the grid, and a row -> the photo at or after it (headers count as the photo below them)
+    val tileRows = remember(rows) { rows.withIndex().filter { it.value is Cell.Tile }.map { it.index }.toIntArray() }
+    val rowToPhoto = remember(rows) { val a = IntArray(rows.size); var next = 0; for (r in rows.indices.reversed()) { val c = rows[r]; if (c is Cell.Tile) next = c.index; a[r] = next }; a }
+    var target by remember { mutableIntStateOf(-1) }
+    var scrubbing by remember { mutableStateOf(false) }
+    var scrubLabel by remember { mutableStateOf<String?>(null) }
+    val dated = s.sort == MediaSort.Newest || s.sort == MediaSort.Oldest
+    fun monthAt(idx: Int): String? {
+        val months = if (s.sort == MediaSort.Oldest) s.timeline.asReversed() else s.timeline
+        var acc = 0
+        for (m in months) { acc += m.count; if (idx < acc) return monthLabel(m.month) }
+        return months.lastOrNull()?.let { monthLabel(it.month) }
+    }
+    // The scrubber asks for a photo number; load pages until it exists, then jump there.
+    LaunchedEffect(target, s.items.size, s.cursor) {
+        if (target < 0 || rows.isEmpty()) return@LaunchedEffect
+        if (target < s.items.size) { gridState.scrollToItem(lead + tileRows[target]); if (!scrubbing) target = -1 }
+        else if (s.cursor != null) vm.loadMore()
+        else { gridState.scrollToItem(lead + rows.lastIndex); if (!scrubbing) target = -1 }
+    }
     val byKey = remember(rows) { rows.filterIsInstance<Cell.Tile>().associate { "${it.file.storageId}:${it.file.id}" to it.file } }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -264,7 +290,9 @@ private fun Gallery(s: MediaState, vm: MediaViewModel, api: Api, imageLoader: Im
                 }
             }
         }
-        if (s.items.isEmpty()) { Message("Belum ada foto atau video di sini."); return@Column }
+        ActiveFilters(s.filter, s.storages.firstOrNull { it.id == s.filter.storageId }?.name) { vm.setFilter(it) }
+        if (s.items.isEmpty()) { Message(if (s.filter.active) "Tidak ada foto atau video yang cocok dengan filter." else "Belum ada foto atau video di sini."); return@Column }
+        Box(Modifier.fillMaxSize()) {
         LazyVerticalGrid(columns = GridCells.Adaptive(112.dp), horizontalArrangement = Arrangement.spacedBy(2.dp), verticalArrangement = Arrangement.spacedBy(2.dp), contentPadding = PaddingValues(bottom = 16.dp), state = gridState, modifier = Modifier.fillMaxSize().dragSelect(gridState, { k -> byKey[k as? String] }, vm::select)) {
             if (s.scope == null && s.kind == MediaKind.All && s.highlights.isNotEmpty()) item(key = "highlights", span = { GridItemSpan(maxLineSpan) }) { Highlights(s.highlights, api, imageLoader, onOpen) }
             items(rows.size, key = { i -> when (val c = rows[i]) { is Cell.Head -> "h$i"; is Cell.Tile -> "${c.file.storageId}:${c.file.id}" } }, span = { i -> if (rows[i] is Cell.Head) GridItemSpan(maxLineSpan) else GridItemSpan(1) }) { i ->
@@ -280,6 +308,16 @@ private fun Gallery(s: MediaState, vm: MediaViewModel, api: Api, imageLoader: Im
                 }
             }
             if (s.loadingMore) item(span = { GridItemSpan(maxLineSpan) }) { Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp) } }
+        }
+        if (dated && n > 80 && s.timeline.isNotEmpty() && rows.isNotEmpty()) {
+            val firstRow = (gridState.firstVisibleItemIndex - lead).coerceIn(0, rows.lastIndex)
+            val here = if (n > 1) (rowToPhoto[firstRow].toFloat() / (n - 1)).coerceIn(0f, 1f) else 0f
+            val shown = if (scrubbing && target >= 0 && n > 1) target.toFloat() / (n - 1) else here
+            DateScrubber(shown, scrubLabel ?: monthAt(rowToPhoto[firstRow]), visible = gridState.isScrollInProgress,
+                onMove = { f -> scrubbing = true; val idx = (f * (n - 1)).toInt().coerceIn(0, n - 1); target = idx; scrubLabel = monthAt(idx) },
+                onEnd = { scrubbing = false; scrubLabel = null },
+                modifier = Modifier.align(Alignment.CenterEnd))
+        }
         }
     }
 }

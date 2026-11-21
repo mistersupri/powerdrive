@@ -6,6 +6,9 @@ import kotlinx.serialization.Serializable
 @Serializable data class MediaCounts(val image: Int = 0, val video: Int = 0)
 @Serializable data class MediaPage(val items: List<FileEntry> = emptyList(), val nextCursor: String? = null, val counts: MediaCounts = MediaCounts())
 
+@Serializable data class MonthCount(val month: String = "", val count: Int = 0)
+@Serializable data class MediaTimeline(val months: List<MonthCount> = emptyList())
+
 /** A folder that holds photos or videos (the gallery's "Folder" view). */
 @Serializable data class MediaFolder(val storageId: String, val folderId: String, val name: String, val storageName: String = "", val count: Int = 0, val cover: FileEntry? = null)
 @Serializable data class MediaFolders(val items: List<MediaFolder> = emptyList())

@@ -29,4 +29,19 @@ fun dayLabel(iso: String?, now: Calendar = Calendar.getInstance()): String {
     }
 }
 
+/** "2026-11" as "Nov 2026". */
+fun monthLabel(month: String): String {
+    if (month.length < 7) return "Tanpa tanggal"
+    return try {
+        val d = SimpleDateFormat("yyyy-MM", Locale.US).parse(month.substring(0, 7)) ?: return month
+        SimpleDateFormat("MMM yyyy", INDONESIA).format(d).replaceFirstChar { it.uppercase() }
+    } catch (e: Exception) { month }
+}
+
+/** Start of a local day as the instant the server compares against (UTC, with milliseconds, like the stored dates). */
+fun dayStartIso(year: Int, month: Int, day: Int): String {
+    val c = Calendar.getInstance().apply { clear(); set(year, month, day, 0, 0, 0) }
+    return SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }.format(c.time)
+}
+
 fun shortDate(iso: String?): String? = parse(iso)?.let { SimpleDateFormat("d MMM yyyy", INDONESIA).format(it.time) }

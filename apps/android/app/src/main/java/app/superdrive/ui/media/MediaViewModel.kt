@@ -12,6 +12,9 @@ import app.superdrive.core.Highlights
 import app.superdrive.core.MediaFolder
 import app.superdrive.core.MediaFolders
 import app.superdrive.core.MediaPage
+import app.superdrive.core.MediaTimeline
+import app.superdrive.core.MonthCount
+import app.superdrive.core.Storage
 import app.superdrive.core.PrivateStatus
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -29,6 +32,12 @@ enum class MediaKind(val query: String, val label: String) { All("all", "Semua")
 enum class MediaSort(val sort: String, val dir: String, val label: String) {
     Newest("date", "desc", "Terbaru"), Oldest("date", "asc", "Terlama"), NameAsc("name", "asc", "Nama A–Z"), NameDesc("name", "desc", "Nama Z–A"), Largest("size", "desc", "Terbesar"), Smallest("size", "asc", "Terkecil"),
 }
+/** Which period of the gallery is shown. Custom carries its own dates. */
+enum class MediaPeriod(val label: String) { All("Semua waktu"), Today("Hari ini"), Week("7 hari terakhir"), Month("30 hari terakhir"), Year("Tahun ini"), Custom("Pilih tanggal") }
+data class MediaFilter(val period: MediaPeriod = MediaPeriod.All, val customAfter: String? = null, val customBefore: String? = null, val customLabel: String? = null, val storageId: String? = null) {
+    val active get() = period != MediaPeriod.All || storageId != null
+}
+
 sealed interface MediaScope {
     data class InFolder(val storageId: String, val folderId: String, val name: String) : MediaScope
     data class InAlbum(val id: String, val name: String, val isPrivate: Boolean) : MediaScope
@@ -38,6 +47,9 @@ data class MediaState(
     val mode: MediaMode = MediaMode.All,
     val scope: MediaScope? = null,
     val kind: MediaKind = MediaKind.All,
+    val filter: MediaFilter = MediaFilter(),
+    val timeline: List<MonthCount> = emptyList(),
+    val storages: List<Storage> = emptyList(),
     val sort: MediaSort = MediaSort.Newest,
     val items: List<FileEntry> = emptyList(),
     val cursor: String? = null,
@@ -75,7 +87,48 @@ class MediaViewModel(private val api: Api) : ViewModel() {
             null -> Unit
         }
         if (cursor != null) append("&cursor=${enc(cursor)}")
+        append(filterQuery(s))
     }
+
+    /** The period and storage filters as query parameters; shared by the page and the timeline. */
+    private fun filterQuery(s: MediaState): String = buildString {
+        val (after, before) = range(s.filter)
+        if (after != null) append("&after=${enc(after)}")
+        if (before != null) append("&before=${enc(before)}")
+        if (s.filter.storageId != null && s.scope !is MediaScope.InFolder) append("&storageId=${enc(s.filter.storageId)}")
+    }
+
+    private fun range(f: MediaFilter): Pair<String?, String?> {
+        val now = Calendar.getInstance()
+        fun back(days: Int) = (Calendar.getInstance().apply { add(Calendar.DAY_OF_MONTH, -days) }).let { dayStartIso(it.get(Calendar.YEAR), it.get(Calendar.MONTH), it.get(Calendar.DAY_OF_MONTH)) }
+        return when (f.period) {
+            MediaPeriod.All -> null to null
+            MediaPeriod.Today -> dayStartIso(now.get(Calendar.YEAR), now.get(Calendar.MONTH), now.get(Calendar.DAY_OF_MONTH)) to null
+            MediaPeriod.Week -> back(6) to null
+            MediaPeriod.Month -> back(29) to null
+            MediaPeriod.Year -> dayStartIso(now.get(Calendar.YEAR), 0, 1) to null
+            MediaPeriod.Custom -> f.customAfter to f.customBefore
+        }
+    }
+
+    private fun loadTimeline() {
+        val s = _state.value
+        if (s.mode != MediaMode.All && s.scope == null) return
+        viewModelScope.launch {
+            try {
+                val q = buildString {
+                    append("/media/timeline?kind=${s.kind.query}")
+                    when (val sc = s.scope) { is MediaScope.InFolder -> append("&storageId=${enc(sc.storageId)}&folderId=${enc(sc.folderId)}"); is MediaScope.InAlbum -> append("&albumId=${enc(sc.id)}"); null -> Unit }
+                    append(filterQuery(s))
+                }
+                val t = api.get<MediaTimeline>(q)
+                _state.update { it.copy(timeline = t.months) }
+            } catch (e: ApiException) { _state.update { it.copy(timeline = emptyList()) } }
+        }
+    }
+
+    fun setFilter(f: MediaFilter) { if (_state.value.filter == f) return; _state.update { it.copy(filter = f, items = emptyList(), cursor = null, timeline = emptyList()) }; reload(false) }
+    fun loadStorages() { if (_state.value.storages.isNotEmpty()) return; viewModelScope.launch { try { _state.update { it.copy(storages = api.get<List<Storage>>("/storages").filter { st -> st.status == "CONNECTED" && !st.isDefault }) } } catch (_: ApiException) { } } }
 
     fun reload(refresh: Boolean) {
         job?.cancel()
@@ -86,7 +139,7 @@ class MediaViewModel(private val api: Api) : ViewModel() {
                 when {
                     s.mode == MediaMode.Folders && s.scope == null -> { val f = api.get<MediaFolders>("/media/folders"); _state.update { it.copy(folders = f.items, loading = false, refreshing = false) } }
                     s.mode == MediaMode.Albums && s.scope == null -> { val a = api.get<Albums>("/albums"); _state.update { it.copy(albums = a.albums, privateStatus = a.privateStatus, loading = false, refreshing = false) } }
-                    else -> { val p = api.get<MediaPage>(pagePath(s, null)); _state.update { it.copy(items = p.items, cursor = p.nextCursor, photos = p.counts.image, videos = p.counts.video, loading = false, refreshing = false) } }
+                    else -> { val p = api.get<MediaPage>(pagePath(s, null)); _state.update { it.copy(items = p.items, cursor = p.nextCursor, photos = p.counts.image, videos = p.counts.video, loading = false, refreshing = false) }; loadTimeline() }
                 }
             } catch (e: ApiException) { _state.update { it.copy(loading = false, refreshing = false, error = e.message) } }
         }
