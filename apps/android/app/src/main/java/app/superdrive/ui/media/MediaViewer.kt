@@ -14,7 +14,8 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.awaitVerticalTouchSlopOrCancellation
+import androidx.compose.foundation.gestures.verticalDrag
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -34,7 +35,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.foundation.verticalScroll
 import app.superdrive.ui.theme.sd
 import androidx.compose.material3.Text
@@ -54,7 +54,16 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.positionChanged
+import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import kotlinx.coroutines.Job
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -89,10 +98,46 @@ fun MediaViewer(items: List<FileEntry>, startIndex: Int, api: Api, imageLoader: 
     val pager = rememberPagerState(initialPage = startIndex.coerceIn(0, (items.size - 1).coerceAtLeast(0))) { items.size }
     var chrome by remember { mutableStateOf(true) }
     var zoomed by remember { mutableStateOf(false) }
-    var info by remember { mutableStateOf<FileEntry?>(null) }
     var dragY by remember { mutableFloatStateOf(0f) }
-    var upY by remember { mutableFloatStateOf(0f) } // swiping up (negative) opens the details
-    BackHandler(onBack = onClose)
+    // The details drawer: `reveal` is how many pixels of it are showing, following the finger while swiping up.
+    var reveal by remember { mutableFloatStateOf(0f) }
+    var rootH by remember { mutableFloatStateOf(0f) }
+    val panelH = rootH * 0.62f
+    var anim by remember { mutableStateOf<Job?>(null) }
+    fun moveReveal(target: Float, velocity: Float = 0f) {
+        anim?.cancel()
+        anim = scope.launch { Animatable(reveal).animateTo(target, spring(dampingRatio = 0.9f, stiffness = Spring.StiffnessMediumLow), initialVelocity = -velocity) { reveal = value.coerceIn(0f, panelH) } }
+    }
+    BackHandler { if (reveal > 0f) moveReveal(0f) else onClose() }
+
+    // One vertical gesture for the photo and the drawer's handle: up pulls the drawer out under the finger, down pushes it back or closes the viewer.
+    val gestures = Modifier.pointerInput(zoomed, panelH) {
+        if (zoomed || panelH <= 0f) return@pointerInput
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false)
+            val tracker = VelocityTracker(); tracker.addPosition(down.uptimeMillis, down.position)
+            var drawerMode = false
+            val first = awaitVerticalTouchSlopOrCancellation(down.id) { change, over ->
+                drawerMode = over < 0f || reveal > 0f
+                anim?.cancel()
+                change.consume()
+                if (drawerMode) reveal = (reveal - over).coerceIn(0f, panelH) else dragY = (dragY + over).coerceAtLeast(0f)
+            } ?: return@awaitEachGesture
+            tracker.addPosition(first.uptimeMillis, first.position)
+            verticalDrag(first.id) { change ->
+                tracker.addPosition(change.uptimeMillis, change.position)
+                val dy = change.positionChange().y
+                if (drawerMode) reveal = (reveal - dy).coerceIn(0f, panelH) else dragY = (dragY + dy).coerceAtLeast(0f)
+                change.consume()
+            }
+            val v = tracker.calculateVelocity().y
+            if (drawerMode) {
+                // A quick flick decides by itself; a slow drag settles on whichever side is nearer.
+                moveReveal(when { v < -700f -> panelH; v > 700f -> 0f; reveal > panelH / 2f -> panelH; else -> 0f }, v)
+            } else if (dragY > 260f || (v > 1500f && dragY > 40f)) onClose()
+            else if (dragY > 0f) scope.launch { val a = Animatable(dragY); a.animateTo(0f, tween(220)) { dragY = value } }
+        }
+    }
 
     // The system bars go with the viewer's own bars, so the picture really is full screen.
     val window = (context as? ComponentActivity)?.window
@@ -104,58 +149,60 @@ fun MediaViewer(items: List<FileEntry>, startIndex: Int, api: Api, imageLoader: 
     DisposableEffect(Unit) { onDispose { window?.let { WindowCompat.getInsetsController(it, view).show(WindowInsetsCompat.Type.systemBars()) } } }
     LaunchedEffect(pager.currentPage) { zoomed = false }
 
-    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = (1f - dragY / 900f).coerceIn(0f, 1f)))) {
+    Box(Modifier.fillMaxSize().onSizeChanged { rootH = it.height.toFloat() }.background(Color.Black.copy(alpha = (1f - dragY / 900f).coerceIn(0f, 1f)))) {
         Box(
             Modifier.fillMaxSize()
-                .pointerInput(zoomed) {
-                    if (!zoomed) detectVerticalDragGestures(
-                        onDragEnd = {
-                            if (upY < -150f) info = items.getOrNull(pager.currentPage)
-                            if (upY != 0f) scope.launch { val a = Animatable(upY); a.animateTo(0f, tween(240)) { upY = value } }
-                            if (dragY > 260f) onClose() else if (dragY > 0f) scope.launch { val a = Animatable(dragY); a.animateTo(0f, tween(220)) { dragY = value } }
-                        },
-                        onDragCancel = { dragY = 0f; upY = 0f },
-                        onVerticalDrag = { change, dy ->
-                            if (upY < 0f || (dragY == 0f && dy < 0f)) { upY = (upY + dy).coerceAtMost(0f); change.consume() }
-                            else if (dragY > 0f || dy > 0f) { dragY = (dragY + dy).coerceAtLeast(0f); change.consume() }
-                        },
-                    )
-                }
-                .graphicsLayer { translationY = dragY + upY * 0.4f; val s = 1f - (dragY / 2400f).coerceIn(0f, 0.25f); scaleX = s; scaleY = s },
+                .then(gestures)
+                .graphicsLayer {
+                    val frac = if (panelH > 0f) reveal / panelH else 0f
+                    translationY = dragY - reveal * 0.3f
+                    val sc = (1f - (dragY / 2400f).coerceIn(0f, 0.25f)) * (1f - 0.12f * frac); scaleX = sc; scaleY = sc
+                },
         ) {
             HorizontalPager(pager, Modifier.fillMaxSize(), userScrollEnabled = !zoomed, beyondViewportPageCount = 1, key = { items[it].id }) { page ->
                 val f = items[page]
                 if (f.mimeType?.startsWith("video/") == true) VideoPage(f, api, imageLoader, active = page == pager.settledPage)
-                else ZoomableImage(f, api, imageLoader, onZoom = { zoomed = it }, onTap = { chrome = !chrome })
+                else ZoomableImage(f, api, imageLoader, onZoom = { zoomed = it }, onTap = { if (reveal > 0f) moveReveal(0f) else chrome = !chrome })
             }
         }
 
         val current = items.getOrNull(pager.currentPage)
-        AnimatedVisibility(chrome && dragY == 0f, Modifier.align(Alignment.TopCenter), enter = fadeIn(tween(160)), exit = fadeOut(tween(120))) {
+        AnimatedVisibility(chrome && dragY == 0f && reveal == 0f, Modifier.align(Alignment.TopCenter), enter = fadeIn(tween(160)), exit = fadeOut(tween(120))) {
             Row(Modifier.fillMaxWidth().background(Color.Black.copy(alpha = 0.55f)).statusBarsPadding().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onClose) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Kembali", tint = Color.White) }
                 Column(Modifier.weight(1f).padding(horizontal = 4.dp)) {
                     Text(current?.name ?: "", color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium)
                     Text(listOfNotNull(app.superdrive.ui.design.formatDateTime(current?.modifiedAt), "${pager.currentPage + 1} dari ${items.size}").joinToString(" · "), color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.bodySmall)
                 }
-                IconButton(onClick = { info = current }) { Icon(Icons.Default.Info, contentDescription = "Detail", tint = Color.White) }
+                IconButton(onClick = { moveReveal(panelH) }) { Icon(Icons.Default.Info, contentDescription = "Detail", tint = Color.White) }
             }
         }
-        AnimatedVisibility(chrome && dragY == 0f, Modifier.align(Alignment.BottomCenter), enter = fadeIn(tween(160)), exit = fadeOut(tween(120))) {
+        AnimatedVisibility(chrome && dragY == 0f && reveal == 0f, Modifier.align(Alignment.BottomCenter), enter = fadeIn(tween(160)), exit = fadeOut(tween(120))) {
             Column(Modifier.fillMaxWidth().background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f)))).navigationBarsPadding().padding(horizontal = 16.dp, vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Icon(app.superdrive.ui.design.Lu.ChevronDown, null, tint = Color.White.copy(alpha = 0.8f), modifier = Modifier.size(22.dp).graphicsLayer { rotationZ = 180f })
                 Text("Geser ke atas untuk detail", color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.labelMedium)
                 Text(listOfNotNull(current?.let { app.superdrive.ui.design.typeLabel(it) }, current?.size?.let { Formatter.formatShortFileSize(context, it) }, app.superdrive.ui.design.formatDateTime(current?.modifiedAt)).joinToString(" · "), color = Color.White, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
             }
         }
-    }
 
-    info?.let { f ->
-        ModalBottomSheet(onDismissRequest = { info = null }, containerColor = MaterialTheme.sd.surface, shape = androidx.compose.foundation.shape.RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)) {
-            Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 16.dp).navigationBarsPadding(), verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp)) {
-                Text("Detail", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.sd.ink, modifier = Modifier.padding(start = 4.dp))
-                Column(Modifier.weight(1f, fill = false).verticalScroll(androidx.compose.foundation.rememberScrollState())) { app.superdrive.ui.files.MetadataView(f, remember { app.superdrive.core.FileOps(api) }) }
-                Button(onClick = { enqueueDownload(context, api.download(f), f.name, f.mimeType); info = null }, modifier = Modifier.fillMaxWidth()) { Text("Unduh") }
+        if (reveal > 0.5f) items.getOrNull(pager.currentPage)?.let { f ->
+            val c = MaterialTheme.sd
+            Column(
+                Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(with(LocalDensity.current) { panelH.toDp() })
+                    .graphicsLayer { translationY = panelH - reveal }
+                    .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)).background(c.surface)
+                    .pointerInput(Unit) { detectTapGestures { } },
+            ) {
+                Column(Modifier.fillMaxWidth().then(gestures).padding(top = 10.dp, bottom = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Box(Modifier.size(width = 40.dp, height = 4.dp).clip(RoundedCornerShape(50)).background(c.lineStrong))
+                    Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Detail", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, color = c.ink)
+                        TextButton(onClick = { enqueueDownload(context, api.download(f), f.name, f.mimeType) }) { Text("Unduh") }
+                    }
+                }
+                Column(Modifier.weight(1f).verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(horizontal = 16.dp).navigationBarsPadding().padding(bottom = 16.dp)) {
+                    app.superdrive.ui.files.MetadataView(f, remember { app.superdrive.core.FileOps(api) })
+                }
             }
         }
     }
