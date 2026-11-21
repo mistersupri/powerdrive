@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -148,7 +149,7 @@ fun DateScrubber(frac: Float, label: String?, visible: Boolean, onMove: (Float) 
             },
     ) {
         AnimatedVisibility(visible || dragging, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.TopEnd)) {
-            Row(Modifier.offset { IntOffset(0, (frac.coerceIn(0f, 1f) * (h - thumbPx).coerceAtLeast(0f)).toInt()) }.height(thumbH), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.wrapContentWidth(Alignment.End, unbounded = true).offset { IntOffset(0, (frac.coerceIn(0f, 1f) * (h - thumbPx).coerceAtLeast(0f)).toInt()) }.height(thumbH), verticalAlignment = Alignment.CenterVertically) {
                 if (dragging && label != null) Text(label, Modifier.padding(end = 8.dp).clip(RoundedCornerShape(12.dp)).background(c.navy).padding(horizontal = 12.dp, vertical = 8.dp), style = MaterialTheme.typography.labelLarge, color = Color.White)
                 Box(Modifier.padding(end = 4.dp).width(if (dragging) 8.dp else 6.dp).height(thumbH).clip(RoundedCornerShape(50)).background(if (dragging) c.primary else c.navy.copy(alpha = 0.55f)))
             }

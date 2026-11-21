@@ -303,7 +303,7 @@ private fun FileRow(f: FileEntry, api: Api, imageLoader: ImageLoader, selecting:
     val kind = kindStyle(f)
     val shape = RoundedCornerShape(14.dp)
     Row(
-        Modifier.fillMaxWidth().padding(vertical = 2.dp).clip(shape).background(if (checked || focused) c.primarySoft else Color.Transparent).border(if (focused) 1.5.dp else 0.dp, c.primary, shape).pressable(onClick = onClick, onLongClick = onLongClick, shape = shape).padding(horizontal = 8.dp, vertical = 8.dp),
+        Modifier.fillMaxWidth().padding(vertical = 2.dp).clip(shape).background(if (checked || focused) c.primarySoft else Color.Transparent).then(if (focused) Modifier.border(1.5.dp, c.primary, shape) else Modifier).pressable(onClick = onClick, onLongClick = onLongClick, shape = shape).padding(horizontal = 8.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.size(46.dp).clip(RoundedCornerShape(12.dp)).background(kind.bg), contentAlignment = Alignment.Center) {
@@ -382,7 +382,7 @@ private fun CellWithMenu(
 private fun GridCell(f: FileEntry, api: Api, imageLoader: ImageLoader, selecting: Boolean, checked: Boolean, focused: Boolean, onClick: () -> Unit, onLongClick: () -> Unit, onMore: () -> Unit) {
     val context = LocalContext.current; val c = MaterialTheme.sd
     val kind = kindStyle(f); val shape = RoundedCornerShape(16.dp)
-    Column(Modifier.fillMaxWidth().clip(shape).background(if (checked || focused) c.primarySoft else Color.Transparent).border(if (focused) 1.5.dp else 0.dp, c.primary, shape).pressable(onClick = onClick, onLongClick = onLongClick, shape = shape, scaleTo = 0.97f).padding(6.dp)) {
+    Column(Modifier.fillMaxWidth().clip(shape).background(if (checked || focused) c.primarySoft else Color.Transparent).then(if (focused) Modifier.border(1.5.dp, c.primary, shape) else Modifier).pressable(onClick = onClick, onLongClick = onLongClick, shape = shape, scaleTo = 0.97f).padding(6.dp)) {
         Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(12.dp)).background(kind.bg), contentAlignment = Alignment.Center) {
             Icon(kind.icon, contentDescription = null, tint = kind.fg, modifier = Modifier.size(if (f.isFolder) 44.dp else 36.dp))
             if (!f.isFolder && f.hasThumbnail) AsyncImage(model = ImageRequest.Builder(context).data(api.thumbnail(f, 384)).crossfade(true).build(), imageLoader = imageLoader, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())

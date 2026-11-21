@@ -148,7 +148,8 @@ fun SharedScreen(vm: SharedViewModel, server: String, onLocate: (String, String?
                                         if (sh.hasPassword) StatusPill("Berkata sandi", c.warnSoft, c.warnInk)
                                         if (sh.expired) StatusPill("Kedaluwarsa", c.dangerSoft, c.dangerInk) else sh.expiresAt?.let { StatusPill("Sampai ${it.take(10)}", c.okSoft, c.okInk) }
                                     }
-                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+                                    androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                         LinkChip("Salin", Lu.Copy) { val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager; cm.setPrimaryClip(ClipData.newPlainText("Tautan", absolute(server, sh.url))) }
                                         LinkChip("Kirim", Lu.Share) { context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, absolute(server, sh.url)), "Bagikan tautan")) }
                                         if (tab == 1) LinkChip("Buka", Lu.Link) { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(absolute(server, sh.url)))) }
