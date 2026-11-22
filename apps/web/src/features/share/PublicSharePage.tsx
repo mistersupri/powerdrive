@@ -108,16 +108,19 @@ export default function PublicSharePage() {
   const { token = "" } = useParams(); const qc = useQueryClient(); const base = `/public/share/${token}`;
   const q = useQuery({ queryKey: ["share-meta", token], queryFn: () => api<PublicShareDto>(`${base}`), retry: false, staleTime: 30_000 });
   const gone = q.error instanceof ApiError && q.error.status === 404;
+  // What this person may do here. Beside the title on wide screens, on a line of its own on phones, where the header has no room for a sentence.
+  const hint = q.data ? (q.data.role === "EDITOR" ? "Anda bisa mengunggah dan mengubah isi folder ini" : q.data.role === "UPLOADER" ? "Anda bisa menambah file; untuk menghapus, kirim permintaan ke pemilik" : "Dibagikan kepada Anda") + (q.data.expiresAt ? ` · berlaku sampai ${new Date(q.data.expiresAt).toLocaleDateString("id-ID")}` : "") : "";
   return (
     <FileUrlsProvider root={base}>
       <div className="flex h-dvh flex-col bg-canvas">
         <header className="flex items-center gap-3 border-b border-line bg-surface px-4 py-3 sm:px-6">
-          <Logo />
-          <span className="mx-1 h-5 w-px bg-line" aria-hidden />
-          <div className="min-w-0 flex-1">{q.data ? <><p className="truncate text-[14px] font-semibold" title={q.data.name}>{q.data.name}</p><p className="text-[12px] text-muted">{q.data.role === "EDITOR" ? "Anda bisa mengunggah dan mengubah isi folder ini" : q.data.role === "UPLOADER" ? "Anda bisa menambah file; untuk menghapus, kirim permintaan ke pemilik" : "Dibagikan kepada Anda"}{q.data.expiresAt ? ` · berlaku sampai ${new Date(q.data.expiresAt).toLocaleDateString("id-ID")}` : ""}</p></> : <Skeleton className="h-8 w-48" />}</div>
+          <span className="shrink-0"><Logo /></span>
+          <span className="mx-1 h-5 w-px shrink-0 bg-line" aria-hidden />
+          <div className="min-w-0 flex-1">{q.data ? <><p className="truncate text-[14px] font-semibold" title={q.data.name}>{q.data.name}</p><p className="hidden text-[12px] text-muted sm:block">{hint}</p></> : <Skeleton className="h-8 w-48" />}</div>
           {q.data && <Badge tone={q.data.role !== "VIEWER" ? "warn" : "primary"}>{q.data.role === "EDITOR" ? "Editor" : q.data.role === "UPLOADER" ? "Bisa unggah" : "Penonton"}</Badge>}
           {q.data?.maxUploadBytes ? <span className="tnum hidden text-[12px] text-muted sm:inline">Kuota {formatBytes(q.data.uploadedBytes)} / {formatBytes(q.data.maxUploadBytes)}</span> : null}
         </header>
+        {q.data && <p className="border-b border-line bg-surface px-4 py-2 text-[12px] text-muted sm:hidden">{hint}</p>}
         {gone ? <EmptyState icon={Link2Off} title="Tautan tidak berlaku">Tautan ini sudah dimatikan, kedaluwarsa, atau tidak pernah ada. Minta pemiliknya membagikan tautan baru.</EmptyState>
           : q.isError ? <EmptyState icon={Link2Off} title="Tidak dapat membuka tautan">{(q.error as Error).message}</EmptyState>
           : !q.data ? <div className="p-8"><Skeleton className="h-64" /></div>
