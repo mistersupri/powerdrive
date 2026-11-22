@@ -551,3 +551,19 @@ describe("folder colours", () => {
     assert.equal(await colorOf("ana"), undefined);
   });
 });
+
+describe("search inside a folder", () => {
+  it("looks through every folder below it, not only its direct files", async () => {
+    const top = (await t.call("ana", "POST", "/files/folders", { storageId: sid, name: "Proyek-cari" })).data.id;
+    const mid = (await t.call("ana", "POST", "/files/folders", { storageId: sid, parentId: top, name: "Tengah-cari" })).data.id;
+    const deep = (await t.call("ana", "POST", "/files/folders", { storageId: sid, parentId: mid, name: "Dalam-cari" })).data.id;
+    const other = (await t.call("ana", "POST", "/files/folders", { storageId: sid, name: "Lain-cari" })).data.id;
+    await mk("laporan-atas.txt", "a", top); await mk("laporan-tengah.txt", "b", mid); await mk("laporan-dalam.txt", "c", deep); await mk("laporan-luar.txt", "d", other);
+    const names = async (q: string) => ((await t.call("ana", "GET", `/search?q=laporan&storageId=${sid}${q}`)).data.items as any[]).map((i) => i.name).sort();
+    assert.deepEqual(await names(`&within=${top}`), ["laporan-atas.txt", "laporan-dalam.txt", "laporan-tengah.txt"]);
+    assert.deepEqual(await names(`&within=${mid}`), ["laporan-dalam.txt", "laporan-tengah.txt"]);
+    assert.equal((await names("")).length, 4, "no folder given: the whole storage");
+    const hit = ((await t.call("ana", "GET", `/search?q=dalam&storageId=${sid}&within=${top}`)).data.items as any[]).find((i) => i.name === "laporan-dalam.txt");
+    assert.equal(hit.path, "/Proyek-cari/Tengah-cari/Dalam-cari");
+  });
+});

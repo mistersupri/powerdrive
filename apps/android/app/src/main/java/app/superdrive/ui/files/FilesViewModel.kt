@@ -50,6 +50,9 @@ data class FilesState(
     val folder: FileEntry? = null,
     /** Folder id -> what is inside it, for the grid view. */
     val peeks: Map<String, FolderPeek> = emptyMap(),
+    /** Results of searching this folder and everything below it; null while the search box is empty. */
+    val hits: List<FileEntry>? = null,
+    val searchingHere: Boolean = false,
 )
 
 /** Folders first, then by name the way a person reads it ("file 2" before "file 10"). */
@@ -107,6 +110,25 @@ class FilesViewModel(private val api: Api, private val ops: FileOps = FileOps(ap
                 })
                 _state.update { it.copy(peeks = it.peeks + r.items) }
             } catch (_: ApiException) { /* plain folder icons are fine */ }
+        }
+    }
+
+    private var searchJob: Job? = null
+    /** Searches the open folder AND every folder below it (the filter bar's own box only narrows what is loaded). Empty text clears the results. */
+    fun searchHere(q: String, kind: KindFilter, sort: SortBy) {
+        searchJob?.cancel()
+        val s = _state.value; val st = s.storage ?: return
+        if (q.isBlank()) { _state.update { it.copy(hits = null, searchingHere = false) }; return }
+        _state.update { it.copy(searchingHere = true) }
+        searchJob = viewModelScope.launch {
+            kotlinx.coroutines.delay(350) // wait for a pause in typing
+            try {
+                val within = s.stack.lastOrNull()?.let { "&within=${java.net.URLEncoder.encode(it, "UTF-8")}" } ?: ""
+                val type = when (kind) { KindFilter.All -> ""; KindFilter.Folders -> "&type=folder"; KindFilter.Images -> "&type=image"; KindFilter.Videos -> "&type=video"; KindFilter.Docs -> "&type=document,pdf"; KindFilter.Audio -> "&type=audio"; KindFilter.Archives -> "&type=archive" }
+                val order = when (sort) { SortBy.Name -> "name"; SortBy.Newest -> "modified"; SortBy.Oldest -> "oldest"; SortBy.Largest -> "size" }
+                val r = api.get<app.superdrive.core.SearchResult>("/search?q=${java.net.URLEncoder.encode(q.trim(), "UTF-8")}&storageId=${st.id}$within&limit=100&sort=$order$type")
+                _state.update { it.copy(hits = r.items, searchingHere = false) }
+            } catch (e: ApiException) { _state.update { it.copy(hits = emptyList(), searchingHere = false) } }
         }
     }
 

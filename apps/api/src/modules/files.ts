@@ -218,6 +218,8 @@ export interface SearchParams {
   q?: string; storageId?: string; type?: string; ext?: string; minSize?: number; maxSize?: number;
   modifiedAfter?: string; modifiedBefore?: string; folderId?: string; sort?: string; page?: number; limit?: number;
   starred?: boolean; recent?: boolean; tag?: string;
+  /** Only inside this folder and every folder below it (raw id; needs storageId). */
+  within?: string;
 }
 
 /** Search the local metadata index. Never touches provider APIs or file contents. */
@@ -235,6 +237,11 @@ export function searchIndex(ctx: AuthCtx, s: SearchParams) {
   const exts = (s.ext ?? "").split(",").map((x) => x.trim().toLowerCase().replace(/^\./, "")).filter(Boolean).slice(0, 20);
   if (exts.length) { where.push(`f.ext IN (${exts.map(() => "?").join(",")})`); args.push(...exts); }
   if (s.folderId) { where.push("f.parent_id = ?"); args.push(s.folderId); }
+  // Everything under a folder, however deep: the folders below it are collected from the index first.
+  if (s.within && s.storageId && s.within !== ROOT) {
+    where.push("f.parent_id IN (WITH RECURSIVE sub(id) AS (SELECT ? UNION SELECT c.file_id FROM files c JOIN sub ON c.parent_id = sub.id WHERE c.is_folder = 1 AND c.storage_id = ?) SELECT id FROM sub)");
+    args.push(s.within, s.storageId);
+  }
   if (s.tag) { where.push("EXISTS (SELECT 1 FROM file_tags t WHERE t.storage_id = f.storage_id AND t.file_id = f.file_id AND t.tag = ?)"); args.push(s.tag.toLowerCase()); }
   if (s.minSize !== undefined) { where.push("f.size >= ?"); args.push(s.minSize); }
   if (s.maxSize !== undefined) { where.push("f.size <= ?"); args.push(s.maxSize); }
@@ -244,7 +251,7 @@ export function searchIndex(ctx: AuthCtx, s: SearchParams) {
   { const hide = notPrivateSql(ctx); where.push(hide.sql); args.push(...hide.args); }
   let from = "files f";
   if (s.starred) { from = "files f JOIN stars st ON st.storage_id = f.storage_id AND st.file_id = f.file_id AND st.user_id = ?"; args.unshift(ctx.userId); }
-  const order = { name: "f.name_lower ASC", size: "f.size DESC", modified: "f.modified_at DESC", type: "f.ext ASC, f.name_lower ASC" }[s.sort ?? (s.recent ? "modified" : "name")] ?? "f.name_lower ASC";
+  const order = { name: "f.name_lower ASC", size: "f.size DESC", modified: "f.modified_at DESC", oldest: "f.modified_at ASC", type: "f.ext ASC, f.name_lower ASC" }[s.sort ?? (s.recent ? "modified" : "name")] ?? "f.name_lower ASC";
   const limit = Math.min(Math.max(s.limit ?? 50, 1), 200); const offset = (Math.max(s.page ?? 1, 1) - 1) * limit;
   const W = where.join(" AND ");
   const total = db.get<{ n: number }>(`SELECT COUNT(*) n FROM ${from} WHERE ${W}`, ...(s.starred ? args : args))!.n;

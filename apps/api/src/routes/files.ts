@@ -264,8 +264,8 @@ export async function fileRoutes(app: FastifyInstance) {
       q: z.string().optional(), storageId: z.string().optional(), type: z.string().optional(), ext: z.string().optional(),
       minSize: z.coerce.number().optional(), maxSize: z.coerce.number().optional(), modifiedAfter: z.string().optional(), modifiedBefore: z.string().optional(),
       page: z.coerce.number().int().optional(), limit: z.coerce.number().int().optional(), sort: z.string().optional(),
-      starred: z.enum(["true", "false"]).optional(), recent: z.enum(["true", "false"]).optional(), tag: z.string().max(40).optional(),
+      starred: z.enum(["true", "false"]).optional(), recent: z.enum(["true", "false"]).optional(), tag: z.string().max(40).optional(), within: z.string().max(2000).optional(),
     }).parse(req.query);
-    return ok(req, searchIndex(ctx, { ...q, starred: q.starred === "true", recent: q.recent === "true" }));
+    return ok(req, searchIndex(ctx, { ...q, within: q.within ? decodeId(q.within) : undefined, starred: q.starred === "true", recent: q.recent === "true" }));
   });
 }

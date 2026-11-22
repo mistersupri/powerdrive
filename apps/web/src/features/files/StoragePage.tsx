@@ -4,7 +4,9 @@ import { ChevronRight, Copy, Info, Download, FolderInput, FolderOpen, FolderPlus
 import { useCallback, useEffect, useMemo } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { toast } from "sonner";
-import { ApiError } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { useDebounced } from "@/lib/useDebounced";
 import { cn } from "@/lib/cn";
 import { usePersistentState } from "@/lib/usePersistentState";
 import { PageHeader, useStorages } from "@/features/layout/Shell";
@@ -14,7 +16,7 @@ import { EmptyState } from "@/ui/misc";
 import { SortViewControls } from "./controls";
 import { CrumbDrop, type DropPayload } from "./CrumbDrop";
 import { FileBrowser } from "./FileBrowser";
-import { applyFilter, emptyFilter, FilterButton, FilterChips } from "./filter";
+import { applyFilter, emptyFilter, FilterButton, FilterChips, filterToQuery } from "./filter";
 import { useSelection } from "./selection";
 import { startTransfer } from "./transferApi";
 import { useFileActions } from "./useFileActions";
@@ -38,7 +40,13 @@ export function StoragePage({ forcedStorageId }: { forcedStorageId?: string }) {
   // "Buka lokasi file": once the folder has loaded, select that file (only once per visit).
   const [shownHl, setShownHl] = useState<string | null>(null);
   const go = useCallback((id: string) => { selection.clear(); setFilter(emptyFilter); setSp(id === "root" ? {} : { f: id }); }, [selection, setSp]);
-  const shown = useMemo(() => sortEntries(applyFilter(f.entries, filter), sort), [f.entries, filter, sort]);
+  // A name typed in the filter searches this folder AND every folder below it (on the server, from the index); the other filters then narrow that too.
+  const deepQ = useDebounced(filter.q.trim(), 300); const searching = deepQ.length > 0;
+  const deep = useQuery({
+    enabled: searching && !!storage && storage.status === "CONNECTED", queryKey: ["folder-search", storageId, folderId, deepQ, filterToQuery(filter)], staleTime: 15_000, placeholderData: keepPreviousData,
+    queryFn: () => api<{ items: FileEntry[] }>(`/search?limit=200&storageId=${storageId}${folderId !== "root" ? `&within=${encodeURIComponent(folderId)}` : ""}&q=${encodeURIComponent(deepQ)}&${filterToQuery(filter)}`),
+  });
+  const shown = useMemo(() => sortEntries(searching ? (deep.data?.items ?? []) : applyFilter(f.entries, filter), sort), [f.entries, filter, sort, searching, deep.data]);
   useEffect(() => {
     if (!highlight || shownHl === highlight || !f.entries.some((e) => e.id === highlight)) return;
     setShownHl(highlight); selection.setSelected(new Set([highlight]));
@@ -64,10 +72,10 @@ export function StoragePage({ forcedStorageId }: { forcedStorageId?: string }) {
     if (missing) return <EmptyState icon={HardDrive} title="Penyimpanan tidak ditemukan" action={<Button onClick={() => nav("/")}>Kembali ke beranda</Button>}>Penyimpanan ini mungkin sudah diputus atau Anda tidak punya akses.</EmptyState>;
     if (storage && storage.status !== "CONNECTED") return <EmptyState icon={HardDrive} title={storage.status === "DISABLED" ? "Penyimpanan dinonaktifkan" : "Penyimpanan perlu dihubungkan ulang"} action={<Button variant="primary" onClick={() => nav("/storage")}>Pengaturan</Button>}>{storage.lastError ?? "Koneksi ke penyimpanan ini tidak aktif."}</EmptyState>;
     if (f.error) return <EmptyState icon={FolderOpen} title="Folder tidak dapat dimuat" action={<Button onClick={() => f.refetch()}>Coba lagi</Button>}>{f.error instanceof ApiError ? f.error.message : "Terjadi kesalahan."}</EmptyState>;
-    const filtered = f.entries.length > 0 && shown.length === 0;
+    const filtered = (searching || f.entries.length > 0) && shown.length === 0;
     return (
       <FileBrowser
-        entries={shown} view={view} selected={selection.selected} loading={f.isLoading || storages.isLoading}
+        entries={shown} view={view} selected={selection.selected} loading={f.isLoading || storages.isLoading || (searching && deep.isLoading)} storageNames={searching ? { [storageId]: title } : undefined}
         empty={<EmptyState icon={FolderPlus} title={filtered ? "Tidak ada yang cocok" : "Folder ini masih kosong"} action={filtered ? <Button onClick={() => setFilter(emptyFilter)}>Hapus filter</Button> : a.can("UPLOAD") ? <Button variant="primary" icon={<Upload className="size-4" />} onClick={a.pickFiles}>Unggah file</Button> : undefined}>{filtered ? "Ubah atau hapus filter untuk melihat semua isi folder." : "Tarik file ke sini, atau gunakan tombol Unggah."}</EmptyState>}
         onSelect={(e, m) => selection.click(e.id, shown, m)} onSetSelection={(ids) => selection.setSelected(new Set(ids))} onOpen={a.open}
         onContext={(e, x, y) => menu.open(x, y, a.menuFor(e))} onKeyAction={a.keyAction}

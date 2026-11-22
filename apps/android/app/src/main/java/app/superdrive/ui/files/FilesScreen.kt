@@ -123,6 +123,9 @@ fun FilesScreen(vm: FilesViewModel, api: Api, imageLoader: ImageLoader, isAdmin:
     var filterOpen by remember(s.stack, s.storage?.id) { mutableStateOf(false) }
     val shown = remember(s.items, filter) { applyFilter(s.items, filter) }
     val listState = rememberLazyListState(); val gridState = rememberLazyGridState()
+    // Typing in the folder's search box searches this folder and everything below it, on the server.
+    LaunchedEffect(filter.query, filter.kind, filter.sort, s.stack, s.storage?.id) { vm.searchHere(filter.query, filter.kind, filter.sort) }
+    val searchingHere = filterOpen && filter.query.isNotBlank()
     // A filter only sees what is loaded, so keep loading the rest of the folder while one is on.
     LaunchedEffect(filter.active, s.nextPage, s.items.size, s.loadingMore) { if (filter.active && s.nextPage != null && !s.loadingMore) vm.loadMore() }
     // "Locate" lands here: bring the item into view and mark it for a few seconds.
@@ -221,6 +224,9 @@ fun FilesScreen(vm: FilesViewModel, api: Api, imageLoader: ImageLoader, isAdmin:
             }
             PullToRefreshBox(isRefreshing = s.refreshing, onRefresh = vm::refresh, modifier = Modifier.fillMaxSize()) {
                 when {
+                    searchingHere -> SearchHitList(s.hits, s.searchingHere, filter.query, api, imageLoader,
+                        onOpen = { h -> if (h.isFolder) vm.locate(h.storageId, h.id, null) else open(h, s.hits.orEmpty().filter { !it.isFolder }) { g -> gallery = g } ?: run { viewing = h } },
+                        onLocate = { h -> vm.locate(h.storageId, h.parentId?.takeIf { it != "root" }, h.id) })
                     s.loading -> SkeletonRows()
                     s.error != null && s.items.isEmpty() -> EmptyState(Lu.Info, "Tidak dapat memuat folder", s.error) { Button(onClick = vm::retry, shape = RoundedCornerShape(12.dp)) { Text("Coba lagi") } }
                     s.items.isEmpty() -> EmptyState(Lu.Folder, "Folder ini masih kosong", "Unggah file atau buat folder baru lewat tombol Tambah.")

@@ -35,6 +35,21 @@ import androidx.compose.ui.unit.dp
 import app.superdrive.core.DocKind
 import app.superdrive.core.FileEntry
 import app.superdrive.core.docKind
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
+import app.superdrive.core.Api
+import app.superdrive.ui.design.EmptyState
+import app.superdrive.ui.design.PlaceLine
+import app.superdrive.ui.design.kindStyle
+import coil3.ImageLoader
+import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import coil3.request.crossfade
+import androidx.compose.material3.Icon as MIcon
 import app.superdrive.ui.design.BarIcon
 import app.superdrive.ui.design.Lu
 import app.superdrive.ui.design.pressable
@@ -107,6 +122,34 @@ fun FolderFilterBar(filter: FolderFilter, onChange: (FolderFilter) -> Unit, show
                 }
                 DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }, shape = RoundedCornerShape(14.dp)) {
                     SortBy.entries.forEach { s -> DropdownMenuItem(text = { Text(s.label, style = MaterialTheme.typography.bodyMedium) }, onClick = { sortMenu = false; onChange(filter.copy(sort = s)) }) }
+                }
+            }
+        }
+    }
+}
+
+/** What a search in the open folder found, including files in the folders below it, each with the folder it sits in. */
+@Composable
+fun SearchHitList(hits: List<FileEntry>?, searching: Boolean, query: String, api: Api, imageLoader: ImageLoader, onOpen: (FileEntry) -> Unit, onLocate: (FileEntry) -> Unit) {
+    val c = MaterialTheme.sd; val context = LocalContext.current
+    when {
+        hits == null || (searching && hits.isEmpty()) -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        hits.isEmpty() -> EmptyState(Lu.Search, "Tidak ada hasil untuk “${query.trim()}”", "Dicari di folder ini dan semua folder di bawahnya. Folder yang baru dibuat bisa butuh beberapa saat untuk terindeks.")
+        else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 96.dp)) {
+            item(key = "count") { Text("${hits.size}${if (hits.size >= 100) "+" else ""} hasil di folder ini dan di bawahnya", Modifier.padding(horizontal = 4.dp, vertical = 6.dp), style = MaterialTheme.typography.labelMedium, color = c.faint) }
+            items(hits.size, key = { hits[it].storageId + hits[it].id }) { i ->
+                val f = hits[i]; val k = kindStyle(f); val shape = RoundedCornerShape(14.dp)
+                Row(Modifier.fillMaxWidth().padding(vertical = 2.dp).clip(shape).pressable(onClick = { onOpen(f) }, shape = shape).padding(horizontal = 8.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(46.dp).clip(RoundedCornerShape(12.dp)).background(k.bg), contentAlignment = Alignment.Center) {
+                        MIcon(k.icon, null, tint = k.fg, modifier = Modifier.size(22.dp))
+                        if (!f.isFolder && f.hasThumbnail) AsyncImage(model = ImageRequest.Builder(context).data(api.thumbnail(f, 256)).crossfade(true).build(), imageLoader = imageLoader, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                    }
+                    Column(Modifier.weight(1f).padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(f.name, style = MaterialTheme.typography.titleSmall, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(fileMeta(context, f), style = MaterialTheme.typography.bodySmall, color = c.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        PlaceLine(f.path ?: "/", null, onClick = { onLocate(f) })
+                    }
+                    BarIcon(Lu.MapPin, "Buka lokasi ${f.name}", { onLocate(f) })
                 }
             }
         }
