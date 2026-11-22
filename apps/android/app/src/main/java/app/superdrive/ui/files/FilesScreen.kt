@@ -165,6 +165,7 @@ fun FilesScreen(vm: FilesViewModel, api: Api, imageLoader: ImageLoader, isAdmin:
         topBar = {
             AnimatedContent(selecting, transitionSpec = { fadeIn() togetherWith fadeOut() }, label = "header") { sel ->
                 if (sel) SelectionHeader(count = s.selection.size, onClose = vm::clearSelection, onAll = vm::selectAll,
+                    onDuplicate = { vm.duplicate(chosen) }, onRename = { dialog = if (chosen.size == 1) Dialog.Rename(chosen.first()) else Dialog.Bulk(chosen) },
                     onShare = { dialog = Dialog.Share(chosen) }, onCopy = { dialog = Dialog.Pick("COPY", chosen) }, onMove = { dialog = Dialog.Pick("MOVE", chosen) }, onDelete = { dialog = Dialog.Delete(chosen) })
                 else PageHeader(
                     title = if (view == FileView.All) s.folderName.ifEmpty { "Semua file" } else view.label,
@@ -191,6 +192,7 @@ fun FilesScreen(vm: FilesViewModel, api: Api, imageLoader: ImageLoader, isAdmin:
                                     MenuRow("Bagikan", Lu.Share) { menu = false; dialog = Dialog.Share(listOf(here)) }
                                     MenuRow("Warna folder", Lu.Palette) { menu = false; dialog = Dialog.Tint(here) }
                                     MenuRow("Salin ke…", Lu.Copy) { menu = false; dialog = Dialog.Pick("COPY", listOf(here)) }
+                                    MenuRow("Duplikat", Lu.CopyPlus) { menu = false; vm.duplicate(listOf(here)) }
                                     MenuRow("Pindahkan ke…", Lu.Move) { menu = false; dialog = Dialog.Pick("MOVE", listOf(here)) }
                                     if (s.storage?.provider == "GOOGLE_DRIVE") MenuRow("Jadikan milik saya", Lu.User) { menu = false; dialog = Dialog.Claim(here) }
                                     MenuRow("Hapus", Lu.Trash) { menu = false; dialog = Dialog.Delete(listOf(here)) }
@@ -262,6 +264,7 @@ fun FilesScreen(vm: FilesViewModel, api: Api, imageLoader: ImageLoader, isAdmin:
     dialog?.let { d -> when (d) {
         is Dialog.NewFolder -> NameDialog("Folder baru", "", "Buat", vm::newFolder) { dialog = null }
         is Dialog.Rename -> NameDialog("Ganti nama", d.f.name, "Simpan", { n -> vm.rename(d.f, n) }) { dialog = null }
+        is Dialog.Bulk -> RenameToolDialog(d.items, preview = { r -> vm.ops().renameMany(d.items, r, dryRun = true).items }, onApply = { r -> vm.renameMany(d.items, r) }) { dialog = null }
         is Dialog.Delete -> ConfirmDialog("Pindahkan ke sampah?", if (d.items.size == 1) "“${d.items.first().name}” akan dipindahkan ke sampah." else "${d.items.size} item akan dipindahkan ke sampah.", "Hapus", { vm.trash(d.items) }) { dialog = null }
         is Dialog.Pick -> FolderPickerDialog(api, s.storages, s.storage, if (d.type == "MOVE") "Pindahkan" else "Salin", { sid, fid -> vm.transfer(d.type, d.items, sid, fid) }) { dialog = null }
         is Dialog.Share -> ShareOptionsSheet(d.items, { role, days, pw, title -> vm.createShare(d.items, role, days, pw, title) }) { dialog = null }
@@ -278,15 +281,23 @@ private fun MenuRow(text: String, icon: ImageVector, onClick: () -> Unit) =
 
 /** Header that replaces the page header while files are selected: the brand blue, a count, and the actions as icons. */
 @Composable
-private fun SelectionHeader(count: Int, onClose: () -> Unit, onAll: () -> Unit, onShare: () -> Unit, onCopy: () -> Unit, onMove: () -> Unit, onDelete: () -> Unit) {
+private fun SelectionHeader(count: Int, onClose: () -> Unit, onAll: () -> Unit, onDuplicate: () -> Unit, onRename: () -> Unit, onShare: () -> Unit, onCopy: () -> Unit, onMove: () -> Unit, onDelete: () -> Unit) {
+    var more by remember { mutableStateOf(false) }
     Row(Modifier.fillMaxWidth().background(MaterialTheme.sd.primary).statusBarsPadding().padding(horizontal = 4.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         BarIcon(Lu.X, "Batal memilih", onClose, tint = Color.White)
         Text("$count dipilih", Modifier.weight(1f).padding(start = 4.dp), style = MaterialTheme.typography.titleMedium, color = Color.White)
-        BarIcon(Lu.Check, "Pilih semua", onAll, tint = Color.White)
         BarIcon(Lu.Share, "Bagikan", onShare, tint = Color.White)
         BarIcon(Lu.Copy, "Salin ke", onCopy, tint = Color.White)
         BarIcon(Lu.Move, "Pindahkan ke", onMove, tint = Color.White)
         BarIcon(Lu.Trash, "Hapus", onDelete, tint = Color.White)
+        Box {
+            BarIcon(Lu.More, "Lainnya", { more = true }, tint = Color.White)
+            DropdownMenu(expanded = more, onDismissRequest = { more = false }, shape = RoundedCornerShape(14.dp)) {
+                MenuRow("Pilih semua", Lu.Check) { more = false; onAll() }
+                MenuRow("Duplikat", Lu.CopyPlus) { more = false; onDuplicate() }
+                MenuRow(if (count > 1) "Ganti nama $count item…" else "Ganti nama", if (count > 1) Lu.ListOrdered else Lu.Pencil) { more = false; onRename() }
+            }
+        }
     }
 }
 
@@ -307,6 +318,7 @@ private fun RowWithMenu(
             MenuRow("Bagikan", Lu.Share) { setRowMenu(null); setDialog(Dialog.Share(listOf(f))) }
             if (f.isFolder) MenuRow("Warna folder", Lu.Palette) { setRowMenu(null); setDialog(Dialog.Tint(f)) }
             MenuRow("Salin ke…", Lu.Copy) { setRowMenu(null); setDialog(Dialog.Pick("COPY", listOf(f))) }
+            MenuRow("Duplikat", Lu.CopyPlus) { setRowMenu(null); vm.duplicate(listOf(f)) }
             MenuRow("Pindahkan ke…", Lu.Move) { setRowMenu(null); setDialog(Dialog.Pick("MOVE", listOf(f))) }
             if (!f.isFolder) MenuRow("Unduh", Lu.Download) { setRowMenu(null); enqueueDownload(context, api.download(f), f.name, f.mimeType) }
             if (s.storage?.provider == "GOOGLE_DRIVE") {
@@ -356,6 +368,7 @@ private fun FileRow(f: FileEntry, api: Api, imageLoader: ImageLoader, selecting:
 private sealed interface Dialog {
     data object NewFolder : Dialog
     data class Rename(val f: FileEntry) : Dialog
+    data class Bulk(val items: List<FileEntry>) : Dialog
     data class Delete(val items: List<FileEntry>) : Dialog
     data class Pick(val type: String, val items: List<FileEntry>) : Dialog
     data class Share(val items: List<FileEntry>) : Dialog
@@ -392,6 +405,7 @@ private fun CellWithMenu(
             MenuRow("Bagikan", Lu.Share) { setRowMenu(null); setDialog(Dialog.Share(listOf(f))) }
             if (f.isFolder) MenuRow("Warna folder", Lu.Palette) { setRowMenu(null); setDialog(Dialog.Tint(f)) }
             MenuRow("Salin ke…", Lu.Copy) { setRowMenu(null); setDialog(Dialog.Pick("COPY", listOf(f))) }
+            MenuRow("Duplikat", Lu.CopyPlus) { setRowMenu(null); vm.duplicate(listOf(f)) }
             MenuRow("Pindahkan ke…", Lu.Move) { setRowMenu(null); setDialog(Dialog.Pick("MOVE", listOf(f))) }
             if (!f.isFolder) MenuRow("Unduh", Lu.Download) { setRowMenu(null); enqueueDownload(context, api.download(f), f.name, f.mimeType) }
             if (s.storage?.provider == "GOOGLE_DRIVE") {

@@ -1,12 +1,12 @@
 import { actorOf, changedFolders, logActivity, markSeen, touchFolder } from "./activity.ts";
 import path from "node:path";
-import { FOLDER_COLORS, type FileEntry, type FileListing, type PlaceDto } from "@superdrive/shared";
+import { applyRenameRule, FOLDER_COLORS, type FileEntry, type FileListing, type PlaceDto, type RenamePreviewItem, type RenameRule } from "@superdrive/shared";
 import { db, now } from "../db.ts";
 import { emitAuto } from "../lib/autoBus.ts";
 import { audit } from "../lib/audit.ts";
 import { badRequest, conflict } from "../lib/errors.ts";
 import { entryOfRow, mediaFolders, mediaHighlights, notPrivateSql, privateIds } from "./albums.ts";
-import { encodeId, ROOT, type RemoteFile, type StorageProvider } from "../providers/types.ts";
+import { decodeId, encodeId, ROOT, type RemoteFile, type StorageProvider } from "../providers/types.ts";
 import { TRASH } from "../providers/pathutil.ts";
 import { type AuthCtx, permissionsFor } from "./permissions.ts";
 import { mapProviderError } from "./storages.ts";
@@ -142,6 +142,50 @@ export async function renameFile(ctx: AuthCtx, storageId: string, p: StorageProv
     audit({ workspaceId: ctx.workspaceId, userId: ctx.userId, action: "file.rename", resourceType: "file", resourceId: f.id, metadata: { storageId, from: old.name, to: f.name }, ip: ctx.ip });
     return toEntry(storageId, f);
   } catch (e) { mapProviderError(e, storageId); }
+}
+
+/**
+ * Works out what a bulk rename would do and which items cannot be renamed (invalid or taken names), without changing anything.
+ * Items are numbered in the order given.
+ */
+export async function previewRenames(storageId: string, p: StorageProvider, fileIds: string[], rule: RenameRule): Promise<RenamePreviewItem[]> {
+  if (!fileIds.length) throw badRequest("Pilih minimal satu item.");
+  if (fileIds.length > 500) throw badRequest("Maksimal 500 item sekali ganti nama.");
+  const files: RemoteFile[] = [];
+  for (const id of fileIds) { try { files.push(await p.stat(id)); } catch (e) { mapProviderError(e, storageId); } }
+  let names: string[];
+  try { names = applyRenameRule(files, rule); } catch (e) { throw badRequest((e as Error).message); }
+  const oldByParent = new Map<string, Set<string>>(); const newByParent = new Map<string, Map<string, number>>();
+  files.forEach((f, i) => {
+    const par = f.parentId ?? ROOT;
+    (oldByParent.get(par) ?? oldByParent.set(par, new Set()).get(par)!).add(f.name);
+    const m = newByParent.get(par) ?? newByParent.set(par, new Map()).get(par)!; m.set(names[i]!, (m.get(names[i]!) ?? 0) + 1);
+  });
+  const out: RenamePreviewItem[] = [];
+  for (let i = 0; i < files.length; i++) {
+    const f = files[i]!; const par = f.parentId ?? ROOT; const to = names[i]!;
+    const item = (status: RenamePreviewItem["status"], error?: string): RenamePreviewItem => ({ fileId: encodeId(f.id), from: f.name, to, status, ...(error ? { error } : {}) });
+    if (to === f.name) { out.push(item("same")); continue; }
+    try { validName(to); } catch { out.push(item("error", "Nama tidak valid.")); continue; }
+    if (newByParent.get(par)!.get(to)! > 1) { out.push(item("error", "Nama sama dengan item lain yang ikut diganti.")); continue; }
+    if (oldByParent.get(par)!.has(to)) { out.push(item("error", "Bentrok dengan nama lama item lain yang ikut diganti. Ganti terpisah.")); continue; }
+    let taken = false;
+    try { taken = p.findChild ? !!(await p.findChild(par, to)) : await scanForName(p, par, to); } catch (e) { mapProviderError(e, storageId); }
+    out.push(taken ? item("error", "Nama sudah dipakai di folder ini.") : item("ok"));
+  }
+  return out;
+}
+
+/** Applies a bulk rename. Items that cannot be renamed are skipped and reported; the rest are renamed. */
+export async function renameMany(ctx: AuthCtx, storageId: string, p: StorageProvider, fileIds: string[], rule: RenameRule) {
+  const plan = await previewRenames(storageId, p, fileIds, rule);
+  let renamed = 0;
+  for (const it of plan) {
+    if (it.status !== "ok") continue;
+    try { await renameFile(ctx, storageId, p, decodeId(it.fileId), it.to); renamed++; }
+    catch (e) { it.status = "error"; it.error = (e as Error).message; }
+  }
+  return { renamed, items: plan };
 }
 
 /** Deleting moves to the trash (recoverable for TRASH_RETENTION_DAYS). */

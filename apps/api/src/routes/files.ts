@@ -13,7 +13,7 @@ import { ok, requireAuth } from "../app.ts";
 import { audit } from "../lib/audit.ts";
 import { badRequest, notFound } from "../lib/errors.ts";
 import { sendFile, sendFolderZip, sendThumbnail, sendZip } from "../modules/delivery.ts";
-import { createFolder, deleteFile, folderPreviews, listFolder, setFolderColor, renameFile, searchIndex, setStar, toEntry } from "../modules/files.ts";
+import { createFolder, deleteFile, folderPreviews, listFolder, previewRenames, renameMany, setFolderColor, renameFile, searchIndex, setStar, toEntry } from "../modules/files.ts";
 import { requireStorage } from "../modules/permissions.ts";
 import { getThumbnail, pickSize } from "../modules/thumbnails.ts";
 import { cancelUpload, createUpload, getUpload, receiveChunk, retryUpload, uploadHistory } from "../modules/uploads.ts";
@@ -148,6 +148,37 @@ export async function fileRoutes(app: FastifyInstance) {
     const b = z.object({ storageId: z.string(), fileId: z.string(), name: z.string() }).parse(req.body);
     const { ctx, p } = open(req, "RENAME", b.storageId);
     return ok(req, await renameFile(ctx, b.storageId, p, decodeId(b.fileId), b.name));
+  });
+
+  // Bulk rename: the rule is worked out on the server (the same way for preview and apply), so every client gets the same result.
+  const renameRule = z.object({
+    find: z.string().max(200).optional(), replace: z.string().max(200).optional(), regex: z.boolean().optional(), matchCase: z.boolean().optional(),
+    casing: z.enum(["keep", "lower", "upper", "title"]).optional(), prefix: z.string().max(100).optional(), suffix: z.string().max(100).optional(),
+    numbering: z.object({ start: z.number().int().min(0).max(1e9), step: z.number().int().min(1).max(1e6), pad: z.number().int().min(0).max(10), where: z.enum(["prefix", "suffix", "replace"]), sep: z.string().max(5).optional() }).optional(),
+    extension: z.enum(["keep", "lower"]).optional(),
+  });
+  app.post("/files/rename-batch", async (req) => {
+    const b = z.object({ storageId: z.string(), fileIds: z.array(z.string()).min(1).max(500), rule: renameRule, dryRun: z.boolean().optional() }).parse(req.body);
+    const { ctx, p } = open(req, "RENAME", b.storageId);
+    const ids = b.fileIds.map(decodeId);
+    if (b.dryRun) return ok(req, { renamed: 0, items: await previewRenames(b.storageId, p, ids, b.rule) });
+    return ok(req, await renameMany(ctx, b.storageId, p, ids, b.rule));
+  });
+
+  // Duplicate = copy next to the original, as ordinary transfer jobs (progress, retry, permissions). The copy gets a free name: "name (2).ext".
+  app.post("/files/duplicate", async (req, reply) => {
+    const ctx = requireAuth(req);
+    const b = z.object({ storageId: z.string(), fileIds: z.array(z.string()).min(1).max(500) }).parse(req.body);
+    const { p } = open(req, "COPY", b.storageId);
+    const groups = new Map<string, string[]>();
+    for (const id of b.fileIds) {
+      const f = await p.stat(decodeId(id)).catch((e) => mapProviderError(e, b.storageId));
+      const par = f.parentId ?? ROOT;
+      (groups.get(par) ?? groups.set(par, []).get(par)!).push(id);
+    }
+    const jobs = [];
+    for (const [par, ids] of groups) jobs.push(await createTransfer(ctx, { type: "COPY", source: { storageId: b.storageId, fileIds: ids }, destination: { storageId: b.storageId, folderId: encodeId(par) }, conflictPolicy: "RENAME" }));
+    return reply.status(202).send(ok(req, jobs));
   });
 
   // Copy/move always run as transfer jobs so they are tracked, retryable and permission-checked in one place.

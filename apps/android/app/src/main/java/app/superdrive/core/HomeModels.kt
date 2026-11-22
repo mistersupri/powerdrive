@@ -57,4 +57,12 @@ fun auditLabel(action: String): String = when (action) {
     val nextRunAt: String? = null, val lastRunAt: String? = null, val lastStatus: String? = null, val lastMessage: String? = null, val canEdit: Boolean = false, val createdByName: String = "",
 )
 @Serializable data class AutomationRun(val id: String, val startedAt: String = "", val status: String = "", val trigger: String = "", val matched: Int = 0, val acted: Int = 0, val message: String? = null, val dryRun: Boolean = false)
+/** One line of a bulk-rename preview. status is ok, same or error. */
+@Serializable data class RenameLine(val fileId: String, val from: String, val to: String, val status: String = "ok", val error: String? = null)
+@Serializable data class RenameResult(val renamed: Int = 0, val items: List<RenameLine> = emptyList())
+/** What the bulk-rename tool asks for; the server turns it into new names. */
+data class RenameRule(
+    val find: String = "", val replace: String = "", val casing: String = "keep", val prefix: String = "", val suffix: String = "",
+    /** off, prefix, suffix or replace */ val numbering: String = "off", val start: Int = 1, val pad: Int = 2,
+)
 @Serializable data class SharePage(val items: List<ShareItem> = emptyList(), val total: Int = 0)

@@ -228,6 +228,20 @@ class FilesViewModel(private val api: Api, private val ops: FileOps = FileOps(ap
 
     fun setColor(f: FileEntry, color: String) = act("Warna folder diubah") { ops.setColor(f, color) }
     fun rename(f: FileEntry, name: String) { if (name.isNotBlank() && name != f.name) act("Nama diubah") { ops.rename(f, name.trim()) } }
+    /** Copies next to the originals; the copies run as transfers, so reload a little later too. */
+    fun duplicate(items: List<FileEntry>) {
+        if (items.isEmpty()) return
+        act(if (items.size == 1) "“${items.first().name}” diduplikat" else "${items.size} item diduplikat") { ops.duplicate(items) }
+        viewModelScope.launch { kotlinx.coroutines.delay(2500); load(refresh = true) }
+    }
+    fun renameMany(items: List<FileEntry>, rule: app.superdrive.core.RenameRule) {
+        viewModelScope.launch {
+            try {
+                val r = ops.renameMany(items, rule, dryRun = false); val skipped = r.items.count { it.status == "error" }
+                _state.update { it.copy(notice = "${r.renamed} item diganti nama" + if (skipped > 0) ", $skipped dilewati" else "", selection = emptySet()) }; load(refresh = true)
+            } catch (e: ApiException) { _state.update { it.copy(notice = e.message ?: "Gagal.") } }
+        }
+    }
     fun star(f: FileEntry) = act(if (f.starred) "Bintang dilepas" else "Diberi bintang") { ops.star(f, !f.starred) }
     /** True when one of these is the folder we are standing in: after it is gone, step out of it. */
     private fun includesHere(items: List<FileEntry>) = items.any { it.id == _state.value.stack.lastOrNull() }

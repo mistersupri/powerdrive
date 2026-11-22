@@ -1,6 +1,6 @@
 import type { ConflictPolicy, FileEntry, Permission, StorageConnectionDto, TransferJobDto } from "@superdrive/shared";
 import { useQueryClient } from "@tanstack/react-query";
-import { Check, Copy, Download, ExternalLink, Eye, FolderInput, Palette, FolderOpen, FolderPlus, Pencil, RefreshCw, Share2, Star, Trash2, Upload, Info, UserCheck } from "lucide-react";
+import { Check, Copy, CopyPlus, ListOrdered, Download, ExternalLink, Eye, FolderInput, Palette, FolderOpen, FolderPlus, Pencil, RefreshCw, Share2, Star, Trash2, Upload, Info, UserCheck } from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
@@ -10,6 +10,7 @@ import { previewable } from "@/lib/fileType";
 import type { MenuItem } from "@/ui/Menu";
 import { enqueueUploads, type UploadInput } from "@/features/uploads/manager";
 import { DeleteDialog, NameDialog, TransferDialog } from "./dialogs";
+import { RenameTool } from "./RenameTool";
 import { Preview } from "@/features/preview/Preview";
 import { ShareDialog } from "@/features/share/ShareDialog";
 import { type Selection } from "./selection";
@@ -42,7 +43,7 @@ export function useFileActions({ storage, folderId, folderName, location, onDeta
   const perms = useMemo(() => new Set<Permission>(storage?.permissions ?? []), [storage]);
   const can = (p: Permission) => perms.has(p);
   const [shareTarget, setShareTarget] = useState<FileEntry[]>([]);
-  const [dlg, setDlg] = useState<null | { t: "folder" } | { t: "rename"; e: FileEntry } | { t: "delete"; list: FileEntry[] } | { t: "transfer"; mode: "COPY" | "MOVE"; list: FileEntry[] } | { t: "claim"; e: FileEntry } | { t: "color"; e: FileEntry }>(null);
+  const [dlg, setDlg] = useState<null | { t: "folder" } | { t: "rename"; e: FileEntry } | { t: "delete"; list: FileEntry[] } | { t: "transfer"; mode: "COPY" | "MOVE"; list: FileEntry[] } | { t: "claim"; e: FileEntry } | { t: "color"; e: FileEntry } | { t: "bulk"; list: FileEntry[] }>(null);
   const [preview, setPreview] = useState<number | null>(null);
   const fileInput = useRef<HTMLInputElement>(null); const dirInput = useRef<HTMLInputElement>(null);
   const storageId = storage?.id ?? "";
@@ -65,6 +66,15 @@ export function useFileActions({ storage, folderId, folderName, location, onDeta
     try { await api(`/files/${storageId}/${e.id}/color`, { method: "PUT", body: { color } }); await refresh(); }
     catch (err) { toast.error((err as Error).message); }
   }, [storageId, refresh]);
+  /** Copies items next to the originals; the copies are ordinary transfers (see the Transfer page) and get a free name like "foto (2).jpg". */
+  const duplicate = useCallback(async (list: FileEntry[]) => {
+    try {
+      await api("/files/duplicate", { body: { storageId, fileIds: list.map((x) => x.id) } });
+      toast.success(list.length === 1 ? `“${list[0]!.name}” diduplikat` : `${list.length} item diduplikat`);
+      selection.clear();
+      setTimeout(() => { void refresh(); }, 1200); setTimeout(() => { void refresh(); }, 5000);
+    } catch (err) { toast.error((err as Error).message); }
+  }, [storageId, refresh, selection]);
   const claim = useCallback(async (e: FileEntry) => {
     try { await api(`/files/${storageId}/${e.id}/claim`, { method: "POST", body: {} }); toast.success("Disalin ke Drive Anda, folder “Dimiliki saya”. Progresnya ada di halaman Transfer."); }
     catch (err) { toast.error((err as Error).message); }
@@ -112,7 +122,9 @@ export function useFileActions({ storage, folderId, folderName, location, onDeta
       { label: e.isFolder ? "Unduh sebagai ZIP" : "Unduh", icon: <Download />, hidden: !can("DOWNLOAD"), onSelect: () => triggerDownload(e.storageId, list.map((x) => x.id), list.length === 1 ? list[0]!.name : undefined) },
       { label: "Salin ke…", icon: <Copy />, hidden: !can("COPY"), divider: true, onSelect: () => setDlg({ t: "transfer", mode: "COPY", list }) },
       { label: "Pindahkan ke…", icon: <FolderInput />, hidden: !can("MOVE"), onSelect: () => setDlg({ t: "transfer", mode: "MOVE", list }) },
+      { label: "Duplikat", icon: <CopyPlus />, hidden: !can("COPY") || !can("UPLOAD"), onSelect: () => { void duplicate(list); } },
       { label: "Ganti nama", icon: <Pencil />, shortcut: "F2", hidden: multi || !can("RENAME"), onSelect: () => setDlg({ t: "rename", e }) },
+      { label: `Ganti nama ${list.length} item…`, icon: <ListOrdered />, hidden: !multi || !can("RENAME"), onSelect: () => setDlg({ t: "bulk", list }) },
       { label: "Detail", icon: <Info />, hidden: multi || !onDetails, onSelect: () => onDetails?.(e) },
       { label: "Bagikan…", icon: <Share2 />, hidden: !can("SHARE"), onSelect: () => setShareTarget(list) },
       { label: "Warna folder…", icon: <Palette />, hidden: multi || !e.isFolder, onSelect: () => setDlg({ t: "color", e }) },
@@ -138,6 +150,7 @@ export function useFileActions({ storage, folderId, folderName, location, onDeta
     <NameDialog open={dlg?.t === "folder"} title="Folder baru" label="Nama folder" action="Buat" onClose={() => setDlg(null)} onSubmit={async (name) => { await api("/files/folders", { body: { storageId, parentId: folderId, name } }); await refresh(); }} />
     <NameDialog open={dlg?.t === "rename"} title="Ganti nama" label="Nama baru" initial={dlg?.t === "rename" ? dlg.e.name : ""} action="Simpan" onClose={() => setDlg(null)}
       onSubmit={async (name) => { if (dlg?.t !== "rename") return; await api("/files/rename", { body: { storageId, fileId: dlg.e.id, name } }); await refresh(); }} />
+    <RenameTool open={dlg?.t === "bulk"} storageId={storageId} entries={dlg?.t === "bulk" ? dlg.list : []} onClose={() => setDlg(null)} onDone={() => { selection.clear(); void refresh(); }} />
     <DeleteDialog open={dlg?.t === "delete"} entries={dlg?.t === "delete" ? dlg.list : []} provider={storage?.provider} onClose={() => setDlg(null)}
       onConfirm={async () => {
         if (dlg?.t !== "delete") return;
@@ -170,6 +183,8 @@ export function useFileActions({ storage, folderId, folderName, location, onDeta
     pickFiles: () => fileInput.current?.click(), pickFolder: () => dirInput.current?.click(),
     newFolder: () => setDlg({ t: "folder" }), share: (e: FileEntry | FileEntry[]) => setShareTarget(Array.isArray(e) ? e : [e]),
     transferSelected: (mode: "COPY" | "MOVE") => selectedEntries.length && setDlg({ t: "transfer", mode, list: selectedEntries }),
+    duplicateSelected: () => { if (selectedEntries.length) void duplicate(selectedEntries); },
+    renameSelected: () => { if (selectedEntries.length === 1) setDlg({ t: "rename", e: selectedEntries[0]! }); else if (selectedEntries.length) setDlg({ t: "bulk", list: selectedEntries }); },
     deleteSelected: () => selectedEntries.length && setDlg({ t: "delete", list: selectedEntries }),
     downloadSelected: () => selectedEntries.length && triggerDownload(storageId, selectedEntries.map((e) => e.id), selectedEntries.length === 1 ? selectedEntries[0]!.name : undefined),
   };

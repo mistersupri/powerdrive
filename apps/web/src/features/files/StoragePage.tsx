@@ -1,6 +1,6 @@
 import type { FileEntry } from "@superdrive/shared";
 import { PROVIDER_LABEL } from "@superdrive/shared";
-import { ChevronRight, Copy, Info, Download, FolderInput, FolderOpen, FolderPlus, HardDrive, Share2, Trash2, Upload, X } from "lucide-react";
+import { ChevronRight, Copy, CopyPlus, ListOrdered, Pencil, Info, Download, FolderInput, FolderOpen, FolderPlus, HardDrive, Share2, Trash2, Upload, X } from "lucide-react";
 import { useCallback, useEffect, useMemo } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { toast } from "sonner";
@@ -101,6 +101,8 @@ export function StoragePage({ forcedStorageId }: { forcedStorageId?: string }) {
           {sel.length === 1 && <Button size="sm" variant="ghost" aria-label="Detail" className={cn(showInfo && "bg-surface-2")} icon={<Info className="size-4" />} onClick={() => setShowInfo(!showInfo)}><span className="hidden sm:inline">Detail</span></Button>}
           {a.can("SHARE") && <Button size="sm" variant="ghost" aria-label={sel.length > 1 ? `Bagikan ${sel.length} item` : "Bagikan"} icon={<Share2 className="size-4" />} onClick={() => a.share(sel)}><span className="hidden sm:inline">Bagikan</span></Button>}
           {a.can("COPY") && <Button size="sm" variant="ghost" aria-label="Salin" icon={<Copy className="size-4" />} onClick={() => a.transferSelected("COPY")}><span className="hidden sm:inline">Salin</span></Button>}
+          {a.can("COPY") && a.can("UPLOAD") && <Button size="sm" variant="ghost" aria-label="Duplikat" icon={<CopyPlus className="size-4" />} onClick={a.duplicateSelected}><span className="hidden lg:inline">Duplikat</span></Button>}
+          {a.can("RENAME") && <Button size="sm" variant="ghost" aria-label={sel.length > 1 ? "Ganti nama massal" : "Ganti nama"} icon={sel.length > 1 ? <ListOrdered className="size-4" /> : <Pencil className="size-4" />} onClick={a.renameSelected}><span className="hidden lg:inline">Ganti nama</span></Button>}
           {a.can("MOVE") && <Button size="sm" variant="ghost" aria-label="Pindahkan" icon={<FolderInput className="size-4" />} onClick={() => a.transferSelected("MOVE")}><span className="hidden sm:inline">Pindahkan</span></Button>}
           {a.can("DELETE") && <Button size="sm" variant="ghost" aria-label="Hapus" className="text-danger-ink hover:bg-danger-soft hover:text-danger-ink" icon={<Trash2 className="size-4" />} onClick={a.deleteSelected}><span className="hidden sm:inline">Hapus</span></Button>}
         </>)}

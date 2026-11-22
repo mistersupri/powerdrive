@@ -35,6 +35,20 @@ fun googleEditorLabel(f: FileEntry): String? {
 /** Everything a person can do to a file or folder. Each call is one request; the server decides what is allowed. */
 class FileOps(private val api: Api) {
     suspend fun rename(f: FileEntry, name: String) { api.send("POST", "/files/rename", buildJsonObject { put("storageId", f.storageId); put("fileId", f.id); put("name", name) }) }
+    /** Copies next to the originals (copies are transfer jobs and get a free name, "foto (2).jpg"). */
+    suspend fun duplicate(items: List<FileEntry>) {
+        require(items.isNotEmpty())
+        api.send("POST", "/files/duplicate", buildJsonObject { put("storageId", items.first().storageId); put("fileIds", JsonArray(items.map { JsonPrimitive(it.id) })) })
+    }
+    /** Bulk rename. With dryRun it only reports what would happen and which items clash. */
+    suspend fun renameMany(items: List<FileEntry>, rule: RenameRule, dryRun: Boolean): RenameResult = api.post("/files/rename-batch", buildJsonObject {
+        put("storageId", items.first().storageId); put("fileIds", JsonArray(items.map { JsonPrimitive(it.id) })); put("dryRun", dryRun)
+        put("rule", buildJsonObject {
+            if (rule.find.isNotEmpty()) { put("find", rule.find); put("replace", rule.replace) }
+            put("casing", rule.casing); put("prefix", rule.prefix); put("suffix", rule.suffix)
+            if (rule.numbering != "off") put("numbering", buildJsonObject { put("start", rule.start); put("step", 1); put("pad", rule.pad); put("where", rule.numbering); put("sep", " ") })
+        })
+    })
     /** Moves to the trash (recoverable), not a permanent delete. */
     suspend fun trash(f: FileEntry) { api.send("DELETE", "/files/${f.storageId}/${f.id}") }
     suspend fun star(f: FileEntry, on: Boolean) { api.send("POST", "/files/${f.storageId}/${f.id}/star", buildJsonObject { put("starred", on) }) }

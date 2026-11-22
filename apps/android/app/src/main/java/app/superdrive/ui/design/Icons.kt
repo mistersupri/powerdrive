@@ -51,6 +51,8 @@ object Lu {
     val Lock by lazy { icon("lock", 1.8f, "M5 11h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2Z", "M7 11V7a5 5 0 0 1 10 0v4") }
     val Phone by lazy { icon("smartphone", 1.8f, "M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Z", "M12 18h.01") }
     val Trash by lazy { icon("trash", 1.8f, "M3 6h18", "M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6", "M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2") }
+    val CopyPlus by lazy { icon("copy-plus", 1.8f, "M15 12v6", "M12 15h6", "M20 8H10a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2Z", "M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2") }
+    val ListOrdered by lazy { icon("list-ordered", 1.8f, "M10 12h11", "M10 18h11", "M10 6h11", "M4 10h2", "M4 6h1v4", "M6 18H4c0-1 2-2 2-3s-1-1.5-2-1") }
     val Pencil by lazy { icon("pencil", 1.8f, "M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z") }
     val Copy by lazy { icon("copy", 1.8f, "M20 8H10a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2Z", "M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2") }
     val Move by lazy { icon("move", 1.8f, "m5 9-3 3 3 3", "m9 5 3-3 3 3", "m15 19-3 3-3-3", "m19 9 3 3-3 3", "M2 12h20", "M12 2v20") }

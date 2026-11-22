@@ -240,3 +240,47 @@ export interface AutomationDto {
   nextRunAt: string | null; lastRunAt: string | null; lastStatus: string | null; lastMessage: string | null; failures: number; canEdit: boolean;
 }
 export interface AutomationRunDto { id: string; startedAt: string; finishedAt: string | null; status: "RUNNING" | "OK" | "PARTIAL" | "FAILED" | "DENIED" | "SKIPPED"; trigger: "event" | "schedule" | "manual"; matched: number; acted: number; message: string | null; dryRun: boolean }
+
+/* ---------- bulk rename ---------- */
+export interface RenameRule {
+  /** Text (or a regular expression, when `regex`) to look for in the name without its extension. */
+  find?: string; replace?: string; regex?: boolean; matchCase?: boolean;
+  casing?: "keep" | "lower" | "upper" | "title";
+  prefix?: string; suffix?: string;
+  /** Numbers items in the order given. "replace" uses the number as the whole name. */
+  numbering?: { start: number; step: number; pad: number; where: "prefix" | "suffix" | "replace"; sep?: string };
+  /** Extensions are kept; "lower" writes them in lower case. */
+  extension?: "keep" | "lower";
+}
+export interface RenamePreviewItem { fileId: string; from: string; to: string; status: "ok" | "same" | "error"; error?: string }
+
+export function splitExt(name: string, isFolder: boolean): { base: string; ext: string } {
+  const dot = name.lastIndexOf(".");
+  if (isFolder || dot <= 0 || dot === name.length - 1) return { base: name, ext: "" };
+  return { base: name.slice(0, dot), ext: name.slice(dot) };
+}
+
+function titleCase(s: string) { return s.toLowerCase().replace(/(^|[\s_\-.([])(\p{L})/gu, (_m, a: string, b: string) => a + b.toUpperCase()); }
+
+/** Applies a rename rule to names, in order. Pure, so the browser can preview it and the server can apply it. Throws an Error with a readable message for an invalid pattern. */
+export function applyRenameRule(items: { name: string; isFolder: boolean }[], rule: RenameRule): string[] {
+  let re: RegExp | null = null;
+  if (rule.find) {
+    try { re = new RegExp(rule.regex ? rule.find : rule.find.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), rule.matchCase ? "g" : "gi"); }
+    catch { throw new Error("Pola pencarian tidak valid."); }
+  }
+  const num = rule.numbering;
+  return items.map((it, i) => {
+    const { base, ext } = splitExt(it.name, it.isFolder);
+    let b = base;
+    if (re) { re.lastIndex = 0; b = b.replace(re, rule.replace ?? ""); }
+    if (rule.casing === "lower") b = b.toLowerCase(); else if (rule.casing === "upper") b = b.toUpperCase(); else if (rule.casing === "title") b = titleCase(b);
+    if (num) {
+      const n = String(Math.max(0, Math.floor(num.start + i * num.step))).padStart(Math.max(0, Math.min(num.pad, 10)), "0");
+      const sep = num.sep ?? " ";
+      b = num.where === "replace" ? n : num.where === "prefix" ? `${n}${sep}${b}` : `${b}${sep}${n}`;
+    }
+    b = `${rule.prefix ?? ""}${b}${rule.suffix ?? ""}`;
+    return b + (rule.extension === "lower" ? ext.toLowerCase() : ext);
+  });
+}
