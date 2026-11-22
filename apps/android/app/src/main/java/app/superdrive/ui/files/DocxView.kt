@@ -1,0 +1,132 @@
+package app.superdrive.ui.files
+
+import android.graphics.BitmapFactory
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import app.superdrive.core.DocBlock
+import app.superdrive.core.DocImage
+import app.superdrive.core.DocPara
+import app.superdrive.core.DocRun
+import app.superdrive.core.DocTable
+import app.superdrive.ui.theme.sd
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
+/** A Word document, drawn from [docxBlocks]: headings, formatted text, lists, tables and pictures, in a column that scrolls and can be selected. */
+@Composable
+fun DocxView(blocks: List<DocBlock>) {
+    if (blocks.isEmpty()) { Text("Dokumen kosong.", Modifier.padding(16.dp)); return }
+    SelectionContainer {
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp)) {
+            // Several empty paragraphs in a row are one gap, as they are on a printed page once margins are trimmed.
+            val shown = blocks.filterIndexed { i, b -> !(b is DocPara && b.runs.isEmpty() && b.label == null && (i == 0 || (blocks[i - 1] as? DocPara)?.let { it.runs.isEmpty() && it.label == null } == true)) }
+            items(shown) { b ->
+                when (b) {
+                    is DocPara -> ParaView(b)
+                    is DocTable -> TableView(b)
+                    is DocImage -> PictureView(b)
+                }
+            }
+        }
+    }
+}
+
+private fun readable(c: Int?): Color? {
+    if (c == null) return null
+    val r = (c shr 16 and 0xFF) / 255f; val g = (c shr 8 and 0xFF) / 255f; val b = (c and 0xFF) / 255f
+    val lum = 0.2126f * r + 0.7152f * g + 0.0722f * b
+    // Plain black or white text chosen for paper would vanish on the app's own background: leave those to the theme.
+    return if (lum < 0.18f || lum > 0.9f) null else Color(0xFF000000.toInt() or c)
+}
+
+private fun styled(p: DocPara, base: Float?, defaultBold: Boolean): AnnotatedString = buildAnnotatedString {
+    p.runs.forEach { r: DocRun ->
+        val deco = buildList { if (r.underline) add(TextDecoration.Underline); if (r.strike) add(TextDecoration.LineThrough) }.let { if (it.isEmpty()) null else TextDecoration.combine(it) }
+        withStyle(SpanStyle(
+            fontWeight = if (r.bold || defaultBold) FontWeight.Bold else null, fontStyle = if (r.italic) FontStyle.Italic else null, textDecoration = deco,
+            color = readable(r.color) ?: Color.Unspecified, fontSize = (r.sizePt ?: base)?.coerceIn(9f, 40f)?.sp ?: androidx.compose.ui.unit.TextUnit.Unspecified,
+        )) { append(r.text) }
+    }
+}
+
+@Composable
+private fun ParaView(p: DocPara, inCell: Boolean = false) {
+    val c = MaterialTheme.sd
+    if (p.runs.isEmpty() && p.label == null) { Spacer(Modifier.height(if (inCell) 2.dp else 8.dp)); return }
+    val (size, bold) = when (p.heading) { 7 -> 26f to true; 1 -> 22f to true; 2 -> 19f to true; 3 -> 17f to true; in 4..6 -> 15f to true; else -> null to false }
+    val align = when (p.align) { "center" -> TextAlign.Center; "right" -> TextAlign.End; "justify" -> TextAlign.Justify; else -> TextAlign.Start }
+    val text = remember(p) { styled(p, size, bold) }
+    val top = if (p.heading > 0 && !inCell) 10.dp else 0.dp
+    Row(Modifier.fillMaxWidth().padding(top = top, bottom = if (inCell) 0.dp else 6.dp, start = (p.level * 20 + (if (p.label == null) p.indentPt.coerceAtMost(80f) else 0f)).dp)) {
+        if (p.label != null) Text(p.label, Modifier.width(26.dp), style = MaterialTheme.typography.bodyLarge, color = c.muted)
+        Text(text, Modifier.weight(1f), style = if (p.heading > 0) MaterialTheme.typography.titleLarge else MaterialTheme.typography.bodyLarge, textAlign = align, color = if (p.heading > 0) c.ink else Color.Unspecified)
+    }
+}
+
+@Composable
+private fun TableView(t: DocTable) {
+    val c = MaterialTheme.sd
+    val cols = t.rows.maxOfOrNull { it.size } ?: 0
+    if (cols == 0) return
+    val wide = cols > 3
+    Column(Modifier.padding(vertical = 8.dp).then(if (wide) Modifier.horizontalScroll(rememberScrollState()) else Modifier).border(1.dp, c.lineStrong)) {
+        t.rows.forEach { row ->
+            Row {
+                for (i in 0 until cols) {
+                    val cell = row.getOrNull(i).orEmpty()
+                    Column(Modifier.then(if (wide) Modifier.width(130.dp) else Modifier.weight(1f)).border(0.5.dp, c.line).padding(6.dp), verticalArrangement = Arrangement.Top) { cell.forEach { ParaView(it, inCell = true) } }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PictureView(img: DocImage) {
+    // Decoded down to roughly screen size so a large photo in the document cannot exhaust memory.
+    val bmp by produceState<android.graphics.Bitmap?>(null, img) {
+        value = withContext(Dispatchers.Default) {
+            runCatching {
+                val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }; BitmapFactory.decodeByteArray(img.bytes, 0, img.bytes.size, o)
+                var s = 1; while (o.outWidth / s > 1600) s *= 2
+                BitmapFactory.decodeByteArray(img.bytes, 0, img.bytes.size, BitmapFactory.Options().apply { inSampleSize = s })
+            }.getOrNull()
+        }
+    }
+    bmp?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxWidth().padding(vertical = 8.dp), contentScale = ContentScale.FillWidth) }
+}

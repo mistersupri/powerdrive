@@ -235,18 +235,51 @@ export function XlsxViewer({ f }: { f: FileEntry }) {
 }
 
 /* ---------- docx ---------- */
+const FRAME_CSS = "html,body{margin:0;background:#e4e8ef}.docx-wrapper{background:#e4e8ef!important;padding:20px 0!important}.docx-wrapper>section.docx{box-shadow:0 1px 4px rgba(16,24,40,.18)!important;margin-bottom:16px!important;max-width:none}";
+/**
+ * Word documents are drawn like Word does (page size, margins, styles, headers and footers, tables, pictures) by docx-preview, inside a frame that
+ * cannot run scripts. Pages wider than the screen are scaled down to fit. If a file cannot be drawn that way, a plainer rendering is shown instead.
+ */
 export function DocxViewer({ f }: { f: FileEntry }) {
   const urls = useFileUrls(); const b = useBytes(urls.preview(f), undefined, 30 * 1024 * 1024, f.size);
-  const [html, setHtml] = useState<string | null>(null); const [err, setErr] = useState<string | null>(null);
+  const frame = useRef<HTMLIFrameElement>(null);
+  const [state, setState] = useState<"drawing" | "done" | "plain">("drawing"); const [html, setHtml] = useState<string | null>(null); const [err, setErr] = useState<string | null>(null);
+
   useEffect(() => {
-    if (!b.data) return; let dead = false;
-    import("mammoth").then(async (m) => { const r = await (m.default ?? m).convertToHtml({ arrayBuffer: b.data!.buf }); if (!dead) setHtml(r.value); }).catch(() => !dead && setErr("Tidak dapat membaca dokumen ini."));
-    return () => { dead = true; };
+    if (!b.data) return; let dead = false; let ro: ResizeObserver | undefined;
+    setState("drawing");
+    (async () => {
+      const el = frame.current; const doc = el?.contentDocument;
+      if (!el || !doc) throw new Error("no frame");
+      const { renderAsync } = await import("docx-preview");
+      doc.open(); doc.write(`<!doctype html><meta charset="utf-8"><base target="_blank"><style>${FRAME_CSS}</style><div id="s"></div><div id="c"></div>`); doc.close();
+      await renderAsync(b.data!.buf, doc.getElementById("c")!, doc.getElementById("s")!, { className: "docx", inWrapper: true, breakPages: true, ignoreLastRenderedPageBreak: true, renderHeaders: true, renderFooters: true, renderFootnotes: true, renderEndnotes: true, useBase64URL: true });
+      if (dead) return;
+      // Word draws bullets with glyphs of the Symbol/Wingdings fonts, which most devices lack: swap them for ordinary characters.
+      const BULLETS: Record<string, string> = { "\uF0B7": "•", "\uF0A7": "▪", "\uF0D8": "➢", "\uF0FC": "✓", "\uF076": "❖", "\uF0A8": "◻" };
+      for (const st of doc.querySelectorAll("style")) if (st.textContent && /[\uF000-\uF0FF]/.test(st.textContent)) st.textContent = st.textContent.replace(/[\uF000-\uF0FF]/g, (ch) => BULLETS[ch] ?? "•").replace(/font-family:\s*(Symbol|Wingdings[^;]*|Courier New)\s*;/gi, "");
+      const fit = () => {
+        const page = doc.querySelector<HTMLElement>("section.docx"); if (!page) return;
+        const w = page.offsetWidth; const avail = el.clientWidth;
+        (doc.body.style as CSSStyleDeclaration & { zoom: string }).zoom = w > avail ? String(Math.max(0.2, avail / w)) : "1";
+      };
+      fit(); ro = new ResizeObserver(fit); ro.observe(el); setState("done");
+    })().catch(async () => {
+      if (dead) return;
+      try { const m = await import("mammoth"); const r = await (m.default ?? m).convertToHtml({ arrayBuffer: b.data!.buf }); if (!dead) { setHtml(r.value); setState("plain"); } }
+      catch { if (!dead) setErr("Tidak dapat membaca dokumen ini."); }
+    });
+    return () => { dead = true; ro?.disconnect(); };
   }, [b.data]);
-  if (b.loading || (html === null && !err && !b.error)) return <Loading />; if (b.error || err) return <Msg>{b.error ?? err}</Msg>;
-  // The converted HTML is rendered in a sandboxed frame with no scripts, so document content can never run code in the app.
-  const doc = `<!doctype html><meta charset="utf-8"><base target="_blank"><style>body{font:15px/1.6 system-ui,sans-serif;max-width:800px;margin:24px auto;padding:0 24px;color:#172b4d}img{max-width:100%}table{border-collapse:collapse}td,th{border:1px solid #d3dbe6;padding:6px 10px}h1,h2,h3{line-height:1.25}</style>${html}`;
-  return <iframe title={f.name} sandbox="" srcDoc={doc} className="size-full bg-white" />;
+
+  if (b.loading) return <Loading />; if (b.error || err) return <Msg>{b.error ?? err}</Msg>;
+  if (state === "plain" && html !== null) {
+    // The converted HTML is rendered in a sandboxed frame with no scripts, so document content can never run code in the app.
+    const doc = `<!doctype html><meta charset="utf-8"><base target="_blank"><style>body{font:15px/1.6 system-ui,sans-serif;max-width:800px;margin:24px auto;padding:0 24px;color:#172b4d}img{max-width:100%}table{border-collapse:collapse}td,th{border:1px solid #d3dbe6;padding:6px 10px}h1,h2,h3{line-height:1.25}</style>${html}`;
+    return <iframe title={f.name} sandbox="" srcDoc={doc} className="size-full bg-white" />;
+  }
+  // allow-same-origin without allow-scripts: the app can draw into the frame, but nothing inside it can run code.
+  return <div className="relative size-full">{state === "drawing" && <div className="absolute inset-0 z-10 bg-surface"><Loading /></div>}<iframe ref={frame} title={f.name} sandbox="allow-same-origin" className="size-full bg-[#e4e8ef]" /></div>;
 }
 
 /* ---------- zip ---------- */

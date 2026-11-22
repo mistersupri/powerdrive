@@ -18,6 +18,7 @@
     "@tesseract.js-data/eng": "^1.0.0",
     "@tesseract.js-data/ind": "^1.0.0",
     "clsx": "^2.1.1",
+    "docx-preview": "0.3.7",
     "lucide-react": "^1.72.0",
     "mammoth": "^1.13.0",
     "pdfjs-dist": "^6.5.438",

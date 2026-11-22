@@ -59,7 +59,7 @@ import app.superdrive.core.ApiException
 import app.superdrive.core.DocKind
 import app.superdrive.core.FileEntry
 import app.superdrive.core.docKind
-import app.superdrive.core.docxParagraphs
+import app.superdrive.core.docxBlocks
 import app.superdrive.core.parseCsv
 import app.superdrive.core.xlsxRows
 import app.superdrive.core.zipEntries
@@ -183,7 +183,7 @@ private fun TextualBody(f: FileEntry, api: Api, kind: DocKind) {
             val file = fetch(api, f, context.cacheDir, if (kind == DocKind.Text || kind == DocKind.Csv) TEXT_LIMIT else DOC_LIMIT)
             withContext(Dispatchers.Default) {
                 Result.success<Any>(when (kind) {
-                    DocKind.Docx -> docxParagraphs(file.readBytes()); DocKind.Xlsx -> xlsxRows(file.readBytes()); DocKind.Zip -> zipEntries(file.readBytes())
+                    DocKind.Docx -> docxBlocks(file.readBytes()); DocKind.Xlsx -> xlsxRows(file.readBytes()); DocKind.Zip -> zipEntries(file.readBytes())
                     DocKind.Csv -> parseCsv(file.readText()); else -> file.readText()
                 })
             }
@@ -196,10 +196,7 @@ private fun TextualBody(f: FileEntry, api: Api, kind: DocKind) {
         else -> when (val v = c.getOrThrow()) {
             is String -> SelectionContainer { Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).horizontalScroll(rememberScrollState()).padding(12.dp)) { Text(v, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall) } }
             is List<*> -> when (kind) {
-                DocKind.Docx -> LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp), verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp)) {
-                    if (v.isEmpty()) item { Text("Dokumen kosong.") }
-                    items(v.filterIsInstance<String>()) { p -> Text(p, style = MaterialTheme.typography.bodyLarge) }
-                }
+                DocKind.Docx -> DocxView(v.filterIsInstance<app.superdrive.core.DocBlock>())
                 DocKind.Zip -> LazyColumn(Modifier.fillMaxSize()) {
                     items(v.filterIsInstance<app.superdrive.core.ZipItem>()) { z ->
                         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) { Text(z.name, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis); if (!z.isDir) Text(android.text.format.Formatter.formatShortFileSize(context, z.size), color = MaterialTheme.colorScheme.onSurfaceVariant) }
