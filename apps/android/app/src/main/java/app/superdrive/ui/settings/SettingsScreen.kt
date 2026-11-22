@@ -114,7 +114,7 @@ import kotlinx.serialization.json.put
 @Serializable private data class AuditPage(val items: List<AuditEntry> = emptyList(), val total: Int = 0)
 
 private enum class Sub(val title: String) {
-    Hub("Pengaturan"), Profile("Profil"), Security("Keamanan"), Private("Album privat"), Backup("Cadangan foto"), BackupAlbums("Pilih album"), App("Aplikasi"),
+    Hub("Pengaturan"), Profile("Profil"), Security("Keamanan"), Private("Album privat"), Backup("Cadangan foto"), BackupAlbums("Pilih album"), Automations("Otomasi"), App("Aplikasi"),
     Appearance("Tampilan"), Storage("Penyimpanan"), Members("Anggota"), Activity("Log aktivitas"),
 }
 
@@ -146,6 +146,7 @@ fun SettingsScreen(api: Api, me: Me, isAdmin: Boolean, onBack: () -> Unit, onLog
                 Sub.Profile -> ProfilePage(api, me, say, onLogout)
                 Sub.Security -> SecurityPage(api, say)
                 Sub.Private -> PrivatePage(api, me, say)
+                Sub.Automations -> AutomationsPage(api, say)
                 Sub.Backup -> BackupPage(say) { sub = Sub.BackupAlbums }
                 Sub.BackupAlbums -> BackupAlbumsPage(say) { sub = Sub.Backup }
                 Sub.App -> AppPage(say)
@@ -175,6 +176,7 @@ private fun Hub(me: Me, isAdmin: Boolean, open: (Sub) -> Unit) {
         }
         Group("Aplikasi", 2) {
             SettingRow(Lu.Images, "Cadangan foto", detail = "Unggah otomatis dari galeri", onClick = { open(Sub.Backup) }, tone = c.okSoft to c.okInk); Divider()
+            SettingRow(Lu.Zap, "Otomasi", detail = "Aturan otomatis, cadangan terjadwal, pembersihan", onClick = { open(Sub.Automations) }, tone = c.primarySoft to c.primaryInk); Divider()
             SettingRow(Lu.Phone, "Aplikasi", detail = "Kunci sidik jari dan pembaruan", onClick = { open(Sub.App) }, tone = c.violetSoft to c.violetInk); Divider()
             SettingRow(Lu.Settings, "Tampilan", detail = "Terang, gelap, atau ikuti sistem", onClick = { open(Sub.Appearance) }, tone = c.warnSoft to c.warnInk)
         }

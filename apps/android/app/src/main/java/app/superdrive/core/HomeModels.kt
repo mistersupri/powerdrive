@@ -50,4 +50,11 @@ fun auditLabel(action: String): String = when (action) {
     val fileId: String = "", val name: String = "", val isFolder: Boolean = false, val role: String = "VIEWER", val url: String = "",
     val hasPassword: Boolean = false, val expiresAt: String? = null, val accessCount: Int = 0, val createdAt: String = "", val createdByName: String? = null, val expired: Boolean = false, val place: Place? = null,
 )
+/** An automation as the server describes it. trigger and actions stay as JSON; the screen only reads a few fields. */
+@Serializable data class AutomationItem(
+    val id: String, val name: String, val enabled: Boolean = true, val storageName: String? = null, val folderPath: String? = null, val recursive: Boolean = true,
+    val trigger: kotlinx.serialization.json.JsonObject = kotlinx.serialization.json.JsonObject(emptyMap()), val actions: List<kotlinx.serialization.json.JsonObject> = emptyList(),
+    val nextRunAt: String? = null, val lastRunAt: String? = null, val lastStatus: String? = null, val lastMessage: String? = null, val canEdit: Boolean = false, val createdByName: String = "",
+)
+@Serializable data class AutomationRun(val id: String, val startedAt: String = "", val status: String = "", val trigger: String = "", val matched: Int = 0, val acted: Int = 0, val message: String? = null, val dryRun: Boolean = false)
 @Serializable data class SharePage(val items: List<ShareItem> = emptyList(), val total: Int = 0)
