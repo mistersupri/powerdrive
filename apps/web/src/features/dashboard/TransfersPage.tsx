@@ -169,9 +169,9 @@ export default function TransfersPage() {
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative min-w-0 flex-1 basis-0 sm:flex-none sm:basis-auto"><Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-faint" aria-hidden /><Input aria-label="Cari transfer" className="h-9 w-full pl-8 text-[13px] sm:h-8 sm:w-52" placeholder="Cari nama" value={f.q} onChange={(e) => setF({ ...f, q: e.target.value })} /></div>
           {/* On phones the filters stay folded away; the badge says how many are active. */}
-          <Button size="sm" iconOnlyMobile className="relative sm:hidden" variant={showFilters || activeN ? "soft" : "secondary"} aria-expanded={showFilters} aria-controls="transfer-filters" aria-label={activeN ? `Filter, ${activeN} aktif` : "Filter"} title="Filter" icon={<SlidersHorizontal className="size-4" />} onClick={() => setShowFilters((v) => !v)}>
-            Filter{activeN > 0 && <span className="tnum absolute -top-1.5 -right-1.5 grid size-[18px] place-items-center rounded-full bg-primary text-[11px] font-semibold text-white">{activeN}</span>}
-          </Button>
+          <span className="relative sm:hidden"><Button size="sm" iconOnlyMobile  variant={showFilters || activeN ? "soft" : "secondary"} aria-expanded={showFilters} aria-controls="transfer-filters" aria-label={activeN ? `Filter, ${activeN} aktif` : "Filter"} title="Filter" icon={<SlidersHorizontal className="size-4" />} onClick={() => setShowFilters((v) => !v)}>
+            Filter
+          </Button>{activeN > 0 && <span aria-hidden className="tnum pointer-events-none absolute -top-1.5 -right-1.5 grid size-[18px] place-items-center rounded-full bg-primary text-[11px] font-semibold text-white ring-2 ring-surface">{activeN}</span>}</span>
           <Button size="sm" iconOnlyMobile className="sm:hidden" aria-label="Bersihkan riwayat" title="Bersihkan riwayat" icon={<Eraser className="size-4" />} onClick={() => setClear("finished")}>Bersihkan</Button>
           <div id="transfer-filters" className={cn("w-full grid-cols-2 gap-2 sm:contents", showFilters ? "grid" : "hidden")}>
             <label className="text-[12px] text-muted sm:contents"><span className="sm:sr-only">Jenis</span><Select aria-label="Jenis" className="h-9 w-full text-[13px] sm:h-8 sm:w-32" value={f.type} onChange={(e) => setF({ ...f, type: e.target.value })}><option value="">Semua jenis</option><option value="COPY">Salin</option><option value="MOVE">Pindah</option></Select></label>

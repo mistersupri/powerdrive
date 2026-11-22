@@ -75,8 +75,10 @@ export function FilterButton({ value, onChange, showName = true }: { value: Filt
   return (
     <div ref={ref} className="relative">
       <Button size="sm" iconOnlyMobile className="relative" variant={n ? "soft" : "secondary"} aria-expanded={open} aria-haspopup="dialog" aria-label={n ? `Filter, ${n} aktif` : "Filter"} title="Filter" icon={<Filter className="size-4" />} onClick={() => setOpen((o) => !o)}>
-        Filter{n > 0 && <span className="tnum ml-0.5 grid size-[18px] place-items-center rounded-full bg-primary text-[11px] font-semibold text-white max-sm:absolute max-sm:-top-1.5 max-sm:-right-1.5 max-sm:ml-0">{n}</span>}
+        Filter
       </Button>
+      {/* The count sits on the button's corner, outside its label (which is hidden on phones). */}
+      {n > 0 && <span aria-hidden className="tnum pointer-events-none absolute -top-1.5 -right-1.5 grid size-[18px] place-items-center rounded-full bg-primary text-[11px] font-semibold text-white ring-2 ring-surface">{n}</span>}
       {open && (
         <div role="dialog" aria-label="Filter lanjutan" style={{ "--pop-origin": "top left" } as React.CSSProperties} className="anim-pop absolute left-0 z-40 mt-2 w-[min(380px,calc(100vw-2rem))] max-sm:fixed max-sm:inset-x-3 max-sm:bottom-3 max-sm:mt-0 max-sm:max-h-[80dvh] max-sm:w-auto max-sm:overflow-y-auto rounded-xl border border-line bg-surface p-4 shadow-float">
           <div className="mb-3 flex items-center justify-between"><h3 className="text-[14px] font-semibold">Filter lanjutan</h3>
