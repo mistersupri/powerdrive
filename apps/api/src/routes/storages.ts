@@ -9,7 +9,7 @@ import { AppError, badRequest, conflict, notFound } from "../lib/errors.ts";
 import { assertSafeEndpoint } from "../lib/ssrf.ts";
 import { requireRole, requireStorage, permissionsFor, type AuthCtx } from "../modules/permissions.ts";
 import { assertLocalRoot, createConnection, deleteConnection, dropProvider, mapProviderError, setStatus, testConnection, toDto, uniqueMountPath } from "../modules/storages.ts";
-import { buildAuthUrl, consumeState, exchangeCode, oauthConfigured, oauthDef, saveCredential, SLUG_TO_PROVIDER, type OAuthSlug } from "../providers/oauth.ts";
+import { buildAuthUrl, consumeState, exchangeCode, loadCredential, oauthConfigured, oauthDef, saveCredential, SLUG_TO_PROVIDER, type OAuthSlug } from "../providers/oauth.ts";
 import { providerFor } from "../modules/storages.ts";
 import { ALL_PERMISSIONS } from "@superdrive/shared";
 import { indexInfo, scheduleIndex } from "../modules/indexer.ts";
@@ -55,6 +55,15 @@ export async function storageRoutes(app: FastifyInstance) {
   app.post("/storages/telegram/login/code", async (req) => step(req, telegramLogin.code, "code"));
   app.post("/storages/telegram/login/password", async (req) => step(req, telegramLogin.password, "password"));
   app.delete("/storages/telegram/login/:loginId", async (req) => { const ctx = requireAuth(req); requireRole(ctx, "ADMIN"); telegramLogin.forget((req.params as any).loginId); return ok(req, {}); });
+  // Signing in again to an existing storage reuses the API ID and hash kept for it, so only the number and the codes are asked.
+  app.post("/storages/:id/telegram/relogin/start", async (req) => {
+    const ctx = requireAuth(req); requireRole(ctx, "ADMIN");
+    const row = requireStorage(ctx, (req.params as any).id, "MANAGE_STORAGE");
+    if (row.provider !== "TELEGRAM") throw badRequest("Hanya untuk penyimpanan Telegram.");
+    const b = z.object({ phone: z.string().trim().regex(/^\+?[0-9 ()-]{7,20}$/, "Nomor telepon tidak valid.") }).parse(req.body);
+    const cred = loadCredential<{ apiId: number; apiHash: string }>(row.credential_id);
+    return ok(req, await telegramLogin.start(newId(), cred.apiId, cred.apiHash, phoneOf(b.phone)));
+  });
   // After Telegram ended a session (or it was revoked): sign in again as the same account and carry on with the same channel.
   app.post("/storages/:id/telegram/relogin", async (req) => {
     const ctx = requireAuth(req); requireRole(ctx, "ADMIN");

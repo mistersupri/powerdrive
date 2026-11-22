@@ -14,8 +14,9 @@ import { Dialog } from "@/ui/Dialog";
 import { Field, Input, Select } from "@/ui/Field";
 import { useMenu } from "@/ui/Menu";
 import { Card, ConnectionBadge, EmptyState, Progress, Skeleton } from "@/ui/misc";
+import { TelegramConnect } from "./TelegramConnect";
 
-type FormKind = "local" | "s3" | "sftp" | "webdav" | "smb";
+type FormKind = "local" | "s3" | "sftp" | "webdav" | "smb" | "telegram";
 interface ProviderInfo { slug: string; provider: string; label: string; kind: "oauth" | FormKind | "planned"; configured: boolean; available: boolean; roots?: string[]; note?: string }
 const PERM_LABEL: Record<Permission, string> = { READ: "Melihat", UPLOAD: "Mengunggah", DOWNLOAD: "Mengunduh", COPY: "Menyalin", MOVE: "Memindahkan", DELETE: "Menghapus", RENAME: "Ganti nama", SHARE: "Membagikan", MOUNT: "Membuat mount", MANAGE_STORAGE: "Kelola penyimpanan" };
 
@@ -35,21 +36,21 @@ function AddStorageDialog({ open, onClose }: { open: boolean; onClose(): void })
   const create = async () => {
     setBusy(form);
     try {
-      const bodies: Record<FormKind, object> = {
+      const bodies: Record<Exclude<FormKind, "telegram">, object> = {
         local: { provider: "LOCAL", name: v.name, root: v.root },
         s3: { provider: "S3", name: v.name, endpoint: v.endpoint || "", region: v.region || "auto", bucket: v.bucket, prefix: v.prefix || undefined, accessKeyId: v.accessKeyId, secretAccessKey: v.secretAccessKey },
         sftp: { provider: "SFTP", name: v.name, host: v.host, port: Number(v.port) || 22, username: v.username, password: v.password || undefined, privateKey: v.privateKey || undefined, passphrase: v.passphrase || undefined, baseDir: v.baseDir || "/", hostKey: v.hostKey || undefined },
         webdav: { provider: "WEBDAV", name: v.name, url: v.url, username: v.username || undefined, password: v.password || undefined },
         smb: { provider: "SMB", name: v.name, host: v.host, port: Number(v.port) || 445, share: v.share, baseDir: v.baseDir || "", domain: v.domain || undefined, username: v.username, password: v.password, encrypt: v.encrypt === "1" || undefined },
       };
-      await api("/storages", { body: bodies[form!] });
+      await api("/storages", { body: bodies[form as Exclude<FormKind, "telegram">] });
       toast.success("Penyimpanan terhubung"); await qc.invalidateQueries({ queryKey: ["storages"] }); onClose();
     } catch (e) { toast.error((e as Error).message); } finally { setBusy(null); }
   };
   const cloud = providers.data?.filter((p) => p.kind === "oauth") ?? []; const ext = providers.data?.filter((p) => p.kind !== "oauth") ?? [];
   return (
     <Dialog open={open} onClose={onClose} width="max-w-[640px]" title="Hubungkan penyimpanan" description={form ? undefined : "Pilih penyedia yang ingin dihubungkan."}
-      footer={form ? <><Button onClick={() => setForm(null)}>Kembali</Button><Button variant="primary" loading={busy === form} onClick={create}>Hubungkan</Button></> : undefined}>
+      footer={form && form !== "telegram" ? <><Button onClick={() => setForm(null)}>Kembali</Button><Button variant="primary" loading={busy === form} onClick={create}>Hubungkan</Button></> : undefined}>
       {!form ? (
         <div className="space-y-6">
           <section><h3 className="mb-2 text-[13px] font-semibold">Penyimpanan cloud</h3>
@@ -71,6 +72,8 @@ function AddStorageDialog({ open, onClose }: { open: boolean; onClose(): void })
               </div>))}</div>
           </section>
         </div>
+      ) : form === "telegram" ? (
+        <TelegramConnect mode={{ type: "new" }} onBack={() => setForm(null)} onDone={onClose} />
       ) : (
         <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); void create(); }}>
           <Field label="Nama koneksi">{(id) => <Input id={id} required value={v.name ?? ""} onChange={set("name")} placeholder={{ local: "Arsip server", s3: "Bucket arsip", sftp: "Server SFTP", webdav: "Nextcloud kantor", smb: "NAS kantor" }[form]} />}</Field>
@@ -136,7 +139,7 @@ function PermissionsDialog({ s, onClose }: { s: StorageConnectionDto | null; onC
 }
 
 function StorageRow({ s, onPerms }: { s: StorageConnectionDto; onPerms(): void }) {
-  const qc = useQueryClient(); const menu = useMenu(); const [busy, setBusy] = useState(false); const [rename, setRename] = useState(false); const [name, setName] = useState(s.name); const [confirm, setConfirm] = useState(false);
+  const qc = useQueryClient(); const menu = useMenu(); const [busy, setBusy] = useState(false); const [rename, setRename] = useState(false); const [name, setName] = useState(s.name); const [confirm, setConfirm] = useState(false); const [relogin, setRelogin] = useState(false);
   const refresh = () => qc.invalidateQueries({ queryKey: ["storages"] });
   const run = async (fn: () => Promise<unknown>, ok?: string) => { setBusy(true); try { await fn(); if (ok) toast.success(ok); await refresh(); } catch (e) { toast.error((e as Error).message); await refresh(); } finally { setBusy(false); } };
   const pct = s.quota?.total && s.quota.used !== null ? Math.round((s.quota.used / s.quota.total) * 100) : null;
@@ -150,6 +153,7 @@ function StorageRow({ s, onPerms }: { s: StorageConnectionDto; onPerms(): void }
         {s.permissions.includes("MANAGE_STORAGE") && <IconButton label="Aksi" disabled={busy} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); menu.open(r.right - 210, r.bottom + 4, [
           { label: "Uji koneksi", icon: <RefreshCw />, onSelect: () => run(() => api(`/storages/${s.id}/test`, { body: {} }), "Koneksi diperiksa") },
           { label: "Hubungkan ulang", icon: <Link2 />, hidden: !oauth, onSelect: () => run(async () => { const r = await api<{ url: string }>(`/storages/${s.id}/reconnect`, { body: {} }); location.href = r.url; }) },
+          { label: "Masuk ulang ke Telegram", icon: <Link2 />, hidden: s.provider !== "TELEGRAM", onSelect: () => setRelogin(true) },
           { label: "Indeks ulang pencarian", icon: <RefreshCw />, hidden: s.status !== "CONNECTED" || s.index?.status === "RUNNING", onSelect: () => run(() => api(`/storages/${s.id}/reindex`, { body: {} }), "Pengindeksan dimulai") },
           { label: "Ganti nama", onSelect: () => setRename(true) },
           { label: "Hak akses…", icon: <KeyRound />, onSelect: onPerms },
@@ -164,6 +168,7 @@ function StorageRow({ s, onPerms }: { s: StorageConnectionDto; onPerms(): void }
         <div className="text-muted"><p>Path virtual: <code className="text-ink">{s.mount?.virtualPath}</code></p><p>Terakhir terhubung {timeAgo(s.lastConnectedAt)}</p>{s.index && <p>Indeks pencarian: <span className="text-ink">{s.index.status === "RUNNING" ? `mengindeks… ${s.index.count.toLocaleString("id-ID")} item` : s.index.status === "DONE" ? `${s.index.count.toLocaleString("id-ID")} item` : s.index.status === "IDLE" ? "belum dimulai" : s.index.status === "PARTIAL" ? `sebagian (${s.index.count.toLocaleString("id-ID")} item)` : "gagal"}</span></p>}</div>
       </div>
       {menu.element}
+      <Dialog open={relogin} onClose={() => setRelogin(false)} width="max-w-md" title="Masuk ulang ke Telegram">{relogin && <TelegramConnect mode={{ type: "relogin", storage: s }} onDone={() => setRelogin(false)} onBack={() => setRelogin(false)} />}</Dialog>
       <Dialog open={rename} onClose={() => setRename(false)} width="max-w-sm" title="Ganti nama koneksi" footer={<><Button onClick={() => setRename(false)}>Batal</Button><Button variant="primary" onClick={() => { void run(() => api(`/storages/${s.id}`, { method: "PATCH", body: { name } }), "Nama diperbarui"); setRename(false); }}>Simpan</Button></>}>
         <Field label="Nama">{(id) => <Input id={id} autoFocus value={name} onChange={(e) => setName(e.target.value)} />}</Field>
       </Dialog>

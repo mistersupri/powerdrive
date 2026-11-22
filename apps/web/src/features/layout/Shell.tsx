@@ -51,7 +51,7 @@ function NavItem({ to, icon: Icon, children, badge, end, trailing }: { trailing?
 }
 const Section = ({ children }: { children: ReactNode }) => <div className="mt-5 mb-1.5 px-3 text-[11px] font-semibold tracking-wider text-muted uppercase">{children}</div>;
 
-const PROVIDER_DOT: Record<string, string> = { GOOGLE_DRIVE: "bg-[#4285F4]", ONEDRIVE: "bg-[#0078D4]", DROPBOX: "bg-[#0061FF]", LOCAL: "bg-ok-ink", S3: "bg-warn-ink", SMB: "bg-violet-ink", SFTP: "bg-primary-ink", WEBDAV: "bg-danger-ink" };
+const PROVIDER_DOT: Record<string, string> = { GOOGLE_DRIVE: "bg-[#4285F4]", TELEGRAM: "bg-[#229ED9]", ONEDRIVE: "bg-[#0078D4]", DROPBOX: "bg-[#0061FF]", LOCAL: "bg-ok-ink", S3: "bg-warn-ink", SMB: "bg-violet-ink", SFTP: "bg-primary-ink", WEBDAV: "bg-danger-ink" };
 
 /** Folder tree of the built-in storage, nested under "Semua file" so any folder is one click away from anywhere. */
 function SidebarTree({ storageId }: { storageId: string }) {

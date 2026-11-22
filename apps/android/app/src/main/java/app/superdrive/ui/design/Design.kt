@@ -262,7 +262,7 @@ fun SdProgress(fraction: Float, modifier: Modifier = Modifier, color: Color = Ma
 /** Provider colour dots from the website's sidebar. */
 fun providerColor(provider: String): Color = when (provider) {
     "GOOGLE_DRIVE" -> Color(0xFF4285F4); "ONEDRIVE" -> Color(0xFF0078D4); "DROPBOX" -> Color(0xFF0061FF); "LOCAL" -> Color(0xFF047857)
-    "S3" -> Color(0xFFA65A05); "SMB" -> Color(0xFF6D4BD1); "SFTP" -> Color(0xFF1769E8); "WEBDAV" -> Color(0xFFB42318); else -> Color(0xFF607087)
+    "S3" -> Color(0xFFA65A05); "SMB" -> Color(0xFF6D4BD1); "SFTP" -> Color(0xFF1769E8); "WEBDAV" -> Color(0xFFB42318); "TELEGRAM" -> Color(0xFF229ED9); else -> Color(0xFF607087)
 }
 
 // ---- forms ----

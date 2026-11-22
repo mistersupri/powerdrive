@@ -78,6 +78,7 @@ Keamanan: token acak 256-bit (hanya hash yang dipakai untuk mencari; token teren
 - **SFTP**: kunci host dikunci pada koneksi pertama (atau isi sidik jari sendiri). Jika berubah, koneksi ditolak.
 - **WebDAV**: wajib HTTPS (kecuali `ALLOW_PRIVATE_HOSTS=true`). Pengalihan ke host lain ditolak.
 - Ketiganya: hapus memindahkan ke folder tersembunyi `.superdrive-trash` di penyimpanan itu. Alamat jaringan internal (NAS di LAN) diblokir kecuali `ALLOW_PRIVATE_HOSTS=true`.
+- **Telegram** dipakai sebagai disk lewat akun pengguna (MTProto): file disimpan sebagai pesan di sebuah channel pribadi (atau Pesan Tersimpan), dan struktur folder ada di keterangan pesan, jadi ganti nama dan pindah tanpa unggah ulang. File lebih dari ~2 GB dipecah jadi beberapa pesan dan disatukan saat dibaca. Hubungkan lewat Penyimpanan → Tambah → Telegram (butuh API ID dan hash dari my.telegram.org dan sebaiknya akun Telegram khusus). Telegram tidak mengenkripsi file ujung ke ujung, dan unggahan besar-besaran bisa memicu pembatasan akun. Jangan menghapus atau mengubah pesan di channel secara manual.
 - Tidak ada salin native di SFTP/SMB, jadi salin di dalam satu penyimpanan tetap lewat server.
 
 ## Belum ada (sengaja ditunda)

@@ -152,3 +152,20 @@ describe("telegram storage through the API", () => {
     assert.ok(fake.msgs.size > 0, "disconnecting never deletes anything in Telegram");
   });
 });
+
+describe("telegram sign-in again", () => {
+  it("reuses the stored API ID and hash, so only the phone number is asked", async () => {
+    const { telegramLogin, telegramApis } = await import("../providers/telegramClient.ts"); const saved = { ...telegramLogin, for: telegramApis.for };
+    const seen: any[] = [];
+    Object.assign(telegramLogin, { start: async (id: string, apiId: number, hash: string, phone: string) => { seen.push({ apiId, hash, phone }); return { loginId: id, state: "code" }; }, result: () => ({ credential: { apiId: 4242, apiHash: "b".repeat(32), session: "s" }, user: { id: "7", name: "X" } }), channel: async () => ({ channelId: "1", accessHash: "2" }), forget: () => {} });
+    (telegramApis as any).for = () => new FakeTelegram();
+    try {
+      const made = await t.call("tgadmin", "POST", "/storages", { provider: "TELEGRAM", name: "Kedua", loginId: "l1" }); assert.equal(made.status, 200, JSON.stringify(made.body));
+      const r = await t.call("tgadmin", "POST", `/storages/${made.data.id}/telegram/relogin/start`, { phone: "0812 3456 7890" });
+      assert.equal(r.status, 200, JSON.stringify(r.body)); assert.deepEqual(seen[0], { apiId: 4242, hash: "b".repeat(32), phone: "+08123456789" + "0" });
+      assert.equal((await t.call("tgadmin", "POST", `/storages/${made.data.id}/telegram/relogin/start`, { phone: "x" })).status, 400);
+      const other = (await t.call("tgadmin", "GET", "/storages")).data.find((s: any) => s.isDefault).id;
+      assert.equal((await t.call("tgadmin", "POST", `/storages/${other}/telegram/relogin/start`, { phone: "+628123456789" })).status, 400, "only for Telegram storages");
+    } finally { Object.assign(telegramLogin, saved); (telegramApis as any).for = saved.for; }
+  });
+});
