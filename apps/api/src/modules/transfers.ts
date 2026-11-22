@@ -5,6 +5,7 @@ import { Transform } from "node:stream";
 import { ACTIVE_TRANSFER_STATUSES, type ConflictPolicy, type TransferItemDto, type TransferJobDto, type TransferStatus, type TransferType } from "@superdrive/shared";
 import { config } from "../config.ts";
 import { db, now } from "../db.ts";
+import { emitAuto } from "../lib/autoBus.ts";
 import { audit, notify } from "../lib/audit.ts";
 import { newId } from "../lib/crypto.ts";
 import { AppError, badRequest, conflict, notFound } from "../lib/errors.ts";
@@ -342,6 +343,7 @@ async function runJob(jobId: string) {
     audit({ workspaceId: job.workspace_id, userId: job.user_id, action: `transfer.${final === "FAILED" ? "fail" : "complete"}`, resourceType: "transfer", resourceId: jobId, metadata: { title: job.title, status: final, files: j2.total_files, failed: j2.failed_files } });
     notify(job.workspace_id, job.user_id, final === "FAILED" ? "transfer.failed" : "transfer.completed",
       final === "FAILED" ? "Transfer gagal" : "Transfer selesai", `${job.title}${msg ? ` — ${msg}` : ""}`, { jobId });
+    emitAuto({ type: final === "FAILED" ? "transfer.failed" : "transfer.completed", workspaceId: job.workspace_id, data: { title: job.title, message: msg ?? "", jobId } });
   } catch (e) {
     if (e instanceof Interrupted) {
       if (e.intent === "cancel") finishCancelled(jobId);
@@ -530,7 +532,7 @@ async function processItem(job: any, item: any, src: StorageProvider, dst: Stora
     }
   }
 
-  indexItems(job.destination_storage_id, item.destination_parent_id, [result]); bustListCache(job.destination_storage_id);
+  indexItems(job.destination_storage_id, item.destination_parent_id, [result], { source: "transfer", byAutomation: String(job.idempotency_key ?? "").startsWith("auto:") }); bustListCache(job.destination_storage_id);
   prewarmThumbnail(job.destination_storage_id, dst, result);
   db.run("UPDATE transfer_items SET destination_file_id=?, transferred_bytes=?, error_message=NULL WHERE id=?", result.id, size ?? 0, item.id);
 

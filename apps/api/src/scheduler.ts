@@ -5,6 +5,7 @@ import { pruneThumbnailCache } from "./modules/thumbnails.ts";
 import { sweepStaleUploads } from "./modules/uploads.ts";
 import { sweepTrash } from "./modules/trash.ts";
 import { scheduleStale } from "./modules/indexer.ts";
+import { pruneAutomationRuns, runDueAutomations } from "./modules/automations.ts";
 
 /** Background upkeep. Everything here is safe to skip or repeat. */
 export function startScheduler(log: { info: (o: any, m?: string) => void; warn: (o: any, m?: string) => void }) {
@@ -18,6 +19,8 @@ export function startScheduler(log: { info: (o: any, m?: string) => void; warn: 
   every(60 * 60_000, "sweep-sessions", () => { db.run("DELETE FROM sessions WHERE expires_at < ?", now()); db.run("DELETE FROM oauth_states WHERE expires_at < ?", now()); db.run("DELETE FROM password_resets WHERE expires_at < ?", now()); });
   every(60 * 60_000, "sweep-trash", () => sweepTrash());
   every(24 * 3600_000, "retention", () => sweepRetention());
+  every(60_000, "automations", () => runDueAutomations());
+  every(24 * 3600_000, "prune-automation-runs", () => pruneAutomationRuns());
   setTimeout(() => sweepRetention(), 60_000).unref();
   every(6 * 3600_000, "reindex", () => scheduleStale(6));
   setTimeout(() => scheduleStale(12), 15_000).unref();

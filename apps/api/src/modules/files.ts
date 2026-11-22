@@ -2,6 +2,7 @@ import { actorOf, changedFolders, logActivity, markSeen, touchFolder } from "./a
 import path from "node:path";
 import { FOLDER_COLORS, type FileEntry, type FileListing, type PlaceDto } from "@superdrive/shared";
 import { db, now } from "../db.ts";
+import { emitAuto } from "../lib/autoBus.ts";
 import { audit } from "../lib/audit.ts";
 import { badRequest, conflict } from "../lib/errors.ts";
 import { entryOfRow, mediaFolders, mediaHighlights, notPrivateSql, privateIds } from "./albums.ts";
@@ -19,10 +20,11 @@ export function toEntry(storageId: string, f: RemoteFile, starred = false): File
 }
 
 /** Write-through update of the metadata index. `complete` removes children that vanished from the provider. */
-export function indexItems(storageId: string, parentId: string, items: RemoteFile[], opts: { complete?: boolean; replaceChildren?: boolean } = {}) {
-  const t = now();
+export function indexItems(storageId: string, parentId: string, items: RemoteFile[], opts: { complete?: boolean; replaceChildren?: boolean; source?: "upload" | "transfer" | "scan" | "edit"; byAutomation?: boolean } = {}) {
+  const t = now(); const created: string[] = [];
   db.tx(() => {
     for (const f of items) {
+      if (!f.isFolder && !db.get("SELECT 1 FROM files WHERE storage_id = ? AND file_id = ?", storageId, f.id)) created.push(f.id);
       const dot = f.name.lastIndexOf(".");
       db.run(
         `INSERT INTO files(storage_id,file_id,parent_id,name,name_lower,ext,mime_type,size,checksum,is_folder,has_thumbnail,version,modified_at,created_at_remote,indexed_at)
@@ -38,6 +40,8 @@ export function indexItems(storageId: string, parentId: string, items: RemoteFil
       db.run("DELETE FROM files WHERE storage_id = ? AND parent_id = ? AND indexed_at < ?", storageId, parentId, t);
     }
   });
+  // New files are what automations react to. Renames, trash and restores are not new files.
+  if ((opts.source ?? "scan") !== "edit") for (const id of created) emitAuto({ type: "file.created", storageId, fileId: id, source: opts.source ?? "scan", byAutomation: opts.byAutomation });
 }
 
 export function unindex(storageId: string, fileId: string) {
@@ -133,7 +137,7 @@ export async function renameFile(ctx: AuthCtx, storageId: string, p: StorageProv
     const old = await p.stat(fileId);
     const f = await p.rename(fileId, validName(name));
     if (f.id !== fileId) unindex(storageId, fileId);
-    indexItems(storageId, f.parentId ?? ROOT, [f]); bustListCache(storageId);
+    indexItems(storageId, f.parentId ?? ROOT, [f], { source: "edit" }); bustListCache(storageId);
     touchFolder(storageId, f.parentId, actorOf(ctx)); logActivity(ctx, storageId, f.id, "rename", { from: old.name, to: f.name });
     audit({ workspaceId: ctx.workspaceId, userId: ctx.userId, action: "file.rename", resourceType: "file", resourceId: f.id, metadata: { storageId, from: old.name, to: f.name }, ip: ctx.ip });
     return toEntry(storageId, f);
@@ -151,7 +155,7 @@ export function setStar(userId: string, storageId: string, fileId: string, on: b
   else db.run("DELETE FROM stars WHERE user_id = ? AND storage_id = ? AND file_id = ?", userId, storageId, fileId);
 }
 
-const TYPE_FILTERS: Record<string, string> = {
+export const TYPE_FILTERS: Record<string, string> = {
   folder: "f.is_folder = 1",
   sheet: "f.ext IN ('xls','xlsx','ods','csv')", slides: "f.ext IN ('ppt','pptx','odp')", text: "(f.mime_type LIKE 'text/%' AND f.ext NOT IN ('csv'))", code: "f.ext IN ('js','ts','json','html','css','py','sh','xml','yml','yaml')", doc: "f.ext IN ('doc','docx','odt','rtf')",
   image: "f.mime_type LIKE 'image/%'",

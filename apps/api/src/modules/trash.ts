@@ -96,7 +96,7 @@ export async function restoreItem(ctx: AuthCtx, id: string) {
     try { const pf = await p.stat(parent); if (!pf.isFolder) parent = ROOT; } catch { parent = ROOT; } // original folder is gone: restore at the root
     const name = await uniqueName(p, parent, r.name);
     const moved: RemoteFile = await p.move!(r.trash_file_id, parent, name);
-    indexItems(r.storage_id, parent, [moved]); bustListCache(r.storage_id);
+    indexItems(r.storage_id, parent, [moved], { source: "edit" }); bustListCache(r.storage_id);
     db.run("DELETE FROM trash_items WHERE id = ?", id);
     audit({ workspaceId: ctx.workspaceId, userId: ctx.userId, action: "file.restore", resourceType: "file", resourceId: moved.id, metadata: { storageId: r.storage_id, name: moved.name }, ip: ctx.ip });
     return { name: moved.name, storageId: r.storage_id, parentId: encodeId(parent) };
@@ -169,7 +169,7 @@ export async function restoreChildren(ctx: AuthCtx, trashId: string, ids: string
       const dest = await ensureChain(p, base, [r.name, ...rel]);
       const name = await uniqueName(p, dest, f.name);
       const moved = await p.move!(raw, dest, name);
-      indexItems(r.storage_id, dest, [moved]); bustListCache(r.storage_id); restored.push(moved.name);
+      indexItems(r.storage_id, dest, [moved], { source: "edit" }); bustListCache(r.storage_id); restored.push(moved.name);
       await pruneEmpty(p, r, f.parentId);
     }
     const removedParent = await dropIfEmpty(p, r);

@@ -8,6 +8,7 @@ import { COOKIE_PATH_PREFIX, ok } from "./publicShared.ts";
 import { requireAuth } from "../app.ts";
 import { db, now } from "../db.ts";
 import { audit, notify } from "../lib/audit.ts";
+import { emitAuto } from "../lib/autoBus.ts";
 import { AppError, badRequest, forbidden, notFound } from "../lib/errors.ts";
 import { sendFile, sendFolderZip, sendThumbnail, sendZip } from "../modules/delivery.ts";
 import { createFolder, listFolderShared, renameFile, toEntry } from "../modules/files.ts";
@@ -48,6 +49,7 @@ const makeShareRoutes = (direct: boolean) => async function shareRoutes(app: Fas
     const r = direct ? resolveDirectShare(requireAuth(req), token, req.ip) : resolveShare(token, req.ip);
     const unlocked = direct || !r.share.password_hash || accessKeyValid(r.share.id, (req.cookies as any)[cookieName(r.share.id)]);
     db.run("UPDATE share_links SET access_count = access_count + 1, last_access_at = ? WHERE id = ?", now(), r.share.id);
+    emitAuto({ type: "share.opened", workspaceId: r.share.workspace_id, storageId: r.share.storage_id, data: { name: r.share.title ?? r.share.name } });
     const d: PublicShareDto = { name: r.share.name, isFolder: !!r.share.is_folder, isBundle: isBundle(r.share), itemCount: isBundle(r.share) ? shareItems(r.share.id).length : 1, role: r.share.role, requiresPassword: !direct && !!r.share.password_hash, unlocked, expiresAt: r.share.expires_at, maxUploadBytes: r.share.max_upload_bytes, uploadedBytes: r.share.uploaded_bytes };
     noStore(reply); return ok(req, d);
   });

@@ -7,6 +7,7 @@ import { pipeline } from "node:stream/promises";
 import type { ConflictPolicy, UploadDto, UploadHistoryDto } from "@superdrive/shared";
 import { config } from "../config.ts";
 import { db, now } from "../db.ts";
+import { emitAuto } from "../lib/autoBus.ts";
 import { audit } from "../lib/audit.ts";
 import { newId } from "../lib/crypto.ts";
 import { AppError, badRequest, conflict, notFound } from "../lib/errors.ts";
@@ -168,7 +169,7 @@ async function finalize(ctx: AuthCtx, r: any) {
       if (swap) { await (await import("./trash.ts")).trashRaw(r.workspace_id, r.user_id, r.storage_id, p, existing!.id); file = await p.rename(file.id, name); }
       await fsp.rm(r.staging_path, { force: true });
     }
-    indexItems(r.storage_id, r.parent_id, [file]); bustListCache(r.storage_id);
+    indexItems(r.storage_id, r.parent_id, [file], { source: "upload" }); bustListCache(r.storage_id);
     touchFolder(r.storage_id, r.parent_id, r.share_id ? `share:${r.share_id}` : r.user_id); logActivity({ ...ctx, workspaceId: r.workspace_id, userId: r.user_id, viaShare: !!r.share_id }, r.storage_id, file.id, "upload", { name: file.name, size: r.size }, r.share_id ?? undefined);
     prewarmThumbnail(r.storage_id, p, file);
     audit({ workspaceId: r.workspace_id, userId: r.user_id, action: "file.upload", resourceType: "file", resourceId: file.id, metadata: { storageId: r.storage_id, name: file.name, size: r.size }, ip: ctx.ip });
@@ -179,6 +180,7 @@ async function finalize(ctx: AuthCtx, r: any) {
     try { mapProviderError(e, r.storage_id); } catch (m) { msg = (m as Error).message; }
     db.run("UPDATE uploads SET status='FAILED', error_message=?, updated_at=? WHERE id=?", msg, now(), r.id);
     remember(r, "FAILED", null, msg);
+    emitAuto({ type: "upload.failed", storageId: r.storage_id, workspaceId: r.workspace_id, data: { name: r.name, message: msg } });
   }
 }
 

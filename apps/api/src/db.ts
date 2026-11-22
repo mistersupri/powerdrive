@@ -292,6 +292,22 @@ const MIGRATIONS: string[] = [
   CREATE INDEX idx_telegram_parent ON telegram_items(storage_id, parent, name);
   CREATE TABLE telegram_sync (storage_id TEXT PRIMARY KEY, last_id INTEGER NOT NULL DEFAULT 0, full_at TEXT);
   `,
+  /* 14 */ `
+  CREATE TABLE automations (
+    id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, created_by TEXT NOT NULL, name TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1,
+    storage_id TEXT, folder_id TEXT, recursive INTEGER NOT NULL DEFAULT 1,
+    trigger TEXT NOT NULL, conditions TEXT NOT NULL DEFAULT '{}', actions TEXT NOT NULL,
+    next_run_at TEXT, last_run_at TEXT, last_status TEXT, last_message TEXT, failures INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')), updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+  );
+  CREATE INDEX idx_automations_ws ON automations(workspace_id, enabled);
+  CREATE TABLE automation_runs (
+    id TEXT PRIMARY KEY, automation_id TEXT NOT NULL REFERENCES automations(id) ON DELETE CASCADE, started_at TEXT NOT NULL, finished_at TEXT,
+    status TEXT NOT NULL, trigger TEXT NOT NULL, matched INTEGER NOT NULL DEFAULT 0, acted INTEGER NOT NULL DEFAULT 0, message TEXT, dry_run INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE INDEX idx_automation_runs ON automation_runs(automation_id, started_at DESC);
+  CREATE TABLE automation_done (automation_id TEXT NOT NULL, storage_id TEXT NOT NULL, file_id TEXT NOT NULL, done_at TEXT NOT NULL, PRIMARY KEY (automation_id, storage_id, file_id)) WITHOUT ROWID;
+  `,
 ];
 
 function migrate(d: Database) {

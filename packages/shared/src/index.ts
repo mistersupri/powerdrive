@@ -221,3 +221,22 @@ export function formatBytes(n: number | null | undefined): string {
   do { v /= 1024; i++; } while (v >= 1024 && i < u.length - 1);
   return `${v >= 100 ? v.toFixed(0) : v.toFixed(1)} ${u[i]}`;
 }
+
+/* ---------- automations ---------- */
+export type AutomationFileKind = "image" | "video" | "audio" | "pdf" | "document" | "archive";
+export type AutomationTrigger =
+  | { type: "file.created" }
+  | { type: "schedule"; every: "minutes" | "hourly" | "daily" | "weekly"; /** for "minutes" */ n?: number; /** HH:MM in UTC (daily, weekly) */ at?: string; /** 0 = Sunday (weekly) */ weekday?: number }
+  | { type: "event"; event: "transfer.failed" | "transfer.completed" | "share.opened" | "upload.failed" };
+export interface AutomationConditions { name?: string; ext?: string[]; kinds?: AutomationFileKind[]; minSize?: number; maxSize?: number; olderThanDays?: number }
+export type AutomationAction =
+  | { type: "move"; storageId: string; folderId: string }
+  | { type: "copy"; storageId: string; folderId: string; /** keep the destination equal to this folder: copy what is missing, skip what is there (scheduled only) */ mirror?: boolean }
+  | { type: "tag"; tag: string } | { type: "star" } | { type: "trash" }
+  | { type: "notify"; message?: string } | { type: "webhook"; url: string; secret?: string };
+export interface AutomationDto {
+  id: string; name: string; enabled: boolean; createdBy: string; createdByName: string; storageId: string | null; storageName: string | null; folderId: string | null; folderPath: string | null; recursive: boolean;
+  trigger: AutomationTrigger; conditions: AutomationConditions; actions: AutomationAction[];
+  nextRunAt: string | null; lastRunAt: string | null; lastStatus: string | null; lastMessage: string | null; failures: number; canEdit: boolean;
+}
+export interface AutomationRunDto { id: string; startedAt: string; finishedAt: string | null; status: "RUNNING" | "OK" | "PARTIAL" | "FAILED" | "DENIED" | "SKIPPED"; trigger: "event" | "schedule" | "manual"; matched: number; acted: number; message: string | null; dryRun: boolean }
