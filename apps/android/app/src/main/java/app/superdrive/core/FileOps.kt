@@ -61,6 +61,8 @@ class FileOps(private val api: Api) {
             put("title", title?.takeIf { it.isNotBlank() }?.let { JsonPrimitive(it) } ?: JsonNull)
         })
 
+    /** Gives a folder a colour of the person's own choosing (only they see it); blue is the default. */
+    suspend fun setColor(f: FileEntry, color: String) { api.send("PUT", "/files/${f.storageId}/${f.id}/color", buildJsonObject { put("color", color) }) }
     suspend fun driveInfo(f: FileEntry): DriveInfo = api.get("/files/${f.storageId}/${f.id}/drive")
     /** Copies something another person owns into this account's own Drive, so the copy is theirs. */
     suspend fun claim(f: FileEntry) { api.send("POST", "/files/${f.storageId}/${f.id}/claim", buildJsonObject { }) }

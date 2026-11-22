@@ -186,6 +186,7 @@ fun FilesScreen(vm: FilesViewModel, api: Api, imageLoader: ImageLoader, isAdmin:
                                     MenuRow("Ganti nama", Lu.Pencil) { menu = false; dialog = Dialog.Rename(here) }
                                     MenuRow(if (here.starred) "Lepas bintang" else "Beri bintang", Lu.Star) { menu = false; vm.star(here) }
                                     MenuRow("Bagikan", Lu.Share) { menu = false; dialog = Dialog.Share(listOf(here)) }
+                                    MenuRow("Warna folder", Lu.Palette) { menu = false; dialog = Dialog.Tint(here) }
                                     MenuRow("Salin ke…", Lu.Copy) { menu = false; dialog = Dialog.Pick("COPY", listOf(here)) }
                                     MenuRow("Pindahkan ke…", Lu.Move) { menu = false; dialog = Dialog.Pick("MOVE", listOf(here)) }
                                     if (s.storage?.provider == "GOOGLE_DRIVE") MenuRow("Jadikan milik saya", Lu.User) { menu = false; dialog = Dialog.Claim(here) }
@@ -258,6 +259,7 @@ fun FilesScreen(vm: FilesViewModel, api: Api, imageLoader: ImageLoader, isAdmin:
         is Dialog.Delete -> ConfirmDialog("Pindahkan ke sampah?", if (d.items.size == 1) "“${d.items.first().name}” akan dipindahkan ke sampah." else "${d.items.size} item akan dipindahkan ke sampah.", "Hapus", { vm.trash(d.items) }) { dialog = null }
         is Dialog.Pick -> FolderPickerDialog(api, s.storages, s.storage, if (d.type == "MOVE") "Pindahkan" else "Salin", { sid, fid -> vm.transfer(d.type, d.items, sid, fid) }) { dialog = null }
         is Dialog.Share -> ShareOptionsSheet(d.items, { role, days, pw, title -> vm.createShare(d.items, role, days, pw, title) }) { dialog = null }
+        is Dialog.Tint -> FolderColorDialog(d.f.color, onPick = { key -> vm.setColor(d.f, key); dialog = null }, onDismiss = { dialog = null })
         is Dialog.Claim -> ConfirmDialog("Jadikan milik saya?", "Salinan “${d.f.name}” dibuat di Google Drive Anda (folder “Dimiliki saya”) dan menjadi milik Anda. File aslinya tetap milik pemiliknya. Folder disalin beserta isinya. Penyalinan gagal bila pemilik melarangnya.", "Salin", { vm.claim(d.f) }) { dialog = null }
         is Dialog.Details -> DetailsSheet(d.f, vm.ops(), d.f.size?.let { Formatter.formatShortFileSize(context, it) } ?: "-", dateOf(d.f.modifiedAt)) { dialog = null }
     } }
@@ -297,6 +299,7 @@ private fun RowWithMenu(
             MenuRow("Ganti nama", Lu.Pencil) { setRowMenu(null); setDialog(Dialog.Rename(f)) }
             MenuRow(if (f.starred) "Lepas bintang" else "Beri bintang", Lu.Star) { setRowMenu(null); vm.star(f) }
             MenuRow("Bagikan", Lu.Share) { setRowMenu(null); setDialog(Dialog.Share(listOf(f))) }
+            if (f.isFolder) MenuRow("Warna folder", Lu.Palette) { setRowMenu(null); setDialog(Dialog.Tint(f)) }
             MenuRow("Salin ke…", Lu.Copy) { setRowMenu(null); setDialog(Dialog.Pick("COPY", listOf(f))) }
             MenuRow("Pindahkan ke…", Lu.Move) { setRowMenu(null); setDialog(Dialog.Pick("MOVE", listOf(f))) }
             if (!f.isFolder) MenuRow("Unduh", Lu.Download) { setRowMenu(null); enqueueDownload(context, api.download(f), f.name, f.mimeType) }
@@ -319,8 +322,9 @@ private fun FileRow(f: FileEntry, api: Api, imageLoader: ImageLoader, selecting:
         Modifier.fillMaxWidth().padding(vertical = 2.dp).clip(shape).background(if (checked || focused) c.primarySoft else Color.Transparent).then(if (focused) Modifier.border(1.5.dp, c.primary, shape) else Modifier).pressable(onClick = onClick, onLongClick = onLongClick, shape = shape).padding(horizontal = 8.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.size(46.dp).clip(RoundedCornerShape(12.dp)).background(kind.bg), contentAlignment = Alignment.Center) {
-            Icon(kind.icon, contentDescription = null, tint = kind.fg, modifier = Modifier.size(22.dp))
+        val tint = if (f.isFolder && f.color != null) folderTone(f.color) else null
+        Box(Modifier.size(46.dp).clip(RoundedCornerShape(12.dp)).background(tint?.top?.copy(alpha = 0.24f) ?: kind.bg), contentAlignment = Alignment.Center) {
+            Icon(kind.icon, contentDescription = null, tint = tint?.bottom ?: kind.fg, modifier = Modifier.size(22.dp))
             if (!f.isFolder && f.hasThumbnail) AsyncImage(
                 model = ImageRequest.Builder(context).data(api.thumbnail(f, 256)).crossfade(true).build(), imageLoader = imageLoader,
                 contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
@@ -351,6 +355,7 @@ private sealed interface Dialog {
     data class Share(val items: List<FileEntry>) : Dialog
     data class Details(val f: FileEntry) : Dialog
     data class Claim(val f: FileEntry) : Dialog
+    data class Tint(val f: FileEntry) : Dialog
 }
 
 /** Images and videos open in the gallery viewer (swipe through the folder's media); returns null for anything else so the caller shows the document previewer. */
@@ -379,6 +384,7 @@ private fun CellWithMenu(
             MenuRow("Ganti nama", Lu.Pencil) { setRowMenu(null); setDialog(Dialog.Rename(f)) }
             MenuRow(if (f.starred) "Lepas bintang" else "Beri bintang", Lu.Star) { setRowMenu(null); vm.star(f) }
             MenuRow("Bagikan", Lu.Share) { setRowMenu(null); setDialog(Dialog.Share(listOf(f))) }
+            if (f.isFolder) MenuRow("Warna folder", Lu.Palette) { setRowMenu(null); setDialog(Dialog.Tint(f)) }
             MenuRow("Salin ke…", Lu.Copy) { setRowMenu(null); setDialog(Dialog.Pick("COPY", listOf(f))) }
             MenuRow("Pindahkan ke…", Lu.Move) { setRowMenu(null); setDialog(Dialog.Pick("MOVE", listOf(f))) }
             if (!f.isFolder) MenuRow("Unduh", Lu.Download) { setRowMenu(null); enqueueDownload(context, api.download(f), f.name, f.mimeType) }

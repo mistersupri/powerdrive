@@ -5,17 +5,10 @@ import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { KIND_ICON, KIND_TONE, kindOf } from "@/lib/fileType";
 import { useFileUrls } from "./urls";
+import { toneOf } from "@/lib/folderColors";
 
 /** What a folder holds: how many items, and a few of its files to show peeking out of it. */
 export interface FolderPeek { count: number; files: FileEntry[] }
-
-const TONES = [
-  { back: "#3b78d8", top: "#72a8f6", bottom: "#2f6cd0" },
-  { back: "#ec7a38", top: "#ffa86e", bottom: "#ee7b3a" },
-  { back: "#2b9d77", top: "#58cba3", bottom: "#23916c" },
-  { back: "#7a59d4", top: "#a690f1", bottom: "#6a49c8" },
-] as const;
-const toneOf = (id: string) => { let h = 0; for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0; return TONES[h % TONES.length]!; };
 
 const SLOTS: Record<number, { left: string; top: string; rot: number }[]> = {
   1: [{ left: "28%", top: "9%", rot: 0 }],
@@ -36,8 +29,8 @@ function PeekCard({ file, style }: { file: FileEntry; style: React.CSSProperties
 }
 
 /** A folder drawn like a real one: a back panel, a few files peeking out, and a front panel with the item count. */
-export function FolderArt({ id, peek }: { id: string; peek?: FolderPeek }) {
-  const tone = toneOf(id); const files = (peek?.files ?? []).slice(0, 3); const slots = SLOTS[files.length] ?? [];
+export function FolderArt({ color, peek }: { color?: string | null; peek?: FolderPeek }) {
+  const tone = toneOf(color); const files = (peek?.files ?? []).slice(0, 3); const slots = SLOTS[files.length] ?? [];
   return (
     <div className="absolute inset-0" aria-hidden>
       <div className="absolute top-[11%] left-[8%] h-[14%] w-[36%] rounded-t-lg" style={{ background: tone.back }} />

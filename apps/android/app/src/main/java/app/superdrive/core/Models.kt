@@ -18,7 +18,7 @@ data class FileEntry(
     val id: String, val storageId: String, val parentId: String? = null, val name: String, val isFolder: Boolean,
     val mimeType: String? = null, val size: Long? = null, val modifiedAt: String? = null, val hasThumbnail: Boolean = false,
     val version: String? = null, val starred: Boolean = false, val changed: Boolean = false,
-    val createdAt: String? = null, val checksum: String? = null, val path: String? = null,
+    val createdAt: String? = null, val checksum: String? = null, val path: String? = null, val color: String? = null,
 )
 /** What a folder holds: its item count and a few files to show peeking out of it. */
 @Serializable data class FolderPeek(val count: Int = 0, val files: List<FileEntry> = emptyList())

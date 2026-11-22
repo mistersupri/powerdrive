@@ -28,19 +28,30 @@ import androidx.compose.ui.unit.dp
 import app.superdrive.core.Api
 import app.superdrive.core.FileEntry
 import app.superdrive.core.FolderPeek
+import app.superdrive.ui.design.Lu
 import app.superdrive.ui.design.kindStyle
+import app.superdrive.ui.design.pressable
+import app.superdrive.ui.theme.sd
+import androidx.compose.foundation.border
 import coil3.ImageLoader
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 
-private class FolderTone(val back: Color, val top: Color, val bottom: Color)
-private val TONES = listOf(
-    FolderTone(Color(0xFF3B78D8), Color(0xFF72A8F6), Color(0xFF2F6CD0)),
-    FolderTone(Color(0xFFEC7A38), Color(0xFFFFA86E), Color(0xFFEE7B3A)),
-    FolderTone(Color(0xFF2B9D77), Color(0xFF58CBA3), Color(0xFF23916C)),
-    FolderTone(Color(0xFF7A59D4), Color(0xFFA690F1), Color(0xFF6A49C8)),
+class FolderTone(val key: String, val label: String, val back: Color, val top: Color, val bottom: Color)
+/** The colours a folder can have; blue is the default. The keys are the ones the server stores. */
+val FOLDER_TONES = listOf(
+    FolderTone("blue", "Biru", Color(0xFF3B78D8), Color(0xFF72A8F6), Color(0xFF2F6CD0)),
+    FolderTone("red", "Merah", Color(0xFFD6483F), Color(0xFFF58A80), Color(0xFFC93A31)),
+    FolderTone("orange", "Oranye", Color(0xFFEC7A38), Color(0xFFFFA86E), Color(0xFFEE7B3A)),
+    FolderTone("yellow", "Kuning", Color(0xFFD9A514), Color(0xFFF7D462), Color(0xFFCF9A0B)),
+    FolderTone("green", "Hijau", Color(0xFF2B9D77), Color(0xFF58CBA3), Color(0xFF23916C)),
+    FolderTone("teal", "Toska", Color(0xFF1F93A8), Color(0xFF55C8DA), Color(0xFF19808F)),
+    FolderTone("purple", "Ungu", Color(0xFF7A59D4), Color(0xFFA690F1), Color(0xFF6A49C8)),
+    FolderTone("pink", "Merah muda", Color(0xFFD4559A), Color(0xFFF68FC5), Color(0xFFC44690)),
+    FolderTone("gray", "Abu-abu", Color(0xFF6B7686), Color(0xFF9EAABB), Color(0xFF5D6878)),
 )
+fun folderTone(key: String?): FolderTone = FOLDER_TONES.firstOrNull { it.key == key } ?: FOLDER_TONES.first()
 
 /** (x, y, rotation) of each peeking file, as fractions of the folder's width. */
 private val SLOTS = mapOf(
@@ -52,7 +63,7 @@ private val SLOTS = mapOf(
 /** A folder drawn like a real one: a back panel, a few of its files peeking out, and a front panel with the item count. */
 @Composable
 fun FolderArt(f: FileEntry, peek: FolderPeek?, api: Api, imageLoader: ImageLoader, modifier: Modifier = Modifier) {
-    val tone = TONES[(f.id.hashCode() and 0x7fffffff) % TONES.size]
+    val tone = folderTone(f.color)
     val files = peek?.files.orEmpty().take(3); val slots = SLOTS[files.size].orEmpty()
     val context = LocalContext.current
     BoxWithConstraints(modifier.fillMaxSize()) {
@@ -78,4 +89,32 @@ fun FolderArt(f: FileEntry, peek: FolderPeek?, api: Api, imageLoader: ImageLoade
             if (peek != null && peek.count > 0) Text("${peek.count} item", Modifier.align(Alignment.BottomStart).padding(start = w * 0.05f, bottom = w * 0.04f), style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.92f), maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
+}
+
+/** Pick a colour for a folder. Tapping one applies it. */
+@Composable
+fun FolderColorDialog(current: String?, onPick: (String) -> Unit, onDismiss: () -> Unit) {
+    val c = MaterialTheme.sd
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss, containerColor = c.surface,
+        title = { Text("Warna folder") },
+        text = {
+            androidx.compose.foundation.layout.Column(verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp)) {
+                Text("Warna ini hanya terlihat oleh Anda. Biru adalah warna awal.", style = MaterialTheme.typography.bodySmall, color = c.muted)
+                @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp), verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp)) {
+                    FOLDER_TONES.forEach { t ->
+                        val on = (current ?: "blue") == t.key
+                        Box(
+                            Modifier.size(44.dp).clip(androidx.compose.foundation.shape.CircleShape).background(Brush.verticalGradient(listOf(t.top, t.bottom)))
+                                .then(if (on) Modifier.border(3.dp, c.ink, androidx.compose.foundation.shape.CircleShape) else Modifier)
+                                .pressable(onClick = { onPick(t.key) }, shape = androidx.compose.foundation.shape.CircleShape, scaleTo = 0.92f),
+                            contentAlignment = Alignment.Center,
+                        ) { if (on) Icon(Lu.Check, t.label, tint = Color.White, modifier = Modifier.size(20.dp)) }
+                    }
+                }
+            }
+        },
+        confirmButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Selesai") } },
+    )
 }

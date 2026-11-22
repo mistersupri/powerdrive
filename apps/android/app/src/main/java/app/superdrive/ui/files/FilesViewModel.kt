@@ -204,6 +204,7 @@ class FilesViewModel(private val api: Api, private val ops: FileOps = FileOps(ap
         }
     }
 
+    fun setColor(f: FileEntry, color: String) = act("Warna folder diubah") { ops.setColor(f, color) }
     fun rename(f: FileEntry, name: String) { if (name.isNotBlank() && name != f.name) act("Nama diubah") { ops.rename(f, name.trim()) } }
     fun star(f: FileEntry) = act(if (f.starred) "Bintang dilepas" else "Diberi bintang") { ops.star(f, !f.starred) }
     /** True when one of these is the folder we are standing in: after it is gone, step out of it. */

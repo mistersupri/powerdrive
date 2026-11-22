@@ -535,3 +535,19 @@ describe("folder previews", () => {
     assert.equal((await t.call("ben", "POST", "/files/folder-previews", { storageId: sid, ids: [dir] })).status >= 400, true, "another workspace cannot peek");
   });
 });
+
+describe("folder colours", () => {
+  it("are personal, optional and can be reset to the default blue", async () => {
+    const dir = (await t.call("ana", "POST", "/files/folders", { storageId: sid, name: "Berwarna" })).data.id;
+    const colorOf = async (who: string) => ((await t.call(who, "GET", `/files?storageId=${sid}&folderId=root`)).data?.items ?? []).find((i: any) => i.id === dir)?.color;
+    assert.equal(await colorOf("ana"), undefined, "blue by default");
+    assert.equal((await t.call("ana", "PUT", `/files/${sid}/${dir}/color`, { color: "orange" })).data.color, "orange");
+    assert.equal(await colorOf("ana"), "orange");
+    assert.equal((await t.call("ana", "PUT", `/files/${sid}/${dir}/color`, { color: "hotpink" })).status, 400);
+    assert.equal((await t.call("ana", "PUT", `/files/${sid}/${dir}/color`, { color: "blue" })).data.color, null);
+    assert.equal(await colorOf("ana"), undefined, "blue is the same as no colour");
+    await t.call("ana", "PUT", `/files/${sid}/${dir}/color`, { color: "green" });
+    assert.equal(await colorOf("ana"), "green"); assert.equal((await t.call("ana", "PUT", `/files/${sid}/${dir}/color`, { color: null })).status, 200);
+    assert.equal(await colorOf("ana"), undefined);
+  });
+});

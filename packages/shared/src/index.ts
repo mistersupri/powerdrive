@@ -58,11 +58,17 @@ export interface FileEntry {
   /** Someone else changed something inside this folder since you last opened it. */
   changed?: boolean;
   starred?: boolean;
+  /** The colour this person gave a folder (see FOLDER_COLORS); absent means the default blue. */
+  color?: string;
   /** Where the item lives (search results): "/Laporan/2026". */
   path?: string;
   /** Changes whenever the file content changes. Used as a cache key for thumbnails. */
   version: string | null;
 }
+
+/** Folder colours a person can pick. Blue is the default and is never stored. */
+export const FOLDER_COLORS = ["blue", "red", "orange", "yellow", "green", "teal", "purple", "pink", "gray"] as const;
+export type FolderColor = (typeof FOLDER_COLORS)[number];
 
 export interface FileListing {
   items: FileEntry[];

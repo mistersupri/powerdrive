@@ -13,7 +13,7 @@ import { ok, requireAuth } from "../app.ts";
 import { audit } from "../lib/audit.ts";
 import { badRequest, notFound } from "../lib/errors.ts";
 import { sendFile, sendFolderZip, sendThumbnail, sendZip } from "../modules/delivery.ts";
-import { createFolder, deleteFile, folderPreviews, listFolder, renameFile, searchIndex, setStar, toEntry } from "../modules/files.ts";
+import { createFolder, deleteFile, folderPreviews, listFolder, setFolderColor, renameFile, searchIndex, setStar, toEntry } from "../modules/files.ts";
 import { requireStorage } from "../modules/permissions.ts";
 import { getThumbnail, pickSize } from "../modules/thumbnails.ts";
 import { cancelUpload, createUpload, getUpload, receiveChunk, retryUpload, uploadHistory } from "../modules/uploads.ts";
@@ -93,6 +93,15 @@ export async function fileRoutes(app: FastifyInstance) {
       }
     } catch (e) { mapProviderError(e, storageId); }
     return ok(req, out);
+  });
+
+  // The colour a person gives a folder (personal, like in Google Drive). null puts it back to blue.
+  app.put("/files/:storageId/:fileId/color", async (req) => {
+    const { storageId, fileId } = req.params as any;
+    const { ctx } = open(req, "READ", storageId);
+    const b = z.object({ color: z.string().nullable() }).parse(req.body);
+    setFolderColor(ctx.userId, storageId, decodeId(fileId), b.color);
+    return ok(req, { color: b.color && b.color !== "blue" ? b.color : null });
   });
 
   // A peek inside several folders at once (their size in items and a few files), for the grid view.

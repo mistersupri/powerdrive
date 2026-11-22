@@ -282,7 +282,7 @@ export const ChangeDot = ({ className }: { className?: string }) => (
 const FolderTile = memo(function FolderTile({ e, sel, drop, cursor, props, where, peek, onMenu }: { e: FileEntry; sel: boolean; drop: boolean; cursor: boolean; props: any; where?: string; peek?: FolderPeek; onMenu(x: number, y: number): void }) {
   return (
     <div {...props} className={cn("group relative flex flex-col overflow-hidden rounded-xl border bg-surface transition-colors select-none", sel ? "border-primary ring-2 ring-primary/40" : "border-line hover:border-line-strong", drop && "border-primary bg-primary-soft ring-2 ring-primary", cursor && !sel && "ring-2 ring-primary/20")}>
-      <div className="relative aspect-[4/3] w-full bg-surface-2"><FolderArt id={e.id} peek={peek} /></div>
+      <div className="relative aspect-[4/3] w-full bg-surface-2"><FolderArt color={e.color} peek={peek} /></div>
       <span className={cn("absolute top-2 left-2 transition-opacity", sel ? "opacity-100" : "opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100")}><Check1 on={sel} /></span>
       <button aria-label={`Menu untuk ${e.name}`} className="absolute top-2 right-2 grid size-7 place-items-center rounded-md bg-surface/90 after:absolute after:-inset-2 after:content-[''] text-muted opacity-0 shadow-card group-hover:opacity-100 hover:text-ink focus:opacity-100 pointer-coarse:opacity-100" onClick={(ev) => { ev.stopPropagation(); const r = ev.currentTarget.getBoundingClientRect(); onMenu(r.right - 200, r.bottom); }}><MoreVertical className="size-4" /></button>
       <div className="flex min-w-0 items-center gap-2 px-3 py-2.5">

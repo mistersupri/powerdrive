@@ -1,9 +1,10 @@
 import type { ConflictPolicy, FileEntry, Permission, StorageConnectionDto, TransferJobDto } from "@superdrive/shared";
 import { useQueryClient } from "@tanstack/react-query";
-import { Copy, Download, ExternalLink, Eye, FolderInput, FolderOpen, FolderPlus, Pencil, RefreshCw, Share2, Star, Trash2, Upload, Info, UserCheck } from "lucide-react";
+import { Check, Copy, Download, ExternalLink, Eye, FolderInput, Palette, FolderOpen, FolderPlus, Pencil, RefreshCw, Share2, Star, Trash2, Upload, Info, UserCheck } from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
+import { cn } from "@/lib/cn";
 import { startTransfer, triggerDownload, type Destination } from "./transferApi";
 import { previewable } from "@/lib/fileType";
 import type { MenuItem } from "@/ui/Menu";
@@ -13,6 +14,8 @@ import { Preview } from "@/features/preview/Preview";
 import { ShareDialog } from "@/features/share/ShareDialog";
 import { type Selection } from "./selection";
 import { Dialog } from "@/ui/Dialog";
+import { FOLDER_TONES } from "@/lib/folderColors";
+import { FOLDER_COLORS } from "@superdrive/shared";
 import { Button } from "@/ui/Button";
 
 /** Which Google editor a file opens in; null when none fits. */
@@ -39,7 +42,7 @@ export function useFileActions({ storage, folderId, folderName, location, onDeta
   const perms = useMemo(() => new Set<Permission>(storage?.permissions ?? []), [storage]);
   const can = (p: Permission) => perms.has(p);
   const [shareTarget, setShareTarget] = useState<FileEntry[]>([]);
-  const [dlg, setDlg] = useState<null | { t: "folder" } | { t: "rename"; e: FileEntry } | { t: "delete"; list: FileEntry[] } | { t: "transfer"; mode: "COPY" | "MOVE"; list: FileEntry[] } | { t: "claim"; e: FileEntry }>(null);
+  const [dlg, setDlg] = useState<null | { t: "folder" } | { t: "rename"; e: FileEntry } | { t: "delete"; list: FileEntry[] } | { t: "transfer"; mode: "COPY" | "MOVE"; list: FileEntry[] } | { t: "claim"; e: FileEntry } | { t: "color"; e: FileEntry }>(null);
   const [preview, setPreview] = useState<number | null>(null);
   const fileInput = useRef<HTMLInputElement>(null); const dirInput = useRef<HTMLInputElement>(null);
   const storageId = storage?.id ?? "";
@@ -57,6 +60,11 @@ export function useFileActions({ storage, folderId, folderName, location, onDeta
       if (w) { w.opener = null; w.location.href = r.editUrl; } else window.location.href = r.editUrl;
     } catch (err) { w?.close(); toast.error((err as Error).message); }
   }, [storageId]);
+  /** Gives a folder a colour of this person's own choosing. */
+  const setColor = useCallback(async (e: FileEntry, color: string) => {
+    try { await api(`/files/${storageId}/${e.id}/color`, { method: "PUT", body: { color } }); await refresh(); }
+    catch (err) { toast.error((err as Error).message); }
+  }, [storageId, refresh]);
   const claim = useCallback(async (e: FileEntry) => {
     try { await api(`/files/${storageId}/${e.id}/claim`, { method: "POST", body: {} }); toast.success("Disalin ke Drive Anda, folder “Dimiliki saya”. Progresnya ada di halaman Transfer."); }
     catch (err) { toast.error((err as Error).message); }
@@ -107,6 +115,7 @@ export function useFileActions({ storage, folderId, folderName, location, onDeta
       { label: "Ganti nama", icon: <Pencil />, shortcut: "F2", hidden: multi || !can("RENAME"), onSelect: () => setDlg({ t: "rename", e }) },
       { label: "Detail", icon: <Info />, hidden: multi || !onDetails, onSelect: () => onDetails?.(e) },
       { label: "Bagikan…", icon: <Share2 />, hidden: !can("SHARE"), onSelect: () => setShareTarget(list) },
+      { label: "Warna folder…", icon: <Palette />, hidden: multi || !e.isFolder, onSelect: () => setDlg({ t: "color", e }) },
       ...(storage?.provider === "GOOGLE_DRIVE" ? [
         { label: `Buka di ${googleEditorLabel(e) ?? "Google"}`, icon: <ExternalLink />, hidden: multi || !googleEditorLabel(e), onSelect: () => { void openInGoogle(e); } },
         { label: "Jadikan milik saya…", icon: <UserCheck />, hidden: multi || !can("UPLOAD"), onSelect: () => setDlg({ t: "claim", e }) },
@@ -142,6 +151,16 @@ export function useFileActions({ storage, folderId, folderName, location, onDeta
     {preview !== null && <Preview location={location} storageName={storage?.isDefault ? "Semua file" : storage?.name} items={previewList} index={preview} onIndex={setPreview} onClose={() => setPreview(null)} onShare={can("SHARE") ? (f) => { setPreview(null); setShareTarget([f]); } : undefined} canDownload={can("DOWNLOAD")} />}
     <Dialog open={dlg?.t === "claim"} onClose={() => setDlg(null)} width="max-w-sm" title="Jadikan milik saya?" footer={<><Button onClick={() => setDlg(null)}>Batal</Button><Button variant="primary" onClick={() => { if (dlg?.t === "claim") void claim(dlg.e); setDlg(null); }}>Salin</Button></>}>
       <p className="text-[14px] text-muted">Salinan <b className="text-ink">{dlg?.t === "claim" ? dlg.e.name : ""}</b> dibuat di Google Drive Anda (folder “Dimiliki saya”) dan menjadi milik Anda. File aslinya tetap milik pemiliknya. Folder disalin beserta isinya. Penyalinan gagal bila pemilik melarangnya.</p>
+    </Dialog>
+    <Dialog open={dlg?.t === "color"} onClose={() => setDlg(null)} width="max-w-sm" title="Warna folder" footer={<Button onClick={() => setDlg(null)}>Selesai</Button>}>
+      <p className="mb-3 text-[13px] text-muted">Warna ini hanya terlihat oleh Anda. Biru adalah warna awal.</p>
+      <div role="group" aria-label="Pilih warna" className="flex flex-wrap gap-2.5">
+        {dlg?.t === "color" && FOLDER_COLORS.map((c) => { const tone = FOLDER_TONES[c]; const on = (dlg.e.color ?? "blue") === c; return (
+          <button key={c} type="button" aria-label={tone.label} aria-pressed={on} title={tone.label} onClick={() => { void setColor(dlg.e, c); setDlg({ t: "color", e: { ...dlg.e, color: c === "blue" ? undefined : c } }); }}
+            className={cn("grid size-10 place-items-center rounded-full ring-offset-2 ring-offset-surface transition-shadow focus-visible:outline-2 focus-visible:outline-primary", on ? "ring-2 ring-ink" : "hover:ring-2 hover:ring-line-strong")} style={{ background: `linear-gradient(180deg, ${tone.top}, ${tone.bottom})` }}>
+            {on && <Check className="size-4 text-white" aria-hidden />}
+          </button>); })}
+      </div>
     </Dialog>
     <ShareDialog open={shareTarget.length > 0} storageId={storageId} files={shareTarget} onClose={() => setShareTarget([])} />
   </>);

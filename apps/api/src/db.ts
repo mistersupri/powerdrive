@@ -279,6 +279,9 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX idx_upload_history ON upload_history(workspace_id, user_id, created_at DESC);
   `,
+  /* 12 */ `
+  CREATE TABLE folder_colors (user_id TEXT NOT NULL, storage_id TEXT NOT NULL, file_id TEXT NOT NULL, color TEXT NOT NULL, PRIMARY KEY (user_id, storage_id, file_id)) WITHOUT ROWID;
+  `,
 ];
 
 function migrate(d: Database) {

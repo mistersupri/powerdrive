@@ -1,6 +1,6 @@
 import { actorOf, changedFolders, logActivity, markSeen, touchFolder } from "./activity.ts";
 import path from "node:path";
-import type { FileEntry, FileListing, PlaceDto } from "@superdrive/shared";
+import { FOLDER_COLORS, type FileEntry, type FileListing, type PlaceDto } from "@superdrive/shared";
 import { db, now } from "../db.ts";
 import { audit } from "../lib/audit.ts";
 import { badRequest, conflict } from "../lib/errors.ts";
@@ -88,9 +88,10 @@ export async function listFolder(ctx: AuthCtx, storageId: string, p: StorageProv
     // and a hover prefetch (peek) must not count as opening the folder.
     const dirs = res.items.filter((i) => i.isFolder).map((i) => i.id);
     const changed = ctx.viaShare ? new Set<string>() : changedFolders(ctx.userId, storageId, dirs);
+    const colors = ctx.viaShare ? new Map<string, string>() : folderColors(ctx.userId, storageId, dirs);
     if (!ctx.viaShare && !peek && !pageToken) markSeen(ctx.userId, storageId, folderId);
     return {
-      items: (foldersOnly ? res.items.filter((i) => i.isFolder) : res.items).map((i) => { const e = toEntry(storageId, i, stars.has(i.id)); if (changed.has(i.id)) e.changed = true; return e; }), nextPageToken: res.nextPageToken,
+      items: (foldersOnly ? res.items.filter((i) => i.isFolder) : res.items).map((i) => { const e = toEntry(storageId, i, stars.has(i.id)); if (changed.has(i.id)) e.changed = true; const col = colors.get(i.id); if (col) e.color = col; return e; }), nextPageToken: res.nextPageToken,
       folder: { id: encodeId(folderId), name: folder?.name ?? "", parentId: folder?.parentId ? encodeId(folder.parentId) : folderId === ROOT ? null : ROOT, path: crumbs.map((c) => ({ id: encodeId(c.id), name: c.name })) },
     };
   } catch (e) { mapProviderError(e, storageId); }
@@ -160,6 +161,21 @@ const TYPE_FILTERS: Record<string, string> = {
   document: "(f.mime_type LIKE 'text/%' OR f.ext IN ('doc','docx','odt','rtf','txt','md','xls','xlsx','ods','csv','ppt','pptx','odp'))",
   archive: "f.ext IN ('zip','rar','7z','tar','gz','tgz','bz2','xz')",
 };
+
+/** The colours this person gave to some folders (blue, the default, is not stored). */
+export function folderColors(userId: string, storageId: string, ids: string[]): Map<string, string> {
+  const out = new Map<string, string>();
+  for (let i = 0; i < ids.length; i += 200) {
+    const part = ids.slice(i, i + 200); if (!part.length) continue;
+    for (const r of db.all<{ file_id: string; color: string }>(`SELECT file_id, color FROM folder_colors WHERE user_id = ? AND storage_id = ? AND file_id IN (${part.map(() => "?").join(",")})`, userId, storageId, ...part)) out.set(r.file_id, r.color);
+  }
+  return out;
+}
+export function setFolderColor(userId: string, storageId: string, fileId: string, color: string | null) {
+  if (color && !(FOLDER_COLORS as readonly string[]).includes(color)) throw badRequest("Warna tidak dikenal.");
+  if (!color || color === "blue") db.run("DELETE FROM folder_colors WHERE user_id = ? AND storage_id = ? AND file_id = ?", userId, storageId, fileId);
+  else db.run("INSERT OR REPLACE INTO folder_colors(user_id, storage_id, file_id, color) VALUES (?,?,?,?)", userId, storageId, fileId, color);
+}
 
 export interface FolderPreview { count: number; files: FileEntry[] }
 
