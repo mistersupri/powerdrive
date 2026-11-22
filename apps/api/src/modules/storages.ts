@@ -15,6 +15,8 @@ import { OneDriveProvider } from "../providers/onedrive.ts";
 import { S3Provider, type S3Config, type S3Credentials } from "../providers/s3.ts";
 import { SftpProvider, type SftpConfig, type SftpCredentials } from "../providers/sftp.ts";
 import { SmbProvider, type SmbConfig, type SmbCredentials } from "../providers/smb.ts";
+import { TelegramProvider } from "../providers/telegram.ts";
+import { telegramApis, type TelegramConfig, type TelegramCredential } from "../providers/telegramClient.ts";
 import { WebdavProvider, type WebdavConfig, type WebdavCredentials } from "../providers/webdav.ts";
 import { ProviderError, ROOT, type StorageProvider } from "../providers/types.ts";
 import { permissionsFor, type AuthCtx } from "./permissions.ts";
@@ -59,6 +61,7 @@ export function providerFor(row: any): StorageProvider {
     case "GOOGLE_DRIVE": p = new GoogleDriveProvider(new TokenSource("google-drive", row.credential_id, onAuthFailure)); break;
     case "ONEDRIVE": p = new OneDriveProvider(new TokenSource("onedrive", row.credential_id, onAuthFailure)); break;
     case "DROPBOX": p = new DropboxProvider(new TokenSource("dropbox", row.credential_id, onAuthFailure)); break;
+    case "TELEGRAM": p = new TelegramProvider(telegramApis.for(row.id, loadCredential<TelegramCredential>(row.credential_id), cfg as TelegramConfig), row.id, row.name); break;
     default: throw new AppError(400, "PROVIDER_UNSUPPORTED", `Penyedia ${row.provider} belum didukung.`);
   }
   providers.set(row.id, p);
@@ -192,7 +195,9 @@ export function deleteConnection(ctx: AuthCtx, storageId: string) {
   db.tx(() => {
     db.run("DELETE FROM storages WHERE id = ?", storageId);
     if (row.credential_id) db.run("DELETE FROM credentials WHERE id = ?", row.credential_id);
+    if (row.provider === "TELEGRAM") { db.run("DELETE FROM telegram_items WHERE storage_id = ?", storageId); db.run("DELETE FROM telegram_sync WHERE storage_id = ?", storageId); }
   });
+  if (row.provider === "TELEGRAM") telegramApis.drop(storageId);
   providers.delete(storageId);
   audit({ workspaceId: ctx.workspaceId, userId: ctx.userId, action: "storage.disconnect", resourceType: "storage", resourceId: storageId, metadata: { provider: row.provider, name: row.name }, ip: ctx.ip });
 }

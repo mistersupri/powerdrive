@@ -14,6 +14,7 @@ import { providerFor } from "../modules/storages.ts";
 import { ALL_PERMISSIONS } from "@superdrive/shared";
 import { indexInfo, scheduleIndex } from "../modules/indexer.ts";
 import { smbAvailable } from "../providers/smb.ts";
+import { telegramApis, telegramLogin, type TelegramConfig } from "../providers/telegramClient.ts";
 import { assertSafeHost } from "../lib/ssrf.ts";
 
 const slugSchema = z.enum(["google-drive", "onedrive", "dropbox"]);
@@ -35,7 +36,39 @@ export async function storageRoutes(app: FastifyInstance) {
       { slug: "sftp", provider: "SFTP", label: "SFTP", kind: "sftp", configured: true, available: true },
       { slug: "webdav", provider: "WEBDAV", label: "WebDAV", kind: "webdav", configured: true, available: true },
       { slug: "smb", provider: "SMB", label: "SMB / NAS", kind: "smb", configured: smb, available: smb, note: smb ? undefined : "Butuh paket smbclient di server SuperDrive" },
+      { slug: "telegram", provider: "TELEGRAM", label: "Telegram", kind: "telegram", configured: true, available: true, note: "Memakai akun Telegram sebagai disk, lewat channel pribadi." },
     ]);
+  });
+
+  /* ---- Telegram sign-in: number, then the code Telegram sends, then the two-step password if the account has one ---- */
+  const phoneOf = (s: string) => `+${s.replace(/\D/g, "")}`;
+  app.post("/storages/telegram/login/start", async (req) => {
+    const ctx = requireAuth(req); requireRole(ctx, "ADMIN");
+    const b = z.object({ apiId: z.coerce.number().int().positive(), apiHash: z.string().trim().regex(/^[0-9a-fA-F]{32}$/, "API hash harus 32 karakter heksadesimal."), phone: z.string().trim().regex(/^\+?[0-9 ()-]{7,20}$/, "Nomor telepon tidak valid.") }).parse(req.body);
+    return ok(req, await telegramLogin.start(newId(), b.apiId, b.apiHash, phoneOf(b.phone)));
+  });
+  const step = async (req: any, run: (id: string, v: string) => Promise<{ loginId: string; state: string; error?: string }>, field: string) => {
+    const ctx = requireAuth(req); requireRole(ctx, "ADMIN");
+    const b = z.object({ loginId: z.string().min(1), [field]: z.string().min(1).max(200) }).parse(req.body) as Record<string, string>;
+    try { return ok(req, await run(b.loginId!, b[field]!)); } catch (e) { throw badRequest(e instanceof Error ? e.message : "Gagal."); }
+  };
+  app.post("/storages/telegram/login/code", async (req) => step(req, telegramLogin.code, "code"));
+  app.post("/storages/telegram/login/password", async (req) => step(req, telegramLogin.password, "password"));
+  app.delete("/storages/telegram/login/:loginId", async (req) => { const ctx = requireAuth(req); requireRole(ctx, "ADMIN"); telegramLogin.forget((req.params as any).loginId); return ok(req, {}); });
+  // After Telegram ended a session (or it was revoked): sign in again as the same account and carry on with the same channel.
+  app.post("/storages/:id/telegram/relogin", async (req) => {
+    const ctx = requireAuth(req); requireRole(ctx, "ADMIN");
+    const row = requireStorage(ctx, (req.params as any).id, "MANAGE_STORAGE");
+    if (row.provider !== "TELEGRAM") throw badRequest("Hanya untuk penyimpanan Telegram.");
+    const b = z.object({ loginId: z.string().min(1) }).parse(req.body);
+    const { credential, user } = telegramLogin.result(b.loginId);
+    const cfg = row.config ? JSON.parse(row.config) : {};
+    if (cfg.userId && cfg.userId !== user.id) throw badRequest("Akun Telegram ini berbeda dari yang dipakai sebelumnya. Masuk dengan akun yang sama.");
+    saveCredential("telegram", credential, row.credential_id);
+    telegramApis.drop(row.id); dropProvider(row.id);
+    db.run("UPDATE storages SET status = 'DISCONNECTED', last_error = NULL WHERE id = ?", row.id);
+    await testConnection(row.id); telegramLogin.forget(b.loginId);
+    return ok(req, toDto(db.get<any>("SELECT * FROM storages WHERE id = ?", row.id), ctx));
   });
 
   // Start OAuth: returns the provider URL for the browser to visit.
@@ -89,6 +122,7 @@ export async function storageRoutes(app: FastifyInstance) {
       z.object({ provider: z.literal("SFTP"), name: z.string().trim().min(1).max(80), host: z.string().min(1), port: z.number().int().min(1).max(65535).default(22), username: z.string().min(1),
         password: z.string().optional(), privateKey: z.string().optional(), passphrase: z.string().optional(), baseDir: z.string().default("/"), hostKey: z.string().regex(/^SHA256:[A-Za-z0-9+/]+$/, "Sidik jari harus berformat SHA256:…").optional().or(z.literal("")) }),
       z.object({ provider: z.literal("WEBDAV"), name: z.string().trim().min(1).max(80), url: z.string().url(), username: z.string().optional(), password: z.string().optional() }),
+      z.object({ provider: z.literal("TELEGRAM"), name: z.string().trim().min(1).max(80), loginId: z.string().min(1).max(80), chat: z.enum(["channel", "saved"]).default("channel") }),
       z.object({ provider: z.literal("SMB"), name: z.string().trim().min(1).max(80), host: z.string().min(1), port: z.number().int().min(1).max(65535).default(445), share: z.string().min(1).regex(/^[^\\/:*?"<>|]+$/, "Nama share tidak valid"),
         baseDir: z.string().default(""), domain: z.string().optional(), username: z.string().min(1), password: z.string().min(1), encrypt: z.boolean().optional() }),
       z.object({
@@ -112,6 +146,15 @@ export async function storageRoutes(app: FastifyInstance) {
       await assertSafeEndpoint(b.url);
       const row = await createConnection(ctx, { provider: "WEBDAV", name: b.name, config: { url: b.url }, credential: { type: "webdav", payload: { username: b.username || undefined, password: b.password || undefined } } });
       return ok(req, toDto(row, ctx));
+    }
+    if (b.provider === "TELEGRAM") {
+      const { credential, user } = telegramLogin.result(b.loginId);
+      let cfg: TelegramConfig = { chat: b.chat, userId: user.id } as TelegramConfig;
+      // A private channel just for this storage keeps the files out of the account's chats; Saved Messages is the lighter option.
+      if (b.chat === "channel") { const title = `SuperDrive · ${b.name}`; cfg = { chat: "channel", ...(await telegramLogin.channel(b.loginId, title)), title, userId: user.id } as TelegramConfig; }
+      const row = await createConnection(ctx, { provider: "TELEGRAM", name: b.name, config: cfg, credential: { type: "telegram", payload: credential } });
+      telegramLogin.forget(b.loginId);
+      return ok(req, toDto(db.get<any>("SELECT * FROM storages WHERE id = ?", row.id), ctx));
     }
     if (b.provider === "SMB") {
       if (!(await smbAvailable())) throw badRequest("Paket smbclient belum terpasang di server SuperDrive.", "SMB_UNAVAILABLE");

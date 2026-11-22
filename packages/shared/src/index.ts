@@ -3,7 +3,7 @@
 export type WorkspaceRole = "OWNER" | "ADMIN" | "MEMBER" | "VIEWER";
 export type ProviderType =
   | "GOOGLE_DRIVE" | "ONEDRIVE" | "DROPBOX" | "LOCAL" | "S3"
-  | "SFTP" | "WEBDAV" | "SMB";
+  | "SFTP" | "WEBDAV" | "SMB" | "TELEGRAM";
 export type ConnectionStatus =
   | "CONNECTED" | "DISCONNECTED" | "TOKEN_EXPIRED" | "REAUTH_REQUIRED" | "ERROR" | "DISABLED";
 export type TransferType = "COPY" | "MOVE";
@@ -210,7 +210,7 @@ export interface ApiErr { success: false; error: { code: string; message: string
 
 export const PROVIDER_LABEL: Record<ProviderType, string> = {
   GOOGLE_DRIVE: "Google Drive", ONEDRIVE: "OneDrive", DROPBOX: "Dropbox", LOCAL: "Folder server",
-  S3: "Penyimpanan S3", SFTP: "SFTP", WEBDAV: "WebDAV", SMB: "SMB / NAS",
+  S3: "Penyimpanan S3", SFTP: "SFTP", WEBDAV: "WebDAV", SMB: "SMB / NAS", TELEGRAM: "Telegram",
 };
 
 export function formatBytes(n: number | null | undefined): string {

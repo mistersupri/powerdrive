@@ -82,6 +82,9 @@ const davProvider = async () => {
   return new WebdavProvider({ url: `http://127.0.0.1:${davPort}/` }, { username: "alice", password: "s3cret" }, "DAV");
 };
 contract("WebDAV", davProvider, true);
+// Telegram: the same contract against an in-memory channel, once as single messages and once with files cut into pieces.
+contract("Telegram", async () => { const { TelegramProvider } = await import("../providers/telegram.ts"); const { FakeTelegram } = await import("./telegramFake.ts"); return new TelegramProvider(new FakeTelegram(), "tg-contract-1", "TG"); }, true);
+contract("Telegram (pieces)", async () => { const { TelegramProvider } = await import("../providers/telegram.ts"); const { FakeTelegram } = await import("./telegramFake.ts"); return new TelegramProvider(new FakeTelegram(1_000_000), "tg-contract-2", "TG", { partSize: 1_000_000 }); }, true);
 
 const sftp = process.env.SD_TEST_SFTP?.split(":");
 contract("SFTP", async () => {

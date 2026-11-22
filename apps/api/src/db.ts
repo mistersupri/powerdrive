@@ -282,6 +282,16 @@ const MIGRATIONS: string[] = [
   /* 12 */ `
   CREATE TABLE folder_colors (user_id TEXT NOT NULL, storage_id TEXT NOT NULL, file_id TEXT NOT NULL, color TEXT NOT NULL, PRIMARY KEY (user_id, storage_id, file_id)) WITHOUT ROWID;
   `,
+  /* 13 */ `
+  -- A Telegram storage keeps its folder tree in message captions; this is only a fast copy of it, rebuilt from the channel when needed.
+  CREATE TABLE telegram_items (
+    storage_id TEXT NOT NULL, msg_id INTEGER NOT NULL, parent TEXT NOT NULL, name TEXT NOT NULL, is_folder INTEGER NOT NULL DEFAULT 0,
+    size INTEGER, mime TEXT, mtime TEXT, ctime TEXT, parts TEXT, part_size INTEGER, has_thumb INTEGER NOT NULL DEFAULT 0, seen_at TEXT,
+    PRIMARY KEY (storage_id, msg_id)
+  ) WITHOUT ROWID;
+  CREATE INDEX idx_telegram_parent ON telegram_items(storage_id, parent, name);
+  CREATE TABLE telegram_sync (storage_id TEXT PRIMARY KEY, last_id INTEGER NOT NULL DEFAULT 0, full_at TEXT);
+  `,
 ];
 
 function migrate(d: Database) {
