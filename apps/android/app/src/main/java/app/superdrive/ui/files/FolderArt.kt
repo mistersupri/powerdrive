@@ -44,9 +44,9 @@ private val TONES = listOf(
 
 /** (x, y, rotation) of each peeking file, as fractions of the folder's width. */
 private val SLOTS = mapOf(
-    1 to listOf(Triple(0.31f, 0.2f, 0f)),
-    2 to listOf(Triple(0.17f, 0.23f, -6f), Triple(0.45f, 0.2f, 5f)),
-    3 to listOf(Triple(0.1f, 0.24f, -8f), Triple(0.31f, 0.17f, 0f), Triple(0.52f, 0.24f, 8f)),
+    1 to listOf(Triple(0.31f, 0.1f, 0f)),
+    2 to listOf(Triple(0.17f, 0.14f, -6f), Triple(0.45f, 0.1f, 5f)),
+    3 to listOf(Triple(0.1f, 0.16f, -8f), Triple(0.31f, 0.08f, 0f), Triple(0.52f, 0.16f, 8f)),
 )
 
 /** A folder drawn like a real one: a back panel, a few of its files peeking out, and a front panel with the item count. */
@@ -62,7 +62,7 @@ fun FolderArt(f: FileEntry, peek: FolderPeek?, api: Api, imageLoader: ImageLoade
         files.forEachIndexed { i, file ->
             val (x, y, rot) = slots[i]
             Box(
-                Modifier.align(Alignment.TopStart).offset(x = w * x, y = w * y).size(width = w * 0.38f, height = w * 0.46f)
+                Modifier.align(Alignment.TopStart).offset(x = w * x, y = w * y).size(width = w * 0.38f, height = w * 0.5f)
                     .graphicsLayer { rotationZ = rot }.shadow(3.dp, RoundedCornerShape(6.dp)).clip(RoundedCornerShape(6.dp)).background(Color.White),
                 contentAlignment = Alignment.Center,
             ) {
