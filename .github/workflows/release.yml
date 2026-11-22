@@ -28,6 +28,8 @@ jobs:
       - run: pnpm typecheck
       # Real Samba (SMB3, signing + encryption required) and OpenSSH, so the SMB and SFTP adapters are tested against actual servers.
       - run: sudo bash scripts/ci-external-servers.sh
+      - name: Check that the test SFTP server accepts its login
+        run: node scripts/wait-sftp.cjs || { echo "--- sshd log ---"; sudo cat /tmp/sshd_sd_test.log; sudo /usr/sbin/sshd -T -f /tmp/sshd_sd_test.conf | grep -i "passwordauth\|^port\|allowusers"; exit 1; }
       - run: pnpm test
         env:
           SD_TEST_SFTP: 127.0.0.1:2222:sduser:pass123:/srv/sftproot

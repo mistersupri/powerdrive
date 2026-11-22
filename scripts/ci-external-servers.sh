@@ -28,8 +28,22 @@ $SUDO tee /etc/samba/smb.conf >/dev/null <<'CONF'
   force user = sduser
 CONF
 $SUDO smbd -D
-printf 'Port 2222\nPasswordAuthentication yes\nSubsystem sftp internal-sftp\n' | $SUDO tee -a /etc/ssh/sshd_config >/dev/null
+# sshd gets a configuration of its own. Appending to /etc/ssh/sshd_config is not enough: the first value of a keyword wins, and
+# the runner image may carry a drop-in in sshd_config.d that turns password login off, which made the SFTP tests fail.
 $SUDO ssh-keygen -A >/dev/null 2>&1
-$SUDO /usr/sbin/sshd
-sleep 2
+$SUDO tee /tmp/sshd_sd_test.conf >/dev/null <<'CONF'
+Port 2222
+ListenAddress 127.0.0.1
+HostKey /etc/ssh/ssh_host_ed25519_key
+HostKey /etc/ssh/ssh_host_rsa_key
+PasswordAuthentication yes
+KbdInteractiveAuthentication no
+PubkeyAuthentication no
+UsePAM no
+AllowUsers sduser
+Subsystem sftp internal-sftp
+PidFile /tmp/sshd_sd_test.pid
+CONF
+$SUDO /usr/sbin/sshd -t -f /tmp/sshd_sd_test.conf
+$SUDO /usr/sbin/sshd -f /tmp/sshd_sd_test.conf -E /tmp/sshd_sd_test.log
 echo "external test servers ready"
