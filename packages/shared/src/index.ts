@@ -230,8 +230,8 @@ export type AutomationTrigger =
   | { type: "event"; event: "transfer.failed" | "transfer.completed" | "share.opened" | "upload.failed" };
 export interface AutomationConditions { name?: string; ext?: string[]; kinds?: AutomationFileKind[]; minSize?: number; maxSize?: number; olderThanDays?: number }
 export type AutomationAction =
-  | { type: "move"; storageId: string; folderId: string }
-  | { type: "copy"; storageId: string; folderId: string; /** keep the destination equal to this folder: copy what is missing, skip what is there (scheduled only) */ mirror?: boolean }
+  | { type: "move"; storageId: string; folderId: string; /** how the folder is shown in lists, e.g. "Semua file · /Dokumen" */ label?: string }
+  | { type: "copy"; storageId: string; folderId: string; label?: string; /** keep the destination equal to this folder: copy what is missing, skip what is there (scheduled only) */ mirror?: boolean }
   | { type: "tag"; tag: string } | { type: "star" } | { type: "trash" }
   | { type: "notify"; message?: string } | { type: "webhook"; url: string; secret?: string };
 export interface AutomationDto {

@@ -30,6 +30,7 @@ const AdminWebsite = lazy(() => import("@/features/settings/AdminSettingsPage").
 const Media = lazy(() => import("@/features/files/MediaPage"));
 const SharedWithMe = lazy(() => import("@/features/share/SharedWithMePage"));
 const DirectShare = lazy(() => import("@/features/share/SharedWithMePage").then((m) => ({ default: m.DirectSharePage })));
+const Automations = lazy(() => import("@/features/automations/AutomationsPage"));
 const Activity = lazy(() => import("@/features/members/MembersPage").then((m) => ({ default: m.ActivityPage })));
 
 const L = ({ children }: { children: React.ReactNode }) => <Suspense fallback={<div className="grid flex-1 place-items-center"><Spinner className="size-6" /></div>}>{children}</Suspense>;
@@ -47,7 +48,7 @@ const router = createBrowserRouter([
       { path: "s/:storageId", element: <StoragePage /> },
       { path: "recent", element: <ResultsPage mode="recent" /> }, { path: "starred", element: <ResultsPage mode="starred" /> }, { path: "search", element: <ResultsPage mode="search" /> },
       { path: "trash", element: <L><Trash /></L> }, { path: "admin", element: <Navigate to="/admin/system" replace /> }, { path: "admin/system", element: <L><AdminSystem /></L> }, { path: "admin/website", element: <L><AdminWebsite /></L> }, { path: "media", element: <L><Media /></L> }, { path: "shared", element: <L><SharedWithMe /></L> }, { path: "shared/:id", element: <L><DirectShare /></L> }, { path: "shares", element: <L><Shares /></L> },
-      { path: "transfers", element: <L><Transfers /></L> }, { path: "storage", element: <L><StorageAdmin /></L> }, { path: "dual", element: <L><Dual /></L> },
+      { path: "automations", element: <L><Automations /></L> }, { path: "transfers", element: <L><Transfers /></L> }, { path: "storage", element: <L><StorageAdmin /></L> }, { path: "dual", element: <L><Dual /></L> },
       { path: "activity", element: <L><Activity /></L> }, { path: "members", element: <L><Members /></L> }, { path: "settings", element: <L><Settings /></L> },
       { path: "app", element: <L><AndroidHub /></L> }, { path: "app/update", element: <L><AndroidUpdate /></L> }, { path: "app/lock", element: <L><AndroidLock /></L> },
       { path: "app/backup", element: <L><AndroidBackup /></L> }, { path: "app/backup/albums", element: <L><AndroidBackupAlbums /></L> }, { path: "app/private", element: <L><AndroidPrivate /></L> },

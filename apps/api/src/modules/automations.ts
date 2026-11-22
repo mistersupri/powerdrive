@@ -39,8 +39,8 @@ const conditionsSchema = z.object({
   minSize: z.number().int().min(0).optional(), maxSize: z.number().int().min(0).optional(), olderThanDays: z.number().int().min(0).max(36500).optional(),
 });
 const actionSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("move"), storageId: z.string().min(1), folderId: z.string().min(1) }),
-  z.object({ type: z.literal("copy"), storageId: z.string().min(1), folderId: z.string().min(1), mirror: z.boolean().optional() }),
+  z.object({ type: z.literal("move"), storageId: z.string().min(1), folderId: z.string().min(1), label: z.string().max(200).optional() }),
+  z.object({ type: z.literal("copy"), storageId: z.string().min(1), folderId: z.string().min(1), label: z.string().max(200).optional(), mirror: z.boolean().optional() }),
   z.object({ type: z.literal("tag"), tag: z.string().trim().min(1).max(40) }),
   z.object({ type: z.literal("star") }), z.object({ type: z.literal("trash") }),
   z.object({ type: z.literal("notify"), message: z.string().trim().max(300).optional() }),

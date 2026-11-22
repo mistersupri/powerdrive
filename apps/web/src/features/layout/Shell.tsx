@@ -1,6 +1,6 @@
 import type { NotificationDto, StorageConnectionDto } from "@superdrive/shared";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Activity, ArrowRightLeft, Bell, Check, ChevronRight, ChevronsUpDown, Clock, Columns2, FolderOpen, Images, SlidersHorizontal, HardDrive, LayoutDashboard, Link2, LogOut, Menu as MenuIcon, Moon, Search, Settings, Star, Sun, Trash2, Users, X, Globe } from "lucide-react";
+import { Activity, ArrowRightLeft, Bell, Check, ChevronRight, ChevronsUpDown, Clock, Columns2, FolderOpen, Images, SlidersHorizontal, HardDrive, LayoutDashboard, Link2, LogOut, Menu as MenuIcon, Moon, Search, Settings, Star, Sun, Trash2, Users, X, Globe, Zap } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { NavLink, Navigate, Outlet, useLocation, useNavigate } from "react-router";
 import { Toaster } from "sonner";
@@ -97,6 +97,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         <Section>Operasi</Section>
         <NavItem to="/transfers" icon={ArrowRightLeft} badge={activeCount}>Transfer</NavItem>
         <NavItem to="/dual" icon={Columns2}>Salin dua panel</NavItem>
+        <NavItem to="/automations" icon={Zap}>Otomasi</NavItem>
         {isAdmin && <NavItem to="/activity" icon={Activity}>Log aktivitas</NavItem>}
         <Section>Workspace</Section>
         <NavItem to="/members" icon={Users}>Anggota</NavItem>
