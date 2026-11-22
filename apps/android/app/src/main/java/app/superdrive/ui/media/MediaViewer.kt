@@ -214,8 +214,11 @@ private fun ZoomableImage(f: FileEntry, api: Api, imageLoader: ImageLoader, onZo
     var scale by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
     var box by remember { mutableStateOf(IntSize.Zero) }
-    // The quick 2048 px rendition first; the original once zoomed in.
-    val url = if (scale > 1.5f || !f.hasThumbnail) api.preview(f) else api.thumbnail(f, 2048)
+    // The quick 2048 px rendition is always there. Once zoomed in, the original is laid over it as soon as it has loaded, so the picture never blanks out
+    // while the big file downloads, and it stays loaded when zooming back out.
+    val base = if (f.hasThumbnail) api.thumbnail(f, 2048) else api.preview(f)
+    var sharp by remember(f.id) { mutableStateOf(false) }
+    LaunchedEffect(scale > 1.5f) { if (scale > 1.5f && f.hasThumbnail) sharp = true }
     fun limit(o: Offset, s: Float) = Offset(o.x.coerceIn(-box.width * (s - 1) / 2f, box.width * (s - 1) / 2f), o.y.coerceIn(-box.height * (s - 1) / 2f, box.height * (s - 1) / 2f))
 
     Box(
@@ -248,10 +251,11 @@ private fun ZoomableImage(f: FileEntry, api: Api, imageLoader: ImageLoader, onZo
                 }
             },
     ) {
-        AsyncImage(
-            model = ImageRequest.Builder(context).data(url).build(), imageLoader = imageLoader, contentDescription = f.name, contentScale = ContentScale.Fit,
-            modifier = Modifier.fillMaxSize().graphicsLayer { scaleX = scale; scaleY = scale; translationX = offset.x; translationY = offset.y },
-        )
+        Box(Modifier.fillMaxSize().graphicsLayer { scaleX = scale; scaleY = scale; translationX = offset.x; translationY = offset.y }) {
+            AsyncImage(model = ImageRequest.Builder(context).data(base).build(), imageLoader = imageLoader, contentDescription = f.name, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
+            // Capped at 4096 px a side: larger bitmaps exceed what the GPU can draw and come out black.
+            if (sharp) AsyncImage(model = ImageRequest.Builder(context).data(api.preview(f)).size(4096, 4096).crossfade(150).build(), imageLoader = imageLoader, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
+        }
     }
 }
 
