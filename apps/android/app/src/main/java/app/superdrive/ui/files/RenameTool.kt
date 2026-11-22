@@ -33,7 +33,7 @@ import app.superdrive.core.ApiException
 import app.superdrive.core.FileEntry
 import app.superdrive.core.RenameLine
 import app.superdrive.core.RenameRule
-import app.superdrive.ui.design.sd
+import app.superdrive.ui.theme.sd
 import kotlinx.coroutines.delay
 
 private val CASINGS = listOf("keep" to "Biarkan", "lower" to "huruf kecil", "upper" to "HURUF BESAR", "title" to "Awal Kata Besar")
