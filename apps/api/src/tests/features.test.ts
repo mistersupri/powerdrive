@@ -523,3 +523,15 @@ describe("upload-only share links", () => {
     assert.equal((await t.call("ana", "PATCH", `/shares/${id}`, { role: "UPLOADER" })).data.role, "UPLOADER");
   });
 });
+
+describe("folder previews", () => {
+  it("counts what is inside folders and offers a few files, pictures first", async () => {
+    const dir = (await t.call("ana", "POST", "/files/folders", { storageId: sid, name: "Tengok" })).data.id;
+    const empty = (await t.call("ana", "POST", "/files/folders", { storageId: sid, name: "Kosong" })).data.id;
+    for (const n of ["a.txt", "b.txt", "c.txt", "d.txt"]) await mk(n, n, dir);
+    const r = (await t.call("ana", "POST", "/files/folder-previews", { storageId: sid, ids: [dir, empty] })).data.items;
+    assert.equal(r[dir].count, 4); assert.equal(r[dir].files.length, 3); assert.ok(r[dir].files.every((f: any) => f.parentId === dir));
+    assert.equal(r[empty].count, 0); assert.deepEqual(r[empty].files, []);
+    assert.equal((await t.call("ben", "POST", "/files/folder-previews", { storageId: sid, ids: [dir] })).status >= 400, true, "another workspace cannot peek");
+  });
+});

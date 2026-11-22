@@ -13,7 +13,7 @@ import { ok, requireAuth } from "../app.ts";
 import { audit } from "../lib/audit.ts";
 import { badRequest, notFound } from "../lib/errors.ts";
 import { sendFile, sendFolderZip, sendThumbnail, sendZip } from "../modules/delivery.ts";
-import { createFolder, deleteFile, listFolder, renameFile, searchIndex, setStar, toEntry } from "../modules/files.ts";
+import { createFolder, deleteFile, folderPreviews, listFolder, renameFile, searchIndex, setStar, toEntry } from "../modules/files.ts";
 import { requireStorage } from "../modules/permissions.ts";
 import { getThumbnail, pickSize } from "../modules/thumbnails.ts";
 import { cancelUpload, createUpload, getUpload, receiveChunk, retryUpload, uploadHistory } from "../modules/uploads.ts";
@@ -93,6 +93,13 @@ export async function fileRoutes(app: FastifyInstance) {
       }
     } catch (e) { mapProviderError(e, storageId); }
     return ok(req, out);
+  });
+
+  // A peek inside several folders at once (their size in items and a few files), for the grid view.
+  app.post("/files/folder-previews", async (req) => {
+    const b = z.object({ storageId: z.string(), ids: z.array(z.string()).min(1).max(200) }).parse(req.body);
+    const { ctx, row, p } = open(req, "READ", b.storageId);
+    return ok(req, { items: await folderPreviews(ctx, b.storageId, p, row.provider === "LOCAL", b.ids.map(decodeId)) });
   });
 
   // Google Drive extras: who owns the file, and links into Google's editors.

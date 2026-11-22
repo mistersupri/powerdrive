@@ -7,6 +7,8 @@ import app.superdrive.core.ApiException
 import android.net.Uri
 import app.superdrive.core.FileEntry
 import app.superdrive.core.FileOps
+import app.superdrive.core.FolderPeek
+import app.superdrive.core.FolderPeeks
 import app.superdrive.core.ShareLink
 import app.superdrive.core.UploadProgress
 import app.superdrive.core.Uploader
@@ -17,6 +19,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 data class FilesState(
     val storages: List<Storage> = emptyList(),
@@ -42,6 +48,8 @@ data class FilesState(
     val openUrl: String? = null,
     /** The folder being browsed, as an item, so its own menu (rename, share, move, delete…) can be offered from the header. */
     val folder: FileEntry? = null,
+    /** Folder id -> what is inside it, for the grid view. */
+    val peeks: Map<String, FolderPeek> = emptyMap(),
 )
 
 /** Folders first, then by name the way a person reads it ("file 2" before "file 10"). */
@@ -88,6 +96,20 @@ class FilesViewModel(private val api: Api, private val ops: FileOps = FileOps(ap
 
     private fun folderId(s: FilesState) = s.stack.lastOrNull() ?: "root"
 
+    /** One request for all folders on screen: how many items each holds and a few files to draw peeking out. */
+    private fun loadPeeks(storageId: String, folders: List<FileEntry>) {
+        if (folders.isEmpty()) return
+        viewModelScope.launch {
+            try {
+                val r = api.post<FolderPeeks>("/files/folder-previews", buildJsonObject {
+                    put("storageId", storageId)
+                    put("ids", JsonArray(folders.take(200).map { JsonPrimitive(it.id) }))
+                })
+                _state.update { it.copy(peeks = it.peeks + r.items) }
+            } catch (_: ApiException) { /* plain folder icons are fine */ }
+        }
+    }
+
     /** Reads the open folder as an item (name, star, dates) for the header menu. */
     private fun loadFolderEntry(storageId: String, folderId: String) {
         viewModelScope.launch {
@@ -105,6 +127,7 @@ class FilesViewModel(private val api: Api, private val ops: FileOps = FileOps(ap
                 val page = api.get<FileListing>("/files?storageId=${storage.id}&folderId=${java.net.URLEncoder.encode(folderId(s), "UTF-8")}&limit=200")
                 _state.update { it.copy(items = sortedForDisplay(page.items), folderName = if (it.stack.isEmpty()) storageTitle(storage) else page.folder.name, nextPage = page.nextPageToken, loading = false, refreshing = false, folder = it.folder?.takeIf { f -> f.id == folderId(it) }) }
                 if (s.stack.isNotEmpty()) loadFolderEntry(storage.id, folderId(s))
+                loadPeeks(storage.id, page.items.filter { it.isFolder })
             } catch (e: ApiException) { _state.update { it.copy(loading = false, refreshing = false, error = e.message) } }
         }
     }
@@ -147,6 +170,7 @@ class FilesViewModel(private val api: Api, private val ops: FileOps = FileOps(ap
                 val page = api.get<FileListing>("/files?storageId=${st.id}&folderId=${java.net.URLEncoder.encode(target ?: "root", "UTF-8")}&limit=200")
                 _state.update { it.copy(stack = if (target == null) emptyList() else page.folder.path.map { c -> c.id }, items = sortedForDisplay(page.items), folderName = if (target == null) storageTitle(st) else page.folder.name, nextPage = page.nextPageToken, loading = false, focus = focusId, folder = null) }
                 if (target != null) loadFolderEntry(st.id, page.folder.path.lastOrNull()?.id ?: target)
+                loadPeeks(st.id, page.items.filter { it.isFolder })
             } catch (e: ApiException) { _state.update { it.copy(loading = false, error = e.message) } }
         }
     }

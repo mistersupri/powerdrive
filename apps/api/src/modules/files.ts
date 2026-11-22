@@ -161,6 +161,29 @@ const TYPE_FILTERS: Record<string, string> = {
   archive: "f.ext IN ('zip','rar','7z','tar','gz','tgz','bz2','xz')",
 };
 
+export interface FolderPreview { count: number; files: FileEntry[] }
+
+/**
+ * A peek inside folders for the grid view: how many items each holds and up to three files (pictures first), read from the metadata index.
+ * A local folder nobody has opened yet is listed once on the spot, so its first look is not empty; remote storages only use what the index already knows.
+ */
+export async function folderPreviews(ctx: AuthCtx, storageId: string, p: StorageProvider, local: boolean, ids: string[]): Promise<Record<string, FolderPreview>> {
+  const hide = notPrivateSql(ctx); const out: Record<string, FolderPreview> = {}; let budget = 20;
+  const read = (raw: string): FolderPreview => ({
+    count: db.get<{ n: number }>(`SELECT COUNT(*) n FROM files f WHERE f.storage_id = ? AND f.parent_id = ? AND ${hide.sql}`, storageId, raw, ...hide.args)!.n,
+    files: db.all<any>(`SELECT f.* FROM files f WHERE f.storage_id = ? AND f.parent_id = ? AND f.is_folder = 0 AND ${hide.sql} ORDER BY f.has_thumbnail DESC, f.modified_at DESC LIMIT 3`, storageId, raw, ...hide.args).map(entryOfRow),
+  });
+  for (const raw of ids.slice(0, 200)) {
+    let r = read(raw);
+    if (r.count === 0 && local && budget > 0) {
+      budget--;
+      try { const res = await p.list(raw, { limit: 24 }); indexItems(storageId, raw, res.items, { complete: !res.nextPageToken }); r = read(raw); } catch { /* an unreadable folder just stays empty */ }
+    }
+    out[encodeId(raw)] = r;
+  }
+  return out;
+}
+
 /** Readable path of a folder from the metadata index ("/" at the top of a storage). */
 export function indexPath(storageId: string, folder: string | null): string {
   const names: string[] = []; let cur = folder;

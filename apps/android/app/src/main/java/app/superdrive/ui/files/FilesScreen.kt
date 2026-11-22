@@ -371,7 +371,7 @@ private fun CellWithMenu(
 ) {
     val context = LocalContext.current
     Box(Modifier.riseIn(index)) {
-        GridCell(f, api, imageLoader, selecting = selecting, checked = f.id in s.selection, focused = f.id == s.focus,
+        GridCell(f, api, imageLoader, peek = s.peeks[f.id], selecting = selecting, checked = f.id in s.selection, focused = f.id == s.focus,
             onClick = { if (selecting) vm.toggle(f) else if (f.isFolder) vm.open(f) else open(f, s.items) { g -> setGallery(g) } ?: run { setViewing(f) } },
             onLongClick = { vm.toggle(f) }, onMore = { setRowMenu(f) })
         DropdownMenu(expanded = rowMenu?.id == f.id, onDismissRequest = { setRowMenu(null) }, shape = RoundedCornerShape(14.dp)) {
@@ -392,12 +392,12 @@ private fun CellWithMenu(
 }
 
 @Composable
-private fun GridCell(f: FileEntry, api: Api, imageLoader: ImageLoader, selecting: Boolean, checked: Boolean, focused: Boolean, onClick: () -> Unit, onLongClick: () -> Unit, onMore: () -> Unit) {
+private fun GridCell(f: FileEntry, api: Api, imageLoader: ImageLoader, peek: app.superdrive.core.FolderPeek?, selecting: Boolean, checked: Boolean, focused: Boolean, onClick: () -> Unit, onLongClick: () -> Unit, onMore: () -> Unit) {
     val context = LocalContext.current; val c = MaterialTheme.sd
     val kind = kindStyle(f); val shape = RoundedCornerShape(16.dp)
     Column(Modifier.fillMaxWidth().clip(shape).background(if (checked || focused) c.primarySoft else Color.Transparent).then(if (focused) Modifier.border(1.5.dp, c.primary, shape) else Modifier).pressable(onClick = onClick, onLongClick = onLongClick, shape = shape, scaleTo = 0.97f).padding(6.dp)) {
         Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(12.dp)).background(kind.bg), contentAlignment = Alignment.Center) {
-            Icon(kind.icon, contentDescription = null, tint = kind.fg, modifier = Modifier.size(if (f.isFolder) 44.dp else 36.dp))
+            if (f.isFolder) FolderArt(f, peek, api, imageLoader) else Icon(kind.icon, contentDescription = null, tint = kind.fg, modifier = Modifier.size(36.dp))
             if (!f.isFolder && f.hasThumbnail) AsyncImage(model = ImageRequest.Builder(context).data(api.thumbnail(f, 384)).crossfade(true).build(), imageLoader = imageLoader, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
             if (!f.isFolder) Text(app.superdrive.ui.design.typeLabel(f), Modifier.align(Alignment.BottomStart).padding(6.dp).clip(RoundedCornerShape(6.dp)).background(Color.Black.copy(alpha = 0.55f)).padding(horizontal = 6.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall, color = Color.White)
             if (f.starred) Icon(Lu.Star, "Berbintang", tint = c.warnInk, modifier = Modifier.align(Alignment.TopStart).padding(6.dp).size(16.dp))

@@ -11,6 +11,7 @@ import { DRAG_MIME, collectDropped, hasFiles, setActiveDrag, activeDrag } from "
 import { FileThumb } from "./FileThumb";
 import { setDragGhost } from "./dragGhost";
 import { previewKind } from "@/lib/fileType";
+import { FolderArt, useFolderPeeks, type FolderPeek } from "./FolderArt";
 import { prefetchFolder } from "./useFolder";
 import { preloadPdf } from "@/features/preview/Preview";
 import type { UploadInput } from "@/features/uploads/manager";
@@ -122,6 +123,7 @@ export function FileBrowser(p: BrowserProps) {
   const ordered = useMemo(() => [...folders, ...files], [folders, files]);
   const idx = useMemo(() => new Map(ordered.map((e, i) => [e.id, i])), [ordered]);
 
+  const peeks = useFolderPeeks(p.view === "grid" ? folders : []);
   const rowOf = useMemo(() => new Map<string, number>(), []);
   const rows: Row[] = useMemo(() => {
     const out: Row[] = [];
@@ -131,14 +133,13 @@ export function FileBrowser(p: BrowserProps) {
       ordered.forEach((e, i) => { rowOf.set(e.id, out.length); out.push({ key: e.id, h: 52, node: () => <ListRow e={e} i={i} sel={p.selected.has(e.id)} drop={dropTarget === e.id} cursor={cursor === i} props={itemProps(e, i)} storageName={whereOf(p.storageNames, e)} compact={p.compact} onToggle={() => p.onSelect(e, { shift: false, additive: true })} onMenu={(x, y) => p.onContext(e, x, y)} /> }); });
       return out;
     }
-    const fCols = Math.max(1, Math.floor((width + GAP) / (p.compact ? 200 : 236 + GAP)));
     const cols = Math.max(2, Math.floor((width + GAP) / ((p.compact ? 132 : 176) + GAP)));
     const tileW = (width - GAP * (cols - 1)) / cols; const narrow = width < 640; const tileH = Math.round(tileW * 0.75) + 64 + (narrow ? 18 : 0) + (narrow && p.storageNames ? 30 : 0);
     if (folders.length) {
       out.push({ key: "lbl-f", h: 30, node: () => <SectionLabel>Folder · {folders.length}</SectionLabel> });
-      for (let i = 0; i < folders.length; i += fCols) {
-        const chunk = folders.slice(i, i + fCols); chunk.forEach((e) => rowOf.set(e.id, out.length));
-        out.push({ key: `f${i}`, h: 52 + GAP, gap: GAP, node: () => <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${fCols}, minmax(0, 1fr))` }}>{chunk.map((e) => <FolderChip key={e.id} e={e} sel={p.selected.has(e.id)} drop={dropTarget === e.id} props={itemProps(e, idx.get(e.id)!)} where={whereOf(p.storageNames, e)} onMenu={(x, y) => p.onContext(e, x, y)} />)}</div> });
+      for (let i = 0; i < folders.length; i += cols) {
+        const chunk = folders.slice(i, i + cols); chunk.forEach((e) => rowOf.set(e.id, out.length));
+        out.push({ key: `f${i}`, h: tileH + GAP, gap: GAP, node: () => <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>{chunk.map((e) => <FolderTile key={e.id} e={e} sel={p.selected.has(e.id)} drop={dropTarget === e.id} cursor={cursor === idx.get(e.id)} props={itemProps(e, idx.get(e.id)!)} where={whereOf(p.storageNames, e)} peek={peeks[`${e.storageId}/${e.id}`]} onMenu={(x, y) => p.onContext(e, x, y)} />)}</div> });
       }
     }
     if (files.length) {
@@ -150,7 +151,7 @@ export function FileBrowser(p: BrowserProps) {
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [p.view, p.entries, p.selected, width, dropTarget, cursor, p.storageNames, p.compact]);
+  }, [p.view, p.entries, p.selected, width, dropTarget, cursor, p.storageNames, p.compact, peeks]);
 
   const virt = useVirtualizer({ count: rows.length, getScrollElement: () => scroller.current, estimateSize: (i) => rows[i]!.h, overscan: 6, getItemKey: (i) => rows[i]!.key });
 
@@ -277,15 +278,18 @@ export const ChangeDot = ({ className }: { className?: string }) => (
   <span className={cn("inline-flex shrink-0 items-center", className)} title="Ada perubahan baru sejak terakhir Anda buka"><span className="size-2.5 rounded-full bg-primary ring-2 ring-surface" aria-hidden /><span className="sr-only">Ada perubahan baru</span></span>
 );
 
-const FolderChip = memo(function FolderChip({ e, sel, drop, props, where, onMenu }: { e: FileEntry; sel: boolean; drop: boolean; props: any; where?: string; onMenu(x: number, y: number): void }) {
-  const Icon = KIND_ICON.folder;
+/** A folder in the grid: the same card as a file, with a folder drawn in place of the picture and a few of its files peeking out. */
+const FolderTile = memo(function FolderTile({ e, sel, drop, cursor, props, where, peek, onMenu }: { e: FileEntry; sel: boolean; drop: boolean; cursor: boolean; props: any; where?: string; peek?: FolderPeek; onMenu(x: number, y: number): void }) {
   return (
-    <div {...props} className={cn("group flex h-[52px] cursor-default items-center gap-3 rounded-xl border bg-surface px-3 transition-colors select-none", sel ? "border-primary bg-primary-soft" : "border-line hover:border-line-strong hover:bg-surface-2", drop && "border-primary bg-primary-soft ring-2 ring-primary")}>
-      <span className={cn("grid size-9 shrink-0 place-items-center rounded-lg", KIND_TONE.folder)}><Icon className="size-[18px]" fill="currentColor" fillOpacity={0.15} aria-hidden /></span>
-      <span className="min-w-0 flex-1"><span className="block truncate text-[13px] font-medium" title={e.name}>{e.name}</span>{where && <span className="block truncate text-[11px] text-muted" title={where}>{where}</span>}</span>
-      {e.changed && <ChangeDot />}
-      {e.starred && <Star className="size-3.5 shrink-0 fill-warn-ink text-warn-ink" aria-label="Berbintang" />}
-      <button aria-label={`Menu untuk ${e.name}`} className="relative grid size-7 place-items-center rounded-md text-muted opacity-0 group-hover:opacity-100 hover:bg-surface focus:opacity-100 pointer-coarse:opacity-100 after:absolute after:-inset-2 after:content-['']" onClick={(ev) => { ev.stopPropagation(); const r = ev.currentTarget.getBoundingClientRect(); onMenu(r.right - 200, r.bottom); }}><MoreVertical className="size-4" /></button>
+    <div {...props} className={cn("group relative flex flex-col overflow-hidden rounded-xl border bg-surface transition-colors select-none", sel ? "border-primary ring-2 ring-primary/40" : "border-line hover:border-line-strong", drop && "border-primary bg-primary-soft ring-2 ring-primary", cursor && !sel && "ring-2 ring-primary/20")}>
+      <div className="relative aspect-[4/3] w-full bg-surface-2"><FolderArt id={e.id} peek={peek} /></div>
+      <span className={cn("absolute top-2 left-2 transition-opacity", sel ? "opacity-100" : "opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100")}><Check1 on={sel} /></span>
+      <button aria-label={`Menu untuk ${e.name}`} className="absolute top-2 right-2 grid size-7 place-items-center rounded-md bg-surface/90 after:absolute after:-inset-2 after:content-[''] text-muted opacity-0 shadow-card group-hover:opacity-100 hover:text-ink focus:opacity-100 pointer-coarse:opacity-100" onClick={(ev) => { ev.stopPropagation(); const r = ev.currentTarget.getBoundingClientRect(); onMenu(r.right - 200, r.bottom); }}><MoreVertical className="size-4" /></button>
+      <div className="flex min-w-0 items-center gap-2 px-3 py-2.5">
+        <div className="min-w-0 flex-1"><div className="line-clamp-2 text-[13px] leading-[1.25] font-medium break-all sm:line-clamp-1" title={e.name}>{e.name}</div><div className="tnum line-clamp-2 text-[11px] break-all text-muted sm:line-clamp-1" title={where}>{where ?? shortDate(e.modifiedAt)}</div></div>
+        {e.changed && <ChangeDot />}
+        {e.starred && <Star className="size-3.5 shrink-0 fill-warn-ink text-warn-ink" aria-label="Berbintang" />}
+      </div>
     </div>
   );
 });

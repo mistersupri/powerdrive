@@ -20,6 +20,9 @@ data class FileEntry(
     val version: String? = null, val starred: Boolean = false, val changed: Boolean = false,
     val createdAt: String? = null, val checksum: String? = null, val path: String? = null,
 )
+/** What a folder holds: its item count and a few files to show peeking out of it. */
+@Serializable data class FolderPeek(val count: Int = 0, val files: List<FileEntry> = emptyList())
+@Serializable data class FolderPeeks(val items: Map<String, FolderPeek> = emptyMap())
 @Serializable data class Crumb(val id: String, val name: String)
 @Serializable data class FolderInfo(val id: String, val name: String = "", val parentId: String? = null, val path: List<Crumb> = emptyList())
 @Serializable data class FileListing(val items: List<FileEntry>, val nextPageToken: String? = null, val folder: FolderInfo)
