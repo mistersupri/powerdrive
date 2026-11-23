@@ -63,6 +63,19 @@ class DocParseTest {
         val doc = zip("word/document.xml" to "<w:document><w:body><w:p><w:r><w:t>Teks tetap terbaca</w:t></w:r></w:p></w:body>")
         assertEquals(listOf("Teks tetap terbaca"), docxForViewer(doc).filterIsInstance<DocPara>().map { it.text })
     }
+    @Test fun docxWithContentControlsAndTextBoxes() {
+        // A letter whose text sits in a content control and a text box (with Word's repeated fallback copy), next to an empty paragraph.
+        val xml = "<w:document><w:body><w:p/>" +
+            "<w:sdt><w:sdtPr/><w:sdtContent><w:p><w:r><w:t>Di dalam kontrol</w:t></w:r></w:p></w:sdtContent></w:sdt>" +
+            "<w:p><w:r><mc:AlternateContent><mc:Choice><w:drawing><w:txbxContent><w:p><w:r><w:t>Kotak teks</w:t></w:r></w:p></w:txbxContent></w:drawing></mc:Choice><mc:Fallback><w:pict><w:txbxContent><w:p><w:r><w:t>Kotak teks</w:t></w:r></w:p></w:txbxContent></w:pict></mc:Fallback></mc:AlternateContent></w:r></w:p>" +
+            "</w:body></w:document>"
+        assertEquals(listOf("", "Di dalam kontrol", "", "Kotak teks"), docxForViewer(zip("word/document.xml" to xml)).filterIsInstance<DocPara>().map { it.text })
+    }
+    @Test fun docxWithNothingReadableStillSaysSo() {
+        val xml = "<w:document><w:body><w:p/><w:p/></w:body></w:document>"
+        val texts = docxForViewer(zip("word/document.xml" to xml)).filterIsInstance<DocPara>().map { it.text }
+        assertEquals(1, texts.size); assertEquals(true, texts[0].startsWith("Dokumen ini tidak memiliki teks"))
+    }
     @Test fun xlsx() {
         val x = zip("xl/sharedStrings.xml" to "<sst><si><t>Nama</t></si><si><t>Umur</t></si><si><t>Ani</t></si></sst>",
             "xl/worksheets/sheet1.xml" to "<worksheet><sheetData><row r=\"1\"><c r=\"A1\" t=\"s\"><v>0</v></c><c r=\"C1\" t=\"s\"><v>1</v></c></row><row r=\"2\"><c r=\"A2\" t=\"s\"><v>2</v></c><c r=\"B2\"><v>7</v></c><c r=\"C2\"><v>30</v></c></row></sheetData></worksheet>")

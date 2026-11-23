@@ -49,12 +49,12 @@ import kotlinx.coroutines.withContext
 /** A Word document, drawn from [docxBlocks]: headings, formatted text, lists, tables and pictures, in a column that scrolls and can be selected. */
 @Composable
 fun DocxView(blocks: List<DocBlock>) {
-    if (blocks.isEmpty()) { Text("Dokumen kosong.", Modifier.padding(16.dp)); return }
     // No SelectionContainer around the list: selection inside a lazy list is unreliable on some devices, and a crash here would close the previewer.
     run {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp)) {
             // Several empty paragraphs in a row are one gap, as they are on a printed page once margins are trimmed.
             val shown = blocks.filterIndexed { i, b -> !(b is DocPara && b.runs.isEmpty() && b.label == null && (i == 0 || (blocks[i - 1] as? DocPara)?.let { it.runs.isEmpty() && it.label == null } == true)) }
+            if (shown.isEmpty()) item { Text("Dokumen kosong.", Modifier.padding(4.dp), color = MaterialTheme.sd.muted) }
             items(shown) { b ->
                 when (b) {
                     is DocPara -> ParaView(b)

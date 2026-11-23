@@ -187,19 +187,40 @@ fun docxBlocks(bytes: ByteArray): List<DocBlock> {
         files["word/" + target.removePrefix("/word/").removePrefix("word/")]?.let(::DocImage)
     }
 
+    // Content controls, tracked changes and similar wrappers hold the real paragraphs: look through them.
+    fun flat(list: List<X>): List<X> = list.flatMap { e -> when (e.tagName) {
+        "w:sdt" -> flat(e.child("w:sdtContent")?.elements() ?: emptyList())
+        "w:sdtContent", "w:customXml", "w:ins", "w:smartTag" -> flat(e.elements())
+        else -> listOf(e)
+    } }
+    // Text boxes live inside a drawing in a paragraph; show their paragraphs right after it. Word repeats them in a fallback copy, so skip repeats.
+    fun boxesOf(p: X): List<DocPara> {
+        val seen = HashSet<String>(); val out = ArrayList<DocPara>()
+        for (box in p.descendants("w:txbxContent")) for (q in box.elements().filter { it.tagName == "w:p" }) { val para = paraOf(q); if (para.text.isNotBlank() && seen.add(para.text)) out += para }
+        return out
+    }
+    fun tableOf(tbl: X) = DocTable(tbl.elements().filter { it.tagName == "w:tr" }.map { tr -> flat(tr.elements()).filter { it.tagName == "w:tc" }.map { tc -> flat(tc.elements()).filter { it.tagName == "w:p" }.map(::paraOf) } })
+
     val out = ArrayList<DocBlock>()
-    for (e in body.elements()) when (e.tagName) {
-        "w:p" -> { out += paraOf(e); out += imagesOf(e) }
-        "w:tbl" -> out += DocTable(e.elements().filter { it.tagName == "w:tr" }.map { tr -> tr.elements().filter { it.tagName == "w:tc" }.map { tc -> tc.elements().filter { it.tagName == "w:p" }.map(::paraOf) } })
+    for (e in flat(body.elements())) when (e.tagName) {
+        "w:p" -> { out += paraOf(e); out += boxesOf(e); out += imagesOf(e) }
+        "w:tbl" -> out += tableOf(e)
     }
     return out
 }
 
-/** What the previewer shows for a Word file: the full reading, or plain paragraphs when that fails or finds nothing, so the file never opens as blank. */
+private fun DocBlock.hasText(): Boolean = when (this) { is DocPara -> text.isNotBlank(); is DocTable -> rows.any { r -> r.any { c -> c.any { it.text.isNotBlank() } } }; else -> false }
+
+/**
+ * What the previewer shows for a Word file: the full reading; if that finds no text at all (a document made of pictures or objects the reader does not follow),
+ * the plain paragraphs found anywhere in the file; and if there is still none, a plain note, so the file never opens as a blank page.
+ */
 fun docxForViewer(bytes: ByteArray): List<DocBlock> {
     val full = runCatching { docxBlocks(bytes) }.getOrDefault(emptyList())
-    if (full.any { it !is DocPara || it.runs.isNotEmpty() }) return full
-    return docxPlainText(bytes).map { DocPara(listOf(DocRun(it))) }
+    if (full.any { it.hasText() }) return full
+    val plain = runCatching { docxPlainText(bytes) }.getOrDefault(emptyList())
+    if (plain.isNotEmpty()) return full.filterIsInstance<DocImage>() + plain.map { DocPara(listOf(DocRun(it))) }
+    return full.filterIsInstance<DocImage>() + DocPara(listOf(DocRun("Dokumen ini tidak memiliki teks yang bisa ditampilkan di sini (isinya mungkin gambar atau objek). Gunakan Unduh untuk membukanya di aplikasi lain.", italic = true)))
 }
 
 /** Cells of the first worksheet as text, capped so a huge sheet cannot exhaust memory. */
