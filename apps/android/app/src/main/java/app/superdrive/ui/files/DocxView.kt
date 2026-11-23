@@ -160,7 +160,8 @@ fun DocxWebView(source: DocxSource, onFail: () -> Unit) {
                         settings.allowFileAccess = false; settings.allowContentAccess = false; settings.domStorageEnabled = false; settings.databaseEnabled = false
                         settings.setGeolocationEnabled(false); settings.javaScriptCanOpenWindowsAutomatically = false; settings.setSupportMultipleWindows(false)
                         settings.setSupportZoom(true); settings.builtInZoomControls = true; settings.displayZoomControls = false
-                        settings.useWideViewPort = true; settings.loadWithOverviewMode = true
+                        // Layout width = screen width, so the page can be scaled to fit it exactly (a "wide viewport" would make the layout wider than the screen).
+                        settings.useWideViewPort = false; settings.loadWithOverviewMode = false
                         webViewClient = object : android.webkit.WebViewClient() {
                             override fun shouldOverrideUrlLoading(view: android.webkit.WebView, request: android.webkit.WebResourceRequest) = true
                             override fun shouldInterceptRequest(view: android.webkit.WebView, request: android.webkit.WebResourceRequest): android.webkit.WebResourceResponse? {

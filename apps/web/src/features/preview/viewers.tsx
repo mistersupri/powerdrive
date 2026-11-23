@@ -235,7 +235,7 @@ export function XlsxViewer({ f }: { f: FileEntry }) {
 }
 
 /* ---------- docx ---------- */
-const FRAME_CSS = "html,body{margin:0;background:#e4e8ef}.docx-wrapper{background:#e4e8ef!important;padding:20px 0!important}.docx-wrapper>section.docx{box-shadow:0 1px 4px rgba(16,24,40,.18)!important;margin-bottom:16px!important;max-width:none}";
+const FRAME_CSS = "html,body{margin:0;background:#e4e8ef}.docx-wrapper{background:#e4e8ef!important;padding:20px 0!important;align-items:flex-start!important}.docx-wrapper>section.docx{box-shadow:0 1px 4px rgba(16,24,40,.18)!important;margin:0 auto 16px!important;max-width:none;flex:none}";
 /**
  * Word documents are drawn like Word does (page size, margins, styles, headers and footers, tables, pictures) by docx-preview, inside a frame that
  * cannot run scripts. Pages wider than the screen are scaled down to fit. If a file cannot be drawn that way, a plainer rendering is shown instead.
