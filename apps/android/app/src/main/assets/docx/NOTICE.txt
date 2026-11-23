@@ -1,0 +1,3 @@
+docx-preview 0.3.7 (Apache License 2.0) https://github.com/VolodymyrBaydalka/docxjs
+JSZip 3.10.2 (MIT or GPLv3, used under MIT) https://stuk.github.io/jszip/
+Used to draw Word documents in the previewer, the same way as the website does.

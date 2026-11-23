@@ -5,6 +5,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -129,4 +130,68 @@ private fun PictureView(img: DocImage) {
         }
     }
     bmp?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxWidth().padding(vertical = 8.dp), contentScale = ContentScale.FillWidth) }
+}
+
+/** A Word file ready to show: the file itself (for the web view) and what the native reader made of it (the fallback). */
+class DocxSource(val file: java.io.File, val blocks: List<DocBlock>)
+
+private const val DOCX_HOST = "appassets.local"
+
+/**
+ * Word documents are drawn by the same engine as the website (docx-preview, shipped inside the app), so they look the same on both. It runs in a web view that
+ * can only see the app's own files: every request is answered from the app's assets or the document itself, anything else is refused, links do not open,
+ * and there is no bridge to the app. If the page cannot draw the file, or nothing happens for a while, [onFail] switches to the native reader.
+ */
+@android.annotation.SuppressLint("SetJavaScriptEnabled")
+@Composable
+fun DocxWebView(source: DocxSource, onFail: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var ready by androidx.compose.runtime.remember(source) { androidx.compose.runtime.mutableStateOf(false) }
+    androidx.compose.runtime.LaunchedEffect(source) { kotlinx.coroutines.delay(20_000); if (!ready) onFail() }
+    Box(Modifier.fillMaxSize()) {
+        androidx.compose.ui.viewinterop.AndroidView(
+            modifier = Modifier.fillMaxSize(),
+            factory = { ctx ->
+                try {
+                    android.webkit.WebView(ctx).apply {
+                        setBackgroundColor(0xFFE4E8EF.toInt())
+                        settings.javaScriptEnabled = true
+                        settings.allowFileAccess = false; settings.allowContentAccess = false; settings.domStorageEnabled = false; settings.databaseEnabled = false
+                        settings.setGeolocationEnabled(false); settings.javaScriptCanOpenWindowsAutomatically = false; settings.setSupportMultipleWindows(false)
+                        settings.setSupportZoom(true); settings.builtInZoomControls = true; settings.displayZoomControls = false
+                        settings.useWideViewPort = true; settings.loadWithOverviewMode = true
+                        webViewClient = object : android.webkit.WebViewClient() {
+                            override fun shouldOverrideUrlLoading(view: android.webkit.WebView, request: android.webkit.WebResourceRequest) = true
+                            override fun shouldInterceptRequest(view: android.webkit.WebView, request: android.webkit.WebResourceRequest): android.webkit.WebResourceResponse? {
+                                val u = request.url
+                                val name = u.lastPathSegment.orEmpty()
+                                if (u.host == DOCX_HOST && u.scheme == "https") {
+                                    if (name == "doc.docx") return android.webkit.WebResourceResponse("application/octet-stream", null, 200, "OK", mapOf("Cache-Control" to "no-store"), java.io.FileInputStream(source.file))
+                                    if (name == "viewer.html" || name == "jszip.min.js" || name == "docx-preview.min.js") {
+                                        val type = if (name.endsWith(".html")) "text/html" else "text/javascript"
+                                        return android.webkit.WebResourceResponse(type, "utf-8", ctx.assets.open("docx/$name"))
+                                    }
+                                }
+                                // Everything else, including any attempt to reach the network, is refused.
+                                return android.webkit.WebResourceResponse("text/plain", "utf-8", 403, "Forbidden", emptyMap(), java.io.ByteArrayInputStream(ByteArray(0)))
+                            }
+                        }
+                        webChromeClient = object : android.webkit.WebChromeClient() {
+                            override fun onConsoleMessage(m: android.webkit.ConsoleMessage): Boolean {
+                                val text = m.message().orEmpty()
+                                if (text == "DOCX_OK") post { ready = true } else if (text.startsWith("DOCX_FAIL")) post { onFail() }
+                                return true
+                            }
+                        }
+                        loadUrl("https://$DOCX_HOST/docx/viewer.html")
+                    }
+                } catch (e: Throwable) {
+                    // No usable web view on this device: the native reader takes over.
+                    android.view.View(ctx).also { it.post { onFail() } }
+                }
+            },
+            onRelease = { (it as? android.webkit.WebView)?.apply { stopLoading(); loadUrl("about:blank"); destroy() } },
+        )
+        if (!ready) Box(Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.Center) { androidx.compose.material3.CircularProgressIndicator() }
+    }
 }

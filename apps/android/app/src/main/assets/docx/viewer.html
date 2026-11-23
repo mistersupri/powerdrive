@@ -1,0 +1,28 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=0.2, maximum-scale=5, user-scalable=yes">
+<style>html,body{margin:0;background:#e4e8ef}.docx-wrapper{background:#e4e8ef!important;padding:12px 0!important}.docx-wrapper>section.docx{box-shadow:0 1px 4px rgba(16,24,40,.18)!important;margin-bottom:12px!important;max-width:none}</style>
+<script src="jszip.min.js"></script><script src="docx-preview.min.js"></script>
+</head><body><div id="s"></div><div id="c"></div>
+<script>
+(async function () {
+  try {
+    var buf = await (await fetch("doc.docx")).arrayBuffer();
+    await docx.renderAsync(buf, document.getElementById("c"), document.getElementById("s"), { className: "docx", inWrapper: true, breakPages: true, ignoreLastRenderedPageBreak: true, renderHeaders: true, renderFooters: true, renderFootnotes: true, renderEndnotes: true, useBase64URL: true });
+    // Word's bullets use Symbol/Wingdings glyphs that phones lack: swap them for ordinary characters.
+    var B = { "": "•", "": "▪", "": "➢", "": "✓", "": "❖", "": "◻" };
+    document.querySelectorAll("style").forEach(function (st) {
+      if (/[-]/.test(st.textContent)) st.textContent = st.textContent.replace(/[-]/g, function (ch) { return B[ch] || "•"; }).replace(/font-family:\s*(Symbol|Wingdings[^;]*|Courier New)\s*;/gi, "");
+    });
+    // A page wider than the screen is scaled down to fit.
+    var fit = function () {
+      var page = document.querySelector("section.docx"); if (!page) return;
+      document.body.style.zoom = "1";
+      var w = page.offsetWidth, avail = document.documentElement.clientWidth;
+      document.body.style.zoom = w > avail ? String(Math.max(0.2, avail / w)) : "1";
+    };
+    fit(); addEventListener("resize", fit);
+    console.log("DOCX_OK");
+  } catch (e) { console.log("DOCX_FAIL " + e); }
+})();
+</script></body></html>

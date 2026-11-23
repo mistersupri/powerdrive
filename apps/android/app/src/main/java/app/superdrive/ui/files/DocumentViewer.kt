@@ -183,7 +183,7 @@ private fun TextualBody(f: FileEntry, api: Api, kind: DocKind) {
             val file = fetch(api, f, context.cacheDir, if (kind == DocKind.Text || kind == DocKind.Csv) TEXT_LIMIT else DOC_LIMIT)
             withContext(Dispatchers.Default) {
                 Result.success<Any>(when (kind) {
-                    DocKind.Docx -> docxForViewer(file.readBytes()); DocKind.Xlsx -> xlsxRows(file.readBytes()); DocKind.Zip -> zipEntries(file.readBytes())
+                    DocKind.Docx -> DocxSource(file, docxForViewer(file.readBytes())); DocKind.Xlsx -> xlsxRows(file.readBytes()); DocKind.Zip -> zipEntries(file.readBytes())
                     DocKind.Csv -> parseCsv(file.readText()); else -> file.readText()
                 })
             }
@@ -194,9 +194,13 @@ private fun TextualBody(f: FileEntry, api: Api, kind: DocKind) {
         c == null -> Loading()
         c.isFailure -> Loading(c.exceptionOrNull()?.message ?: "Gagal.")
         else -> when (val v = c.getOrThrow()) {
+            is DocxSource -> {
+                // The website's engine first; the native reader when it cannot draw the file.
+                var native by androidx.compose.runtime.remember(v) { androidx.compose.runtime.mutableStateOf(false) }
+                if (native) DocxView(v.blocks) else DocxWebView(v) { native = true }
+            }
             is String -> SelectionContainer { Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).horizontalScroll(rememberScrollState()).padding(12.dp)) { Text(v, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall) } }
             is List<*> -> when (kind) {
-                DocKind.Docx -> DocxView(v.filterIsInstance<app.superdrive.core.DocBlock>())
                 DocKind.Zip -> LazyColumn(Modifier.fillMaxSize()) {
                     items(v.filterIsInstance<app.superdrive.core.ZipItem>()) { z ->
                         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) { Text(z.name, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis); if (!z.isDir) Text(android.text.format.Formatter.formatShortFileSize(context, z.size), color = MaterialTheme.colorScheme.onSurfaceVariant) }
