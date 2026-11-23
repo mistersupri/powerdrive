@@ -25,7 +25,7 @@ const MB = 1024 * 1024;
 describe("Google Drive adapter", () => {
   const g = new GoogleDriveProvider(tokens);
   it("lists with paging, maps folders/files, and never sends tokens off-host for thumbnails", async () => {
-    script((c) => json({ nextPageToken: "n2", files: [
+    script((c) => /\/drives\?/.test(c.url) ? json({ drives: [] }) : /sharedWithMe/.test(decodeURIComponent(c.url)) && /pageSize=1&/.test(c.url) ? json({ files: [] }) : json({ nextPageToken: "n2", files: [
       { id: "f1", name: "Docs", mimeType: "application/vnd.google-apps.folder", parents: ["root1"] },
       { id: "i1", name: "a.jpg", mimeType: "image/jpeg", size: "123", md5Checksum: "abc", thumbnailLink: "https://lh3.googleusercontent.com/x=s220", modifiedTime: "2026-01-01T00:00:00Z" }] }));
     const r = await g.list("root");
@@ -33,6 +33,52 @@ describe("Google Drive adapter", () => {
     assert.deepEqual(r.items.map((i) => [i.name, i.isFolder, i.size, i.hasThumbnail]), [["Docs", true, null, false], ["a.jpg", false, 123, true]]);
     assert.match(calls[0]!.url, /%27root%27\+in\+parents|'root'|root/);
     assert.equal(calls[0]!.headers.authorization, "Bearer tok");
+  });
+  describe("shared drives and files shared with the account", () => {
+    const drive = (u: string) => new URL(u).searchParams;
+    const handler = (c: Call) => {
+      const url = new URL(c.url); const q = url.searchParams.get("q") ?? "";
+      if (url.pathname.endsWith("/drives")) return json({ drives: [{ id: "d2", name: "Zeta", createdTime: "2026-01-02T00:00:00Z" }, { id: "d1", name: "Anggaran 2025" }], nextPageToken: "more" });
+      if (q.includes("sharedWithMe")) return json({ files: [{ id: "s1", name: "Dari Budi.docx", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", size: "10", parents: ["hidden-parent"] }] });
+      if (q.includes("'root' in parents")) return json({ files: [{ id: "f1", name: "Docs", mimeType: "application/vnd.google-apps.folder", parents: ["root1"] }] });
+      if (url.pathname.endsWith("/files/d1")) return json({ id: "d1", name: "Anggaran 2025", mimeType: "application/vnd.google-apps.folder", driveId: "d1" });
+      if (url.pathname.endsWith("/files/in1")) return json({ id: "in1", name: "Laporan", mimeType: "application/vnd.google-apps.folder", parents: ["d1"], driveId: "d1" });
+      return json({ files: [] });
+    };
+    it("shows the two virtual folders at the top of the root, only when there is something in them", async () => {
+      const p = new GoogleDriveProvider(tokens); script(handler);
+      const r = await p.list("root");
+      assert.deepEqual(r.items.map((i) => [i.name, i.isFolder, !!i.virtual]), [["Drive bersama", true, true], ["Dibagikan kepada saya", true, true], ["Docs", true, false]]);
+      const later = await p.list("root", { pageToken: "x" });
+      assert.deepEqual(later.items.map((i) => i.name), ["Docs"], "only the first page carries them");
+      const none = new GoogleDriveProvider(tokens); script((c) => /\/drives\?/.test(c.url) ? json({ drives: [] }) : /sharedWithMe/.test(decodeURIComponent(c.url)) ? json({ files: [] }) : handler(c));
+      assert.deepEqual((await none.list("root")).items.map((i) => i.name), ["Docs"]);
+    });
+    it("lists shared drives (sorted, paged) and files shared with the account", async () => {
+      const p = new GoogleDriveProvider(tokens); script(handler);
+      const d = await p.list("@drives");
+      assert.deepEqual(d.items.map((i) => [i.id, i.name, i.parentId, i.isFolder]), [["d1", "Anggaran 2025", "@drives", true], ["d2", "Zeta", "@drives", true]]);
+      assert.equal(d.nextPageToken, "more");
+      const s = await p.list("@shared");
+      assert.deepEqual(s.items.map((i) => [i.name, i.parentId]), [["Dari Budi.docx", "@shared"]]);
+      assert.equal(drive(calls.at(-1)!.url).get("includeItemsFromAllDrives"), "true");
+    });
+    it("gives virtual folders a name and breadcrumb, and puts a shared drive under 'Drive bersama'", async () => {
+      const p = new GoogleDriveProvider(tokens); script(handler);
+      assert.equal((await p.stat("@drives")).name, "Drive bersama");
+      assert.deepEqual(await p.path("@shared"), [{ id: "@shared", name: "Dibagikan kepada saya" }]);
+      assert.equal((await p.stat("d1")).parentId, "@drives");
+      assert.deepEqual((await p.path("in1")).map((c) => c.name), ["Drive bersama", "Anggaran 2025", "Laporan"]);
+    });
+    it("refuses to create, rename, move or delete in or from a virtual folder", async () => {
+      const p = new GoogleDriveProvider(tokens); script(handler);
+      await assert.rejects(p.createFolder("@drives", "x"), /hanya untuk menjelajah/);
+      await assert.rejects(p.write({ parentId: "@shared", name: "a.txt", size: 1, stream: Readable.from([Buffer.from("a")]) }), /hanya untuk menjelajah/);
+      await assert.rejects(p.move("in1", "@drives"), /hanya untuk menjelajah/);
+      await assert.rejects(p.rename("@drives", "x"), /hanya untuk menjelajah/);
+      await assert.rejects(p.delete("@shared"), /hanya untuk menjelajah/);
+      assert.equal(calls.length, 0, "nothing was sent to Google");
+    });
   });
   it("uploads resumably in 16 MiB chunks with correct Content-Range and returns the file", async () => {
     const total = 40 * MB; let next = 0;

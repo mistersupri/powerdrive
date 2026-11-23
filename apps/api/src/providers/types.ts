@@ -5,6 +5,8 @@ import type { ProviderType, StorageCapabilities } from "@superdrive/shared";
 export const ROOT = "root";
 
 export interface RemoteFile {
+  /** A folder a provider makes up for browsing (e.g. Google's "Drive bersama"): never indexed, never changed. */
+  virtual?: true;
   id: string;
   parentId: string | null;
   name: string;

@@ -24,6 +24,7 @@ export function indexItems(storageId: string, parentId: string, items: RemoteFil
   const t = now(); const created: string[] = [];
   db.tx(() => {
     for (const f of items) {
+      if (f.virtual) continue; // a folder the provider makes up for browsing, not a real item
       if (!f.isFolder && !db.get("SELECT 1 FROM files WHERE storage_id = ? AND file_id = ?", storageId, f.id)) created.push(f.id);
       const dot = f.name.lastIndexOf(".");
       db.run(

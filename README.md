@@ -45,7 +45,7 @@ Daftarkan redirect URI OAuth: `${APP_URL}/api/v1/storages/{google-drive|onedrive
 | Thumbnail cepat (lihat [PERFORMANCE](docs/PERFORMANCE.md)) | ✅ diukur |
 | Transfer salin/pindah antar penyimpanan: file, folder bertingkat, bulk, kebijakan nama bentrok, jeda/lanjut/batal/ulang, SSE, pemulihan setelah restart, pindah aman (sumber dihapus setelah tujuan terverifikasi) | ✅ diuji (antar folder server) |
 | Penyimpanan eksternal: **SMB/NAS**, **SFTP**, **WebDAV** (form di UI, kredensial terenkripsi, host key SFTP dikunci) | ✅ diuji terhadap **Samba (SMB3, signing + enkripsi wajib) dan OpenSSH asli**, serta server WebDAV; termasuk transfer lintas-storage dan pindah aman |
-| Penyimpanan: **Folder server**, **S3-compatible**, Google Drive, OneDrive, Dropbox (OAuth + PKCE, banyak akun, token terenkripsi) | Folder server ✅ diuji. **Cloud & S3: ditulis sesuai dokumentasi API resmi; Google/OneDrive/Dropbox diuji terhadap respons tiruan (paging, unggah per potongan, Range, error), S3 dan semuanya belum diuji ke layanan sungguhan** (tidak ada kredensial di lingkungan pengembangan) |
+| Penyimpanan: **Folder server**, **S3-compatible**, Google Drive (termasuk **Drive bersama** dan **Dibagikan kepada saya**), OneDrive, Dropbox (OAuth + PKCE, banyak akun, token terenkripsi) | Folder server ✅ diuji. **Cloud & S3: ditulis sesuai dokumentasi API resmi; Google/OneDrive/Dropbox diuji terhadap respons tiruan (paging, unggah per potongan, Range, error), S3 dan semuanya belum diuji ke layanan sungguhan** (tidak ada kredensial di lingkungan pengembangan) |
 | **Berbagi tautan** (viewer/editor, sandi, kedaluwarsa, kuota unggah, dicabut kapan saja), halaman publik tanpa login, **Sampah** (pulihkan/hapus permanen, 30 hari), **Semua file** = volume `UPLOADS_DIR` | ✅ diuji otomatis + browser + uji beban |
 | Pratinjau lanjutan: foto (zoom/putar), video, audio, PDF (pdf.js), CSV, Excel (.xlsx), Word (.docx), JSON (pohon), teks/kode, isi ZIP | ✅ diuji di browser |
 | Filter lanjutan (nama, jenis, ekstensi, ukuran, tanggal, bintang), seleksi kotak, seret-lepas multi-item dengan penanda jumlah, dropdown folder di breadcrumb saat menyeret | ✅ diuji di browser |
@@ -62,7 +62,7 @@ Folder bertanda titik bila anggota lain mengubah isinya sejak terakhir Anda buka
 
 ## Pencarian global
 
-Setiap penyimpanan yang terhubung (termasuk Google Drive, OneDrive, SMB, SFTP…) dirayapi di latar belakang ke indeks metadata lokal, sehingga pencarian menjangkau folder yang belum pernah dibuka. Perayapan berjalan saat penyimpanan dihubungkan, saat server menyala, tiap 6 jam, dan bisa dipicu admin lewat **Penyimpanan → Indeks ulang pencarian**. Untuk penyimpanan cloud, perayapan diberi jeda agar tidak menghabiskan kuota API. Hasil menampilkan penyimpanan dan folder tempat file berada.
+Setiap penyimpanan yang terhubung (termasuk Google Drive, OneDrive, SMB, SFTP…) dirayapi di latar belakang ke indeks metadata lokal, sehingga pencarian menjangkau folder yang belum pernah dibuka. Perayapan berjalan saat penyimpanan dihubungkan, saat server menyala, tiap 6 jam, dan bisa dipicu admin lewat **Penyimpanan → Indeks ulang pencarian**. Untuk penyimpanan cloud, perayapan diberi jeda agar tidak menghabiskan kuota API. Di Google Drive, perayapan juga menjangkau shared drive dan file yang dibagikan kepada akun. Hasil menampilkan penyimpanan dan folder tempat file berada.
 
 ## Berbagi lewat tautan
 
