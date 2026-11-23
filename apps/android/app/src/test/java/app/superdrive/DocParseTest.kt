@@ -5,6 +5,7 @@ import app.superdrive.core.docKind
 import app.superdrive.core.DocPara
 import app.superdrive.core.DocTable
 import app.superdrive.core.docxBlocks
+import app.superdrive.core.docxForViewer
 import app.superdrive.core.parseCsv
 import app.superdrive.core.xlsxRows
 import app.superdrive.core.zipEntries
@@ -47,6 +48,20 @@ class DocParseTest {
         assertEquals(true, paras[1].runs[0].bold); assertEquals(true, paras[1].runs[0].italic); assertEquals(0xC00000, paras[1].runs[0].color); assertEquals(14f, paras[1].runs[0].sizePt)
         assertEquals(listOf("•", "1.", "2."), paras.drop(2).map { it.label })
         assertEquals(listOf("K1", "K2"), (b.last() as DocTable).rows[0].map { it[0].text })
+    }
+    @Test fun docxAsWordWritesIt() {
+        // What Word itself writes: BOM, XML declaration with standalone, namespaces, self-closing and entity-escaped text, a comment and a hyperlink.
+        val xml = "\uFEFF<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><w:body>" +
+            "<!-- komentar --><w:p><w:pPr><w:spacing w:after=\"120\"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t>Tom &amp; Jerry &#233;</w:t></w:r><w:hyperlink r:id=\"rId9\"><w:r><w:t xml:space=\"preserve\"> tautan</w:t></w:r></w:hyperlink></w:p>" +
+            "<w:p><w:r><w:t>a &lt; b</w:t></w:r></w:p><w:sectPr><w:pgSz w:w=\"11906\"/></w:sectPr></w:body></w:document>"
+        val paras = docxForViewer(zip("word/document.xml" to xml)).filterIsInstance<DocPara>()
+        assertEquals(listOf("Tom & Jerry é tautan", "a < b"), paras.map { it.text })
+        assertEquals(true, paras[0].runs[0].bold)
+    }
+    @Test fun docxFallsBackToPlainText() {
+        // Broken XML that the reader cannot use still opens, as plain paragraphs.
+        val doc = zip("word/document.xml" to "<w:document><w:body><w:p><w:r><w:t>Teks tetap terbaca</w:t></w:r></w:p></w:body>")
+        assertEquals(listOf("Teks tetap terbaca"), docxForViewer(doc).filterIsInstance<DocPara>().map { it.text })
     }
     @Test fun xlsx() {
         val x = zip("xl/sharedStrings.xml" to "<sst><si><t>Nama</t></si><si><t>Umur</t></si><si><t>Ani</t></si></sst>",

@@ -59,7 +59,7 @@ import app.superdrive.core.ApiException
 import app.superdrive.core.DocKind
 import app.superdrive.core.FileEntry
 import app.superdrive.core.docKind
-import app.superdrive.core.docxBlocks
+import app.superdrive.core.docxForViewer
 import app.superdrive.core.parseCsv
 import app.superdrive.core.xlsxRows
 import app.superdrive.core.zipEntries
@@ -183,7 +183,7 @@ private fun TextualBody(f: FileEntry, api: Api, kind: DocKind) {
             val file = fetch(api, f, context.cacheDir, if (kind == DocKind.Text || kind == DocKind.Csv) TEXT_LIMIT else DOC_LIMIT)
             withContext(Dispatchers.Default) {
                 Result.success<Any>(when (kind) {
-                    DocKind.Docx -> docxBlocks(file.readBytes()); DocKind.Xlsx -> xlsxRows(file.readBytes()); DocKind.Zip -> zipEntries(file.readBytes())
+                    DocKind.Docx -> docxForViewer(file.readBytes()); DocKind.Xlsx -> xlsxRows(file.readBytes()); DocKind.Zip -> zipEntries(file.readBytes())
                     DocKind.Csv -> parseCsv(file.readText()); else -> file.readText()
                 })
             }

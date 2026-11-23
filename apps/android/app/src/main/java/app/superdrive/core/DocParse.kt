@@ -32,6 +32,15 @@ private fun zipEntry(bytes: ByteArray, name: String): String? {
     }
 }
 
+/** Plain paragraphs of a Word document, found without any XML parsing: the fallback when [docxBlocks] cannot read a file. */
+fun docxPlainText(bytes: ByteArray): List<String> {
+    val xml = zipEntry(bytes, "word/document.xml") ?: return emptyList()
+    val text = Regex("<w:t(?:\\s[^>]*)?>(.*?)</w:t>|<w:tab\\s*/>|<w:br\\s*/>", RegexOption.DOT_MATCHES_ALL)
+    return xml.split("</w:p>").map { p ->
+        text.findAll(p).joinToString("") { m -> when { m.value.startsWith("<w:tab") -> "\t"; m.value.startsWith("<w:br") -> "\n"; else -> unescape(m.groupValues[1]) } }
+    }.filter { it.isNotBlank() }
+}
+
 /** A run of text with the formatting Word gave it. [color] is 0xRRGGBB, null for "automatic". */
 data class DocRun(val text: String, val bold: Boolean = false, val italic: Boolean = false, val underline: Boolean = false, val strike: Boolean = false, val color: Int? = null, val sizePt: Float? = null)
 sealed interface DocBlock
@@ -42,18 +51,62 @@ data class DocPara(val runs: List<DocRun>, val heading: Int = 0, val align: Stri
 data class DocTable(val rows: List<List<List<DocPara>>>) : DocBlock
 class DocImage(val bytes: ByteArray) : DocBlock
 
-private fun parseXml(xml: String): org.w3c.dom.Document? = try {
-    val f = javax.xml.parsers.DocumentBuilderFactory.newInstance()
-    f.isNamespaceAware = false; f.isExpandEntityReferences = false
-    // A document must not be able to pull in outside files or expand entities: refuse DOCTYPEs where the parser allows saying so.
-    runCatching { f.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true) }
-    f.newDocumentBuilder().parse(org.xml.sax.InputSource(java.io.StringReader(xml)))
-} catch (e: Exception) { null }
+/** A node of a parsed XML document: just what the Word reader needs. */
+private class X(val tagName: String, private val attrs: Map<String, String>) {
+    val kids = ArrayList<X>()
+    val text = StringBuilder()
+    fun getAttribute(n: String): String = attrs[n].orEmpty()
+    val textContent: String get() = if (kids.isEmpty()) text.toString() else text.toString() + kids.joinToString("") { it.textContent }
+}
 
-private fun org.w3c.dom.Node.elements(): List<org.w3c.dom.Element> { val out = ArrayList<org.w3c.dom.Element>(); var c = firstChild; while (c != null) { if (c is org.w3c.dom.Element) out.add(c); c = c.nextSibling }; return out }
-private fun org.w3c.dom.Element.child(name: String) = elements().firstOrNull { it.tagName == name }
-private fun org.w3c.dom.Element.on(name: String): Boolean { val e = child(name) ?: return false; val v = e.getAttribute("w:val"); return v != "0" && v != "false" && v != "none" }
-private fun org.w3c.dom.Element.descendants(name: String): List<org.w3c.dom.Element> { val l = getElementsByTagName(name); return (0 until l.length).map { l.item(it) as org.w3c.dom.Element } }
+private val ENTITY = Regex("&(#x[0-9a-fA-F]+|#[0-9]+|lt|gt|amp|quot|apos);")
+private val ATTR = Regex("([^\\s=]+)\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)')")
+private fun decodeEntities(s: String): String = if ('&' !in s) s else ENTITY.replace(s) { m ->
+    when (val g = m.groupValues[1]) {
+        "lt" -> "<"; "gt" -> ">"; "amp" -> "&"; "quot" -> "\""; "apos" -> "'"
+        else -> runCatching { String(Character.toChars(if (g.startsWith("#x")) g.substring(2).toInt(16) else g.substring(1).toInt())) }.getOrDefault("")
+    }
+}
+
+/**
+ * A small XML reader of our own rather than the platform's: phones differ in which parser features they allow, and a document must never be able to
+ * pull in files or entities. Comments, processing instructions and DOCTYPEs are skipped; only the five standard and numeric entities are expanded.
+ */
+private fun parseXml(src: String): X? {
+    val xml = src.removePrefix("\uFEFF")
+    var i = 0; val n = xml.length; val stack = ArrayList<X>(); var root: X? = null
+    while (i < n) {
+        val lt = xml.indexOf('<', i); if (lt < 0) break
+        if (lt > i && stack.isNotEmpty()) stack.last().text.append(decodeEntities(xml.substring(i, lt)))
+        when {
+            xml.startsWith("<!--", lt) -> { val e = xml.indexOf("-->", lt + 4); if (e < 0) return root; i = e + 3 }
+            xml.startsWith("<![CDATA[", lt) -> { val e = xml.indexOf("]]>", lt + 9); if (e < 0) return root; stack.lastOrNull()?.text?.append(xml, lt + 9, e); i = e + 3 }
+            xml.startsWith("<?", lt) -> { val e = xml.indexOf("?>", lt + 2); if (e < 0) return root; i = e + 2 }
+            xml.startsWith("<!", lt) -> { val e = xml.indexOf('>', lt); if (e < 0) return root; i = e + 1 }
+            xml.startsWith("</", lt) -> { val e = xml.indexOf('>', lt); if (e < 0) return root; if (stack.isNotEmpty()) stack.removeAt(stack.size - 1); i = e + 1 }
+            else -> {
+                var j = lt + 1; var quote = ' '
+                while (j < n) { val c = xml[j]; if (quote != ' ') { if (c == quote) quote = ' ' } else if (c == '"' || c == '\'') quote = c else if (c == '>') break; j++ }
+                if (j >= n) return root
+                val selfClosing = xml[j - 1] == '/'
+                val inner = xml.substring(lt + 1, if (selfClosing) j - 1 else j)
+                val nameEnd = inner.indexOfFirst { it.isWhitespace() }.let { if (it < 0) inner.length else it }
+                val attrs = HashMap<String, String>()
+                ATTR.findAll(inner.substring(nameEnd)).forEach { attrs[it.groupValues[1]] = decodeEntities(it.groupValues[2].ifEmpty { it.groupValues[3] }) }
+                val node = X(inner.substring(0, nameEnd), attrs)
+                if (stack.isNotEmpty()) stack.last().kids.add(node) else if (root == null) root = node
+                if (!selfClosing && stack.size < 400) stack.add(node)
+                i = j + 1
+            }
+        }
+    }
+    return root
+}
+
+private fun X.elements(): List<X> = kids
+private fun X.child(name: String) = kids.firstOrNull { it.tagName == name }
+private fun X.on(name: String): Boolean { val e = child(name) ?: return false; val v = e.getAttribute("w:val"); return v != "0" && v != "false" && v != "none" }
+private fun X.descendants(name: String): List<X> { val out = ArrayList<X>(); fun walk(x: X) { for (k in x.kids) { if (k.tagName == name) out.add(k); walk(k) } }; walk(this); return out }
 
 private fun zipAll(bytes: ByteArray, maxEntry: Int = 12 * 1024 * 1024): Map<String, ByteArray> {
     val out = HashMap<String, ByteArray>(); var total = 0L
@@ -79,26 +132,26 @@ private fun letterOf(n: Int): String { var x = n - 1; val sb = StringBuilder(); 
 fun docxBlocks(bytes: ByteArray): List<DocBlock> {
     val files = zipAll(bytes)
     val doc = parseXml(files["word/document.xml"]?.toString(Charsets.UTF_8) ?: return emptyList()) ?: return emptyList()
-    val body = doc.documentElement.child("w:body") ?: doc.documentElement
+    val body = doc.child("w:body") ?: doc
 
     // style id -> heading level (Title = 7)
     val headingOf = HashMap<String, Int>()
-    files["word/styles.xml"]?.toString(Charsets.UTF_8)?.let(::parseXml)?.documentElement?.descendants("w:style")?.forEach { st ->
+    files["word/styles.xml"]?.toString(Charsets.UTF_8)?.let(::parseXml)?.descendants("w:style")?.forEach { st ->
         val id = st.getAttribute("w:styleId"); val name = (st.child("w:name")?.getAttribute("w:val") ?: id).lowercase()
         val m = Regex("heading\\s*(\\d)").find(name)
         if (m != null) headingOf[id] = m.groupValues[1].toInt().coerceIn(1, 6) else if (name == "title") headingOf[id] = 7 else if (name == "subtitle") headingOf[id] = 6
     }
     // numbering: numId -> format of each level
     val formats = HashMap<String, Map<Int, String>>()
-    files["word/numbering.xml"]?.toString(Charsets.UTF_8)?.let(::parseXml)?.documentElement?.let { nr ->
+    files["word/numbering.xml"]?.toString(Charsets.UTF_8)?.let(::parseXml)?.let { nr ->
         val abstract = nr.descendants("w:abstractNum").associate { a -> a.getAttribute("w:abstractNumId") to a.descendants("w:lvl").associate { l -> (l.getAttribute("w:ilvl").toIntOrNull() ?: 0) to (l.child("w:numFmt")?.getAttribute("w:val") ?: "decimal") } }
         nr.descendants("w:num").forEach { n -> n.child("w:abstractNumId")?.getAttribute("w:val")?.let { abstract[it] }?.let { formats[n.getAttribute("w:numId")] = it } }
     }
     val rels = HashMap<String, String>()
-    files["word/_rels/document.xml.rels"]?.toString(Charsets.UTF_8)?.let(::parseXml)?.documentElement?.descendants("Relationship")?.forEach { r -> rels[r.getAttribute("Id")] = r.getAttribute("Target") }
+    files["word/_rels/document.xml.rels"]?.toString(Charsets.UTF_8)?.let(::parseXml)?.descendants("Relationship")?.forEach { r -> rels[r.getAttribute("Id")] = r.getAttribute("Target") }
     val counters = HashMap<String, IntArray>()
 
-    fun runOf(r: org.w3c.dom.Element): DocRun? {
+    fun runOf(r: X): DocRun? {
         val sb = StringBuilder()
         for (e in r.elements()) when (e.tagName) { "w:t" -> sb.append(e.textContent); "w:tab" -> sb.append('\t'); "w:br", "w:cr" -> sb.append('\n') }
         if (sb.isEmpty()) return null
@@ -107,8 +160,8 @@ fun docxBlocks(bytes: ByteArray): List<DocBlock> {
         val size = pr?.child("w:sz")?.getAttribute("w:val")?.toFloatOrNull()?.div(2)
         return DocRun(sb.toString(), pr?.on("w:b") == true, pr?.on("w:i") == true, pr?.on("w:u") == true, pr?.on("w:strike") == true, color, size)
     }
-    fun runsOf(p: org.w3c.dom.Element): List<DocRun> = p.elements().flatMap { e -> when (e.tagName) { "w:r" -> listOfNotNull(runOf(e)); "w:hyperlink", "w:smartTag", "w:ins" -> e.elements().filter { it.tagName == "w:r" }.mapNotNull(::runOf); else -> emptyList() } }
-    fun paraOf(p: org.w3c.dom.Element): DocPara {
+    fun runsOf(p: X): List<DocRun> = p.elements().flatMap { e -> when (e.tagName) { "w:r" -> listOfNotNull(runOf(e)); "w:hyperlink", "w:smartTag", "w:ins" -> e.elements().filter { it.tagName == "w:r" }.mapNotNull(::runOf); else -> emptyList() } }
+    fun paraOf(p: X): DocPara {
         val pr = p.child("w:pPr")
         val style = pr?.child("w:pStyle")?.getAttribute("w:val").orEmpty()
         val jc = when (pr?.child("w:jc")?.getAttribute("w:val")) { "center" -> "center"; "right", "end" -> "right"; "both", "distribute" -> "justify"; else -> "left" }
@@ -129,7 +182,7 @@ fun docxBlocks(bytes: ByteArray): List<DocBlock> {
         }
         return DocPara(runsOf(p), headingOf[style] ?: 0, jc, label, level.coerceIn(0, 8), indent.coerceIn(0f, 200f))
     }
-    fun imagesOf(p: org.w3c.dom.Element): List<DocImage> = p.descendants("a:blip").mapNotNull { b ->
+    fun imagesOf(p: X): List<DocImage> = p.descendants("a:blip").mapNotNull { b ->
         val target = rels[b.getAttribute("r:embed")] ?: return@mapNotNull null
         files["word/" + target.removePrefix("/word/").removePrefix("word/")]?.let(::DocImage)
     }
@@ -140,6 +193,13 @@ fun docxBlocks(bytes: ByteArray): List<DocBlock> {
         "w:tbl" -> out += DocTable(e.elements().filter { it.tagName == "w:tr" }.map { tr -> tr.elements().filter { it.tagName == "w:tc" }.map { tc -> tc.elements().filter { it.tagName == "w:p" }.map(::paraOf) } })
     }
     return out
+}
+
+/** What the previewer shows for a Word file: the full reading, or plain paragraphs when that fails or finds nothing, so the file never opens as blank. */
+fun docxForViewer(bytes: ByteArray): List<DocBlock> {
+    val full = runCatching { docxBlocks(bytes) }.getOrDefault(emptyList())
+    if (full.any { it !is DocPara || it.runs.isNotEmpty() }) return full
+    return docxPlainText(bytes).map { DocPara(listOf(DocRun(it))) }
 }
 
 /** Cells of the first worksheet as text, capped so a huge sheet cannot exhaust memory. */

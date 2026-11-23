@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -51,7 +50,8 @@ import kotlinx.coroutines.withContext
 @Composable
 fun DocxView(blocks: List<DocBlock>) {
     if (blocks.isEmpty()) { Text("Dokumen kosong.", Modifier.padding(16.dp)); return }
-    SelectionContainer {
+    // No SelectionContainer around the list: selection inside a lazy list is unreliable on some devices, and a crash here would close the previewer.
+    run {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp)) {
             // Several empty paragraphs in a row are one gap, as they are on a printed page once margins are trimmed.
             val shown = blocks.filterIndexed { i, b -> !(b is DocPara && b.runs.isEmpty() && b.label == null && (i == 0 || (blocks[i - 1] as? DocPara)?.let { it.runs.isEmpty() && it.label == null } == true)) }
