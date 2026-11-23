@@ -159,6 +159,7 @@ fun FilesScreen(vm: FilesViewModel, api: Api, imageLoader: ImageLoader, isAdmin:
                     MenuRow("Unggah file", Lu.Upload) { fabMenu = false; picker.launch(arrayOf("*/*")) }
                     MenuRow("Unggah folder", Lu.UploadFolder) { fabMenu = false; folderPicker.launch(null) }
                     MenuRow("Folder baru", Lu.FolderPlus) { fabMenu = false; dialog = Dialog.NewFolder }
+                    MenuRow("Folder dari daftar", Lu.List) { fabMenu = false; dialog = Dialog.FolderList }
                 }
             }
         },
@@ -262,6 +263,7 @@ fun FilesScreen(vm: FilesViewModel, api: Api, imageLoader: ImageLoader, isAdmin:
     }
 
     dialog?.let { d -> when (d) {
+        is Dialog.FolderList -> FolderListDialog(vm::newFolders) { dialog = null }
         is Dialog.NewFolder -> NameDialog("Folder baru", "", "Buat", vm::newFolder) { dialog = null }
         is Dialog.Rename -> NameDialog("Ganti nama", d.f.name, "Simpan", { n -> vm.rename(d.f, n) }) { dialog = null }
         is Dialog.Bulk -> RenameToolDialog(d.items, preview = { r -> vm.ops().renameMany(d.items, r, dryRun = true).items }, onApply = { r -> vm.renameMany(d.items, r) }) { dialog = null }
@@ -367,6 +369,7 @@ private fun FileRow(f: FileEntry, api: Api, imageLoader: ImageLoader, selecting:
 /** The one dialog or sheet open on the Files screen, if any. */
 private sealed interface Dialog {
     data object NewFolder : Dialog
+    data object FolderList : Dialog
     data class Rename(val f: FileEntry) : Dialog
     data class Bulk(val items: List<FileEntry>) : Dialog
     data class Delete(val items: List<FileEntry>) : Dialog

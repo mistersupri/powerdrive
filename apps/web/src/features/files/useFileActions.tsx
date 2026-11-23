@@ -1,6 +1,6 @@
 import type { ConflictPolicy, FileEntry, Permission, StorageConnectionDto, TransferJobDto } from "@superdrive/shared";
 import { useQueryClient } from "@tanstack/react-query";
-import { Check, Copy, CopyPlus, ListOrdered, Download, ExternalLink, Eye, FolderInput, Palette, FolderOpen, FolderPlus, Pencil, RefreshCw, Share2, Star, Trash2, Upload, Info, UserCheck } from "lucide-react";
+import { Check, Copy, CopyPlus, ListOrdered, ListPlus, Download, ExternalLink, Eye, FolderInput, Palette, FolderOpen, FolderPlus, Pencil, RefreshCw, Share2, Star, Trash2, Upload, Info, UserCheck } from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
@@ -11,6 +11,7 @@ import type { MenuItem } from "@/ui/Menu";
 import { enqueueUploads, type UploadInput } from "@/features/uploads/manager";
 import { DeleteDialog, NameDialog, TransferDialog } from "./dialogs";
 import { RenameTool } from "./RenameTool";
+import { FolderListDialog } from "./FolderListDialog";
 import { Preview } from "@/features/preview/Preview";
 import { ShareDialog } from "@/features/share/ShareDialog";
 import { type Selection } from "./selection";
@@ -43,7 +44,7 @@ export function useFileActions({ storage, folderId, folderName, location, onDeta
   const perms = useMemo(() => new Set<Permission>(storage?.permissions ?? []), [storage]);
   const can = (p: Permission) => perms.has(p);
   const [shareTarget, setShareTarget] = useState<FileEntry[]>([]);
-  const [dlg, setDlg] = useState<null | { t: "folder" } | { t: "rename"; e: FileEntry } | { t: "delete"; list: FileEntry[] } | { t: "transfer"; mode: "COPY" | "MOVE"; list: FileEntry[] } | { t: "claim"; e: FileEntry } | { t: "color"; e: FileEntry } | { t: "bulk"; list: FileEntry[] }>(null);
+  const [dlg, setDlg] = useState<null | { t: "folder" } | { t: "rename"; e: FileEntry } | { t: "delete"; list: FileEntry[] } | { t: "transfer"; mode: "COPY" | "MOVE"; list: FileEntry[] } | { t: "claim"; e: FileEntry } | { t: "color"; e: FileEntry } | { t: "bulk"; list: FileEntry[] } | { t: "folders" }>(null);
   const [preview, setPreview] = useState<number | null>(null);
   const fileInput = useRef<HTMLInputElement>(null); const dirInput = useRef<HTMLInputElement>(null);
   const storageId = storage?.id ?? "";
@@ -111,6 +112,7 @@ export function useFileActions({ storage, folderId, folderName, location, onDeta
   const menuFor = useCallback((e: FileEntry | null): MenuItem[] => {
     if (!e) return [
       { label: "Folder baru", icon: <FolderPlus />, hidden: !can("UPLOAD"), onSelect: () => setDlg({ t: "folder" }) },
+      { label: "Folder dari daftar…", icon: <ListPlus />, hidden: !can("UPLOAD"), onSelect: () => setDlg({ t: "folders" }) },
       { label: "Unggah file", icon: <Upload />, hidden: !can("UPLOAD"), onSelect: () => fileInput.current?.click() },
       { label: "Detail folder ini", icon: <Info />, hidden: !onDetails, onSelect: () => onDetails?.(null) },
       { label: "Muat ulang", icon: <RefreshCw />, divider: true, onSelect: () => { void refresh(); } },
@@ -147,9 +149,10 @@ export function useFileActions({ storage, folderId, folderName, location, onDeta
   const dialogs = (<>
     <input ref={fileInput} type="file" multiple hidden onChange={(e) => { upload([...(e.target.files ?? [])].map((file) => ({ file }))); e.target.value = ""; }} />
     <input ref={dirInput} type="file" hidden {...({ webkitdirectory: "", directory: "" } as object)} onChange={(e) => { upload([...(e.target.files ?? [])].map((file) => ({ file, relativePath: (file as File & { webkitRelativePath: string }).webkitRelativePath || file.name }))); e.target.value = ""; }} />
-    <NameDialog open={dlg?.t === "folder"} title="Folder baru" label="Nama folder" action="Buat" onClose={() => setDlg(null)} onSubmit={async (name) => { await api("/files/folders", { body: { storageId, parentId: folderId, name } }); await refresh(); }} />
+    <NameDialog open={dlg?.t === "folder"} title="Folder baru" label="Nama folder" action="Buat" onClose={() => setDlg(null)} extra={<button type="button" className="text-[13px] font-medium text-primary hover:underline" onClick={() => setDlg({ t: "folders" })}>Buat banyak sekaligus…</button>} onSubmit={async (name) => { await api("/files/folders", { body: { storageId, parentId: folderId, name } }); await refresh(); }} />
     <NameDialog open={dlg?.t === "rename"} title="Ganti nama" label="Nama baru" initial={dlg?.t === "rename" ? dlg.e.name : ""} action="Simpan" onClose={() => setDlg(null)}
       onSubmit={async (name) => { if (dlg?.t !== "rename") return; await api("/files/rename", { body: { storageId, fileId: dlg.e.id, name } }); await refresh(); }} />
+    <FolderListDialog open={dlg?.t === "folders"} storageId={storageId} parentId={folderId} parentName={folderName || "Semua file"} onClose={() => setDlg(null)} onDone={() => { void refresh(); }} />
     <RenameTool open={dlg?.t === "bulk"} storageId={storageId} entries={dlg?.t === "bulk" ? dlg.list : []} onClose={() => setDlg(null)} onDone={() => { selection.clear(); void refresh(); }} />
     <DeleteDialog open={dlg?.t === "delete"} entries={dlg?.t === "delete" ? dlg.list : []} provider={storage?.provider} onClose={() => setDlg(null)}
       onConfirm={async () => {
@@ -181,7 +184,7 @@ export function useFileActions({ storage, folderId, folderName, location, onDeta
   return {
     can, dialogs, menuFor, open, upload, keyAction, dropItems, star, refresh, selectedEntries,
     pickFiles: () => fileInput.current?.click(), pickFolder: () => dirInput.current?.click(),
-    newFolder: () => setDlg({ t: "folder" }), share: (e: FileEntry | FileEntry[]) => setShareTarget(Array.isArray(e) ? e : [e]),
+    newFolder: () => setDlg({ t: "folder" }), newFolders: () => setDlg({ t: "folders" }), share: (e: FileEntry | FileEntry[]) => setShareTarget(Array.isArray(e) ? e : [e]),
     transferSelected: (mode: "COPY" | "MOVE") => selectedEntries.length && setDlg({ t: "transfer", mode, list: selectedEntries }),
     duplicateSelected: () => { if (selectedEntries.length) void duplicate(selectedEntries); },
     renameSelected: () => { if (selectedEntries.length === 1) setDlg({ t: "rename", e: selectedEntries[0]! }); else if (selectedEntries.length) setDlg({ t: "bulk", list: selectedEntries }); },

@@ -35,6 +35,11 @@ fun googleEditorLabel(f: FileEntry): String? {
 /** Everything a person can do to a file or folder. Each call is one request; the server decides what is allowed. */
 class FileOps(private val api: Api) {
     suspend fun rename(f: FileEntry, name: String) { api.send("POST", "/files/rename", buildJsonObject { put("storageId", f.storageId); put("fileId", f.id); put("name", name) }) }
+    /** Creates the folders of a list (one name per line, indented lines are subfolders). Returns how many were created and how many already existed. */
+    suspend fun newFolders(storageId: String, parentId: String, text: String): Pair<Int, Int> {
+        val r: FolderBatchResult = api.post("/files/folders/batch", buildJsonObject { put("storageId", storageId); put("parentId", parentId); put("text", text) })
+        return r.created to r.existing
+    }
     /** Copies next to the originals (copies are transfer jobs and get a free name, "foto (2).jpg"). */
     suspend fun duplicate(items: List<FileEntry>) {
         require(items.isNotEmpty())

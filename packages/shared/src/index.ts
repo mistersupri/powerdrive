@@ -284,3 +284,31 @@ export function applyRenameRule(items: { name: string; isFolder: boolean }[], ru
     return b + (rule.extension === "lower" ? ext.toLowerCase() : ext);
   });
 }
+
+/* ---------- folders from a list ---------- */
+export interface FolderNode { name: string; children: FolderNode[] }
+export const FOLDER_LIST_MAX = 200;
+export const FOLDER_LIST_DEPTH = 8;
+
+/**
+ * Reads a list of folder names, one per line. A line indented deeper than the one above it becomes a subfolder of it (tabs or spaces).
+ * A leading "-", "*" or "•" is ignored, so a pasted bullet list works. Pure, so the browser can preview the tree and the server can build it.
+ */
+export function parseFolderList(text: string): { nodes: FolderNode[]; count: number; errors: string[] } {
+  const roots: FolderNode[] = []; const errors: string[] = []; let count = 0;
+  const stack: { indent: number; node: FolderNode }[] = [];
+  text.split(/\r?\n/).forEach((raw, i) => {
+    if (!raw.trim()) return;
+    const lead = /^[ \t]*/.exec(raw)![0].replace(/\t/g, "    ").length;
+    const name = raw.trim().replace(/^[-*•]\s+/, "").trim();
+    const line = `Baris ${i + 1}`;
+    if (!name || name.length > 255 || /[\\/\0]/.test(name) || name === "." || name === "..") { errors.push(`${line}: nama tidak valid (hindari / dan \\).`); return; }
+    while (stack.length && stack[stack.length - 1]!.indent >= lead) stack.pop();
+    if (stack.length >= FOLDER_LIST_DEPTH) { errors.push(`${line}: terlalu dalam (maksimal ${FOLDER_LIST_DEPTH} tingkat).`); return; }
+    const node: FolderNode = { name, children: [] };
+    (stack.length ? stack[stack.length - 1]!.node.children : roots).push(node);
+    stack.push({ indent: lead, node }); count++;
+  });
+  if (count > FOLDER_LIST_MAX) errors.push(`Terlalu banyak folder (maksimal ${FOLDER_LIST_MAX} sekali buat).`);
+  return { nodes: roots, count, errors };
+}

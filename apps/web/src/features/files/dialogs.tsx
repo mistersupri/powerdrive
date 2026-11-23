@@ -10,7 +10,7 @@ import { Skeleton } from "@/ui/misc";
 import { useStorages } from "@/features/layout/Shell";
 import { useFolder } from "./useFolder";
 
-export function NameDialog({ open, title, label, initial = "", action, onClose, onSubmit }: { open: boolean; title: string; label: string; initial?: string; action: string; onClose(): void; onSubmit(name: string): Promise<void> }) {
+export function NameDialog({ open, title, label, initial = "", action, onClose, onSubmit, extra }: { open: boolean; title: string; label: string; initial?: string; action: string; onClose(): void; onSubmit(name: string): Promise<void>; /** An extra control at the left of the footer. */ extra?: React.ReactNode }) {
   const [name, setName] = useState(initial); const [busy, setBusy] = useState(false); const [err, setErr] = useState("");
   useEffect(() => { if (open) { setName(initial); setErr(""); } }, [open, initial]);
   const submit = async () => {
@@ -19,7 +19,7 @@ export function NameDialog({ open, title, label, initial = "", action, onClose, 
     try { await onSubmit(name.trim()); onClose(); } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
   };
   return (
-    <Dialog open={open} onClose={onClose} title={title} footer={<><Button onClick={onClose}>Batal</Button><Button variant="primary" loading={busy} onClick={submit}>{action}</Button></>}>
+    <Dialog open={open} onClose={onClose} title={title} footer={<>{extra && <span className="mr-auto self-center">{extra}</span>}<Button onClick={onClose}>Batal</Button><Button variant="primary" loading={busy} onClick={submit}>{action}</Button></>}>
       <form onSubmit={(e) => { e.preventDefault(); void submit(); }}>
         <Field label={label} error={err}>{(id) => <Input id={id} autoFocus value={name} onChange={(e) => setName(e.target.value)} onFocus={(e) => { const dot = initial.lastIndexOf("."); e.currentTarget.setSelectionRange(0, dot > 0 ? dot : e.currentTarget.value.length); }} />}</Field>
       </form>

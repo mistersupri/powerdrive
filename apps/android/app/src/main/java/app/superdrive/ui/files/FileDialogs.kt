@@ -64,6 +64,27 @@ fun NameDialog(title: String, initial: String, confirm: String, onDone: (String)
     )
 }
 
+/** Several folders at once: one name per line, lines indented with spaces or a tab become subfolders of the line above. */
+@Composable
+fun FolderListDialog(onDone: (String) -> Unit, onDismiss: () -> Unit) {
+    var text by remember { mutableStateOf("") }
+    val count = text.lines().count { it.isNotBlank() }
+    AlertDialog(
+        containerColor = MaterialTheme.sd.surface, shape = androidx.compose.foundation.shape.RoundedCornerShape(22.dp),
+        onDismissRequest = onDismiss, title = { Text("Folder dari daftar") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Satu nama folder per baris. Baris yang menjorok (spasi) menjadi subfolder dari baris di atasnya. Folder yang sudah ada dipakai ulang.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.sd.muted)
+                OutlinedTextField(text, { text = it }, minLines = 6, maxLines = 10, placeholder = { Text("Proyek\n  Desain\n  Kode\nArsip 2025") }, modifier = Modifier.fillMaxWidth(),
+                    textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace))
+                Text(if (count > 0) "$count folder akan dibuat" else "Belum ada nama", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.sd.muted)
+            }
+        },
+        confirmButton = { TextButton(enabled = count > 0, onClick = { onDone(text); onDismiss() }) { Text("Buat") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Batal") } },
+    )
+}
+
 @Composable
 fun ConfirmDialog(title: String, message: String, confirm: String, onYes: () -> Unit, onDismiss: () -> Unit) {
     AlertDialog(

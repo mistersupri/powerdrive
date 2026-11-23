@@ -1,6 +1,6 @@
 import { actorOf, changedFolders, logActivity, markSeen, touchFolder } from "./activity.ts";
 import path from "node:path";
-import { applyRenameRule, FOLDER_COLORS, type FileEntry, type FileListing, type PlaceDto, type RenamePreviewItem, type RenameRule } from "@superdrive/shared";
+import { applyRenameRule, FOLDER_COLORS, parseFolderList, type FolderNode, type FileEntry, type FileListing, type PlaceDto, type RenamePreviewItem, type RenameRule } from "@superdrive/shared";
 import { db, now } from "../db.ts";
 import { emitAuto } from "../lib/autoBus.ts";
 import { audit } from "../lib/audit.ts";
@@ -130,6 +130,34 @@ export async function createFolder(ctx: AuthCtx, storageId: string, p: StoragePr
     audit({ workspaceId: ctx.workspaceId, userId: ctx.userId, action: "file.create_folder", resourceType: "file", resourceId: f.id, metadata: { storageId, name: f.name }, ip: ctx.ip });
     return toEntry(storageId, f);
   } catch (e) { mapProviderError(e, storageId); }
+}
+
+/**
+ * Creates the folders of a list (see parseFolderList) under a folder. A folder that already exists is reused and its subfolders are added inside it;
+ * a file with the same name is reported and skipped. Nothing is created when the list itself is invalid.
+ */
+export async function createFolderTree(ctx: AuthCtx, storageId: string, p: StorageProvider, parentId: string, text: string) {
+  const { nodes, count, errors } = parseFolderList(text);
+  if (errors.length) throw badRequest(errors.slice(0, 3).join(" "));
+  if (!count) throw badRequest("Daftar kosong. Tulis satu nama folder per baris.");
+  let created = 0, existing = 0; const skipped: string[] = [];
+  const find = async (parent: string, name: string) => {
+    if (p.findChild) return p.findChild(parent, name);
+    let token: string | null = null;
+    do { const r = await p.list(parent, { pageToken: token, limit: 1000 }); const hit = r.items.find((i) => i.name === name); if (hit) return hit; token = r.nextPageToken; } while (token);
+    return null;
+  };
+  const build = async (parent: string, list: FolderNode[], trail: string) => {
+    for (const n of list) {
+      let id: string; const hit = await find(parent, n.name).catch((e) => mapProviderError(e, storageId));
+      if (hit && !hit.isFolder) { skipped.push(`${trail}${n.name} (sudah ada sebagai file)`); continue; }
+      if (hit) { id = hit.id; existing++; }
+      else { id = decodeId((await createFolder(ctx, storageId, p, parent, n.name)).id); created++; }
+      if (n.children.length) await build(id, n.children, `${trail}${n.name}/`);
+    }
+  };
+  await build(parentId, nodes, "");
+  return { created, existing, skipped };
 }
 
 export async function renameFile(ctx: AuthCtx, storageId: string, p: StorageProvider, fileId: string, name: string) {

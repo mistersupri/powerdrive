@@ -13,7 +13,7 @@ import { ok, requireAuth } from "../app.ts";
 import { audit } from "../lib/audit.ts";
 import { badRequest, notFound } from "../lib/errors.ts";
 import { sendFile, sendFolderZip, sendThumbnail, sendZip } from "../modules/delivery.ts";
-import { createFolder, deleteFile, folderPreviews, listFolder, previewRenames, renameMany, setFolderColor, renameFile, searchIndex, setStar, toEntry } from "../modules/files.ts";
+import { createFolder, createFolderTree, deleteFile, folderPreviews, listFolder, previewRenames, renameMany, setFolderColor, renameFile, searchIndex, setStar, toEntry } from "../modules/files.ts";
 import { requireStorage } from "../modules/permissions.ts";
 import { getThumbnail, pickSize } from "../modules/thumbnails.ts";
 import { cancelUpload, createUpload, getUpload, receiveChunk, retryUpload, uploadHistory } from "../modules/uploads.ts";
@@ -142,6 +142,13 @@ export async function fileRoutes(app: FastifyInstance) {
     const b = z.object({ storageId: z.string(), parentId: z.string().default(ROOT), name: z.string() }).parse(req.body);
     const { ctx, p } = open(req, "UPLOAD", b.storageId);
     return ok(req, await createFolder(ctx, b.storageId, p, decodeId(b.parentId), b.name));
+  });
+
+  // Many folders at once: one name per line, indented lines become subfolders.
+  app.post("/files/folders/batch", async (req) => {
+    const b = z.object({ storageId: z.string(), parentId: z.string().default(ROOT), text: z.string().max(40_000) }).parse(req.body);
+    const { ctx, p } = open(req, "UPLOAD", b.storageId);
+    return ok(req, await createFolderTree(ctx, b.storageId, p, decodeId(b.parentId), b.text));
   });
 
   app.post("/files/rename", async (req) => {

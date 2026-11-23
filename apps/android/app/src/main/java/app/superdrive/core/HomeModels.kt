@@ -57,6 +57,7 @@ fun auditLabel(action: String): String = when (action) {
     val nextRunAt: String? = null, val lastRunAt: String? = null, val lastStatus: String? = null, val lastMessage: String? = null, val canEdit: Boolean = false, val createdByName: String = "",
 )
 @Serializable data class AutomationRun(val id: String, val startedAt: String = "", val status: String = "", val trigger: String = "", val matched: Int = 0, val acted: Int = 0, val message: String? = null, val dryRun: Boolean = false)
+@Serializable data class FolderBatchResult(val created: Int = 0, val existing: Int = 0, val skipped: List<String> = emptyList())
 /** One line of a bulk-rename preview. status is ok, same or error. */
 @Serializable data class RenameLine(val fileId: String, val from: String, val to: String, val status: String = "ok", val error: String? = null)
 @Serializable data class RenameResult(val renamed: Int = 0, val items: List<RenameLine> = emptyList())

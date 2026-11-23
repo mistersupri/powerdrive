@@ -228,6 +228,16 @@ class FilesViewModel(private val api: Api, private val ops: FileOps = FileOps(ap
 
     fun setColor(f: FileEntry, color: String) = act("Warna folder diubah") { ops.setColor(f, color) }
     fun rename(f: FileEntry, name: String) { if (name.isNotBlank() && name != f.name) act("Nama diubah") { ops.rename(f, name.trim()) } }
+    fun newFolders(text: String) {
+        val s = _state.value; val st = s.storage ?: return
+        if (text.isBlank()) return
+        viewModelScope.launch {
+            try {
+                val (created, existing) = ops.newFolders(st.id, folderId(s), text)
+                _state.update { it.copy(notice = "$created folder dibuat" + if (existing > 0) ", $existing sudah ada" else "") }; load(refresh = true)
+            } catch (e: ApiException) { _state.update { it.copy(notice = e.message ?: "Gagal.") } }
+        }
+    }
     /** Copies next to the originals; the copies run as transfers, so reload a little later too. */
     fun duplicate(items: List<FileEntry>) {
         if (items.isEmpty()) return
