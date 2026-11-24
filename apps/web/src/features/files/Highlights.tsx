@@ -12,9 +12,9 @@ const localDate = (d = new Date()) => `${d.getFullYear()}-${pad(d.getMonth() + 1
 const short = (d: Date) => d.toLocaleDateString("id-ID", { day: "numeric", month: "short" });
 
 /** "Sorotan": photos and videos from earlier years taken today or in the next three days. Hidden when there is nothing to remember. */
-export function HighlightsStrip({ onOpen }: { onOpen(items: FileEntry[]): void }) {
+export function HighlightsStrip({ storageId = "", onOpen }: { storageId?: string; onOpen(items: FileEntry[]): void }) {
   const today = localDate(); const tz = -new Date().getTimezoneOffset();
-  const q = useQuery({ queryKey: ["media-highlights", today, tz], queryFn: () => api<{ groups: HighlightGroup[] }>(`/media/highlights?date=${today}&tz=${tz}`), staleTime: 10 * 60_000 });
+  const q = useQuery({ queryKey: ["media-highlights", today, tz, storageId], queryFn: () => api<{ groups: HighlightGroup[] }>(`/media/highlights?date=${today}&tz=${tz}${storageId ? `&storageId=${storageId}` : ""}`), staleTime: 10 * 60_000 });
   const [open, setOpen] = usePersistentState<boolean>("sd-highlights", true);
   const groups = q.data?.groups ?? []; if (!groups.length) return null;
   const from = new Date(); const until = new Date(from.getTime() + 3 * 86_400_000);

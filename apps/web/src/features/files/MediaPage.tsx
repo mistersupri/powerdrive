@@ -15,6 +15,7 @@ import { IndexBanner } from "./FilesPages";
 import { toast } from "sonner";
 import { DeleteDialog } from "./dialogs";
 import { triggerDownload } from "./transferApi";
+import { usePersistentState } from "@/lib/usePersistentState";
 import { AddToAlbumDialog, AlbumGrid, FolderGrid, type Album, type MediaFolder } from "./AlbumsUi";
 import { Dialog } from "@/ui/Dialog";
 import { SlidingTabs } from "@/ui/SlidingTabs";
@@ -55,7 +56,13 @@ type Row = { key: string; kind: "head"; label: string; count: number } | { key: 
 /** Photos and videos from every connected storage, newest first, like a photo library. Reads the search index, so it fills in as storages are crawled. */
 export default function MediaPage() {
   const storages = useStorages().data ?? []; const names = useMemo(() => Object.fromEntries(storages.map((s: StorageConnectionDto) => [s.id, s.isDefault ? "Semua file" : s.name])), [storages]);
-  const [kind, setKind] = useState<Kind>("all"); const [storageId, setStorageId] = useState(""); const [open, setOpen] = useState<number | null>(null); const [sel, setSel] = useState<Set<string>>(new Set());
+  const [kind, setKind] = useState<Kind>("all");
+  // Each storage has its own gallery; "Semua penyimpanan" is the one way to see them together. The choice is remembered.
+  const [storagePref, setStoragePref] = usePersistentState<string>("sd-media-storage", "");
+  const connected = useMemo(() => storages.filter((s: StorageConnectionDto) => s.status === "CONNECTED"), [storages]);
+  const storageId = storagePref === "all" ? "" : (connected.find((s: StorageConnectionDto) => s.id === storagePref) ?? connected.find((s: StorageConnectionDto) => s.isDefault) ?? connected[0])?.id ?? "";
+  const ready = connected.length > 0;
+  const setStorageId = (id: string) => setStoragePref(id || "all"); const [open, setOpen] = useState<number | null>(null); const [sel, setSel] = useState<Set<string>>(new Set());
   const [mode, setMode] = useState<Mode>("all"); const [scope, setScope] = useState<Scope | null>(null); const [memory, setMemory] = useState<{ items: FileEntry[]; index: number } | null>(null); const [addOpen, setAddOpen] = useState(false); const [renaming, setRenaming] = useState<string | null>(null); const [dropAlbum, setDropAlbum] = useState(false);
   const showGallery = mode === "all" || scope !== null;
   const [sort, setSort] = useState<(typeof SORTS)[number][0]>("date:desc"); const [confirmDelete, setConfirmDelete] = useState(false); const qc = useQueryClient();
@@ -65,9 +72,9 @@ export default function MediaPage() {
   const dateQs = `${after ? `&after=${encodeURIComponent(after)}` : ""}${before ? `&before=${encodeURIComponent(before)}` : ""}`;
   const scopeKey = scope?.kind === "album" ? scope.id : scope ? `${scope.storageId}/${scope.folderId}` : "";
   const scopeQs = `${scope?.kind === "folder" ? `&storageId=${scope.storageId}&folderId=${encodeURIComponent(scope.folderId)}` : storageId ? `&storageId=${storageId}` : ""}${scope?.kind === "album" ? `&albumId=${scope.id}` : ""}`;
-  const timeline = useQuery({ enabled: showGallery, queryKey: ["media-timeline", kind, storageId, scopeKey, after, before], queryFn: () => api<{ months: { month: string; count: number }[] }>(`/media/timeline?kind=${kind}${scopeQs}${dateQs}`).then((r) => r.months), staleTime: 30_000 });
+  const timeline = useQuery({ enabled: showGallery && ready, queryKey: ["media-timeline", kind, storageId, scopeKey, after, before], queryFn: () => api<{ months: { month: string; count: number }[] }>(`/media/timeline?kind=${kind}${scopeQs}${dateQs}`).then((r) => r.months), staleTime: 30_000 });
   const q = useInfiniteQuery({
-    enabled: showGallery, queryKey: ["media", kind, storageId, sort, scopeKey, after, before], initialPageParam: "", getNextPageParam: (p: Page) => p.nextCursor ?? undefined, staleTime: 30_000,
+    enabled: showGallery && ready, queryKey: ["media", kind, storageId, sort, scopeKey, after, before], initialPageParam: "", getNextPageParam: (p: Page) => p.nextCursor ?? undefined, staleTime: 30_000,
     queryFn: ({ pageParam }) => api<Page>(`/media?kind=${kind}&limit=150&sort=${sortKey}&dir=${sortDir}${dateQs}${scope?.kind === "folder" ? `&storageId=${scope.storageId}&folderId=${encodeURIComponent(scope.folderId)}` : storageId ? `&storageId=${storageId}` : ""}${scope?.kind === "album" ? `&albumId=${scope.id}` : ""}${pageParam ? `&cursor=${encodeURIComponent(pageParam)}` : ""}`),
   });
   const items = useMemo(() => q.data?.pages.flatMap((p) => p.items) ?? [], [q.data]); const counts = q.data?.pages[0]?.counts;
@@ -128,12 +135,19 @@ export default function MediaPage() {
 
   const pickMode = (m: Mode) => { setMode(m); setScope(null); setSel(new Set()); };
   const empty = !q.isLoading && !items.length;
-  const chip = (k: Kind, label: string, n?: number) => <button key={k} type="button" aria-pressed={kind === k} onClick={() => { setKind(k); setSel(new Set()); }} className={cn("h-9 rounded-full px-3.5 text-[13px] font-medium pointer-coarse:h-11", kind === k ? "bg-primary-soft text-primary-ink" : "text-muted hover:bg-surface-2")}>{label}{n !== undefined ? <span className="tnum ml-1.5 text-[12px] opacity-70">{n.toLocaleString("id-ID")}</span> : null}</button>;
+  const chip = (k: Kind, label: string, n?: number) => <button key={k} type="button" aria-pressed={kind === k} onClick={() => { setKind(k); setSel(new Set()); }} className={cn("h-9 rounded-full px-3.5 text-[13px] font-medium pointer-coarse:h-11", kind === k ? "bg-primary-soft text-primary-ink" : "text-muted hover:bg-surface-2")}>{label}{n !== undefined ? <span className="tnum ml-1.5 text-[12px] opacity-70">{n >= 10_000 ? new Intl.NumberFormat("id-ID", { notation: "compact", maximumFractionDigits: 1 }).format(n) : n.toLocaleString("id-ID")}</span> : null}</button>;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <PageHeader title="Media" subtitle="Foto dan video dari semua penyimpanan, terbaru di atas." />
-      <div className="border-b border-line bg-surface px-4 pt-1.5 sm:px-8"><SlidingTabs label="Tampilan media" value={mode} onChange={pickMode} tabs={[["all", "Semua"], ["folders", "Folder"], ["albums", "Album"]] as const} /></div>
+      <PageHeader title="Media" subtitle={storageId ? `Foto dan video di ${names[storageId] ?? "penyimpanan ini"}, terbaru di atas.` : "Foto dan video dari semua penyimpanan, terbaru di atas."} />
+      <div className="flex items-end gap-3 border-b border-line bg-surface px-4 pt-1.5 sm:px-8">
+        <div className="min-w-0 flex-1"><SlidingTabs label="Tampilan media" value={mode} onChange={pickMode} tabs={[["all", "Semua"], ["folders", "Folder"], ["albums", "Album"]] as const} /></div>
+        {mode !== "albums" && !scope && connected.length > 1 && (
+          <Select aria-label="Penyimpanan" value={storageId} onChange={(e) => { setStorageId(e.target.value); setSel(new Set()); }} className="mb-1.5 h-9 w-40 text-[13px] sm:w-52">
+            {connected.map((s: StorageConnectionDto) => <option key={s.id} value={s.id}>{s.isDefault ? "Semua file" : s.name}</option>)}
+            <option value="">Semua penyimpanan</option>
+          </Select>)}
+      </div>
       {scope && (
         <div className="flex flex-wrap items-center gap-1 border-b border-line bg-surface px-4 py-1.5 sm:px-8">
           <Button size="sm" variant="ghost" icon={<ArrowLeft className="size-4" />} onClick={() => { setScope(null); setSel(new Set()); }}>{mode === "albums" ? "Album" : "Folder"}</Button>
@@ -155,13 +169,12 @@ export default function MediaPage() {
           <Button size="sm" iconOnlyMobile aria-label="Tambah ke album" title="Tambah ke album" icon={<FolderPlus className="size-4" />} onClick={() => setAddOpen(true)}>Album</Button>
           {scope?.kind === "album" && <Button size="sm" iconOnlyMobile aria-label="Keluarkan dari album" title="Keluarkan dari album" icon={<FolderMinus className="size-4" />} onClick={() => void leaveAlbum()}>Keluarkan</Button>}
           <Button size="sm" iconOnlyMobile aria-label="Hapus" title="Hapus" className="text-danger-ink hover:bg-danger-soft hover:text-danger-ink" icon={<Trash2 className="size-4" />} onClick={() => setConfirmDelete(true)}>Hapus</Button>
-        </>) : (
-          <Select aria-label="Penyimpanan" value={storageId} onChange={(e) => { setStorageId(e.target.value); setSel(new Set()); }} className="h-9 w-full text-[13px] sm:w-52"><option value="">Semua penyimpanan</option>{storages.filter((s: StorageConnectionDto) => s.status === "CONNECTED").map((s: StorageConnectionDto) => <option key={s.id} value={s.id}>{s.isDefault ? "Semua file" : s.name}</option>)}</Select>)}
+        </>) : null}
       </div>}
       {showGallery && <IndexBanner />}
-      {mode === "all" && !scope && kind === "all" && chosen.length === 0 && <HighlightsStrip onOpen={(its) => setMemory({ items: its, index: 0 })} />}
+      {mode === "all" && !scope && kind === "all" && chosen.length === 0 && <HighlightsStrip storageId={storageId} onOpen={(its) => setMemory({ items: its, index: 0 })} />}
       {!showGallery && <div className="scroll-thin min-h-0 flex-1 overflow-y-auto px-4 sm:px-8" role="region" aria-label={mode === "folders" ? "Folder berisi media" : "Album"}>
-        {mode === "folders" ? <FolderGrid storageId="" onOpen={(f: MediaFolder) => setScope({ kind: "folder", storageId: f.storageId, folderId: f.folderId, name: f.name })} /> : <AlbumGrid onOpen={(a: Album) => setScope({ kind: "album", id: a.id, name: a.name, isPrivate: a.isPrivate })} />}
+        {mode === "folders" ? <FolderGrid storageId={storageId} ready={ready} onOpen={(f: MediaFolder) => setScope({ kind: "folder", storageId: f.storageId, folderId: f.folderId, name: f.name })} /> : <AlbumGrid onOpen={(a: Album) => setScope({ kind: "album", id: a.id, name: a.name, isPrivate: a.isPrivate })} />}
       </div>}
       <div className={cn("relative flex min-h-0 flex-1", !showGallery && "hidden")}>
       <div ref={box} className="scroll-thin relative min-h-0 min-w-0 flex-1 overflow-y-auto px-4 pb-24 sm:px-8" role="region" aria-label="Galeri media">

@@ -39,8 +39,8 @@ function Card({ cover, title, sub, onClick, badge, tone }: { cover: FileEntry | 
 const Grid = ({ children }: { children: React.ReactNode }) => <div className="grid grid-cols-2 gap-x-3 gap-y-4 pt-4 pb-24 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">{children}</div>;
 
 /** The "Folder" view: every folder that holds photos or videos. */
-export function FolderGrid({ storageId, onOpen }: { storageId: string; onOpen(f: MediaFolder): void }) {
-  const q = useQuery({ queryKey: ["media-folders", storageId], queryFn: () => api<{ items: MediaFolder[] }>(`/media/folders${storageId ? `?storageId=${storageId}` : ""}`), staleTime: 30_000 });
+export function FolderGrid({ storageId, ready = true, onOpen }: { storageId: string; ready?: boolean; onOpen(f: MediaFolder): void }) {
+  const q = useQuery({ enabled: ready, queryKey: ["media-folders", storageId], queryFn: () => api<{ items: MediaFolder[] }>(`/media/folders${storageId ? `?storageId=${storageId}` : ""}`), staleTime: 30_000 });
   if (q.isLoading) return <Grid>{Array.from({ length: 8 }, (_, i) => <Skeleton key={i} className="aspect-square" />)}</Grid>;
   const items = q.data?.items ?? [];
   if (!items.length) return <EmptyState icon={FolderOpen} title="Belum ada folder berisi foto">Folder yang berisi foto atau video muncul di sini.</EmptyState>;

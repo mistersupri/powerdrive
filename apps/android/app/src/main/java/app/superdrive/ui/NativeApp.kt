@@ -82,7 +82,7 @@ private fun Shell(session: Session, me: app.superdrive.core.Me, onLogout: () -> 
     val context = LocalContext.current
     val imageLoader = remember { ImageLoader.Builder(context).components { add(OkHttpNetworkFetcherFactory(callFactory = { api.http })) }.build() }
     val files: FilesViewModel = viewModel(factory = viewModelFactory { initializer { FilesViewModel(api, uploader = app.superdrive.core.Uploader(context.applicationContext, api)) } })
-    val media: MediaViewModel = viewModel(factory = viewModelFactory { initializer { MediaViewModel(api) } })
+    val media: MediaViewModel = viewModel(factory = viewModelFactory { initializer { MediaViewModel(api, context.getSharedPreferences("superdrive", android.content.Context.MODE_PRIVATE)) } })
     val home: app.superdrive.ui.home.HomeViewModel = viewModel(factory = viewModelFactory { initializer { app.superdrive.ui.home.HomeViewModel(api) } })
     val transfers: app.superdrive.ui.transfers.TransfersViewModel = viewModel(factory = viewModelFactory { initializer { app.superdrive.ui.transfers.TransfersViewModel(api) } })
     val shared: app.superdrive.ui.shared.SharedViewModel = viewModel(factory = viewModelFactory { initializer { app.superdrive.ui.shared.SharedViewModel(api) } })

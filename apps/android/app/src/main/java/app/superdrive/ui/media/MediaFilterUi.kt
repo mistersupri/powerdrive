@@ -56,31 +56,24 @@ import java.util.Calendar
 import java.util.TimeZone
 
 @Composable
-private fun Pill(text: String, on: Boolean, onClick: () -> Unit) {
+internal fun Pill(text: String, on: Boolean, onClick: () -> Unit) {
     val c = MaterialTheme.sd
     Text(text, Modifier.clip(RoundedCornerShape(50)).background(if (on) c.primary else c.surface2).pressable(onClick = onClick, shape = RoundedCornerShape(50), scaleTo = 0.95f).padding(horizontal = 14.dp, vertical = 8.dp), style = MaterialTheme.typography.labelLarge, color = if (on) Color.White else c.ink)
 }
 
-/** Period and storage filters for the gallery. Each choice applies at once. */
+/** Period filter for the gallery. Each choice applies at once. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MediaFilterSheet(filter: MediaFilter, storages: List<Storage>, showStorage: Boolean, onChange: (MediaFilter) -> Unit, onDismiss: () -> Unit) {
+fun MediaFilterSheet(filter: MediaFilter, onChange: (MediaFilter) -> Unit, onDismiss: () -> Unit) {
     var picking by remember { mutableStateOf(false) }
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.sd.surface, shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)) {
         Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 16.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Text("Filter media", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.sd.ink, modifier = Modifier.padding(start = 4.dp))
+            Text("Filter waktu", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.sd.ink, modifier = Modifier.padding(start = 4.dp))
             SectionLabel("Periode")
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(MediaPeriod.entries.toList()) { p ->
                     val label = if (p == MediaPeriod.Custom && filter.period == MediaPeriod.Custom && filter.customLabel != null) filter.customLabel else p.label
                     Pill(label, filter.period == p) { if (p == MediaPeriod.Custom) picking = true else onChange(filter.copy(period = p)) }
-                }
-            }
-            if (showStorage && storages.isNotEmpty()) {
-                SectionLabel("Penyimpanan")
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    item { Pill("Semua", filter.storageId == null) { onChange(filter.copy(storageId = null)) } }
-                    items(storages) { st -> Pill(st.name, filter.storageId == st.id) { onChange(filter.copy(storageId = st.id)) } }
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -109,12 +102,11 @@ fun MediaFilterSheet(filter: MediaFilter, storages: List<Storage>, showStorage: 
 
 /** Active filters as removable chips above the grid. */
 @Composable
-fun ActiveFilters(filter: MediaFilter, storageName: String?, onChange: (MediaFilter) -> Unit) {
+fun ActiveFilters(filter: MediaFilter, onChange: (MediaFilter) -> Unit) {
     val c = MaterialTheme.sd
     if (!filter.active) return
     LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 4.dp)) {
         if (filter.period != MediaPeriod.All) item { Chip(if (filter.period == MediaPeriod.Custom) filter.customLabel ?: "Rentang tanggal" else filter.period.label) { onChange(filter.copy(period = MediaPeriod.All)) } }
-        if (filter.storageId != null) item { Chip(storageName ?: "Penyimpanan") { onChange(filter.copy(storageId = null)) } }
     }
 }
 
@@ -155,4 +147,23 @@ fun DateScrubber(frac: Float, label: String?, visible: Boolean, onMove: (Float) 
             }
         }
     }
+}
+
+
+/** Which storage's photos are shown. Each storage is its own gallery; the last pill shows them all together. */
+@Composable
+fun StorageBar(storages: List<Storage>, selected: String?, onSelect: (String?) -> Unit) {
+    if (storages.size < 2) return
+    LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 6.dp)) {
+        items(storages, key = { it.id }) { st -> Pill(if (st.isDefault) "Semua file" else st.name, selected == st.id) { onSelect(st.id) } }
+        item { Pill("Semua penyimpanan", selected == null) { onSelect(null) } }
+    }
+}
+
+/** 1.234 -> "1,2 rb", 137.366 -> "137 rb", 1.400.000 -> "1,4 jt": a count that always fits in a chip. */
+fun compactCount(n: Int): String = when {
+    n < 1_000 -> n.toString()
+    n < 10_000 -> "%.1f".format(java.util.Locale("id", "ID"), n / 1000.0).removeSuffix(",0") + " rb"
+    n < 1_000_000 -> "${n / 1000} rb"
+    else -> "%.1f".format(java.util.Locale("id", "ID"), n / 1_000_000.0).removeSuffix(",0") + " jt"
 }

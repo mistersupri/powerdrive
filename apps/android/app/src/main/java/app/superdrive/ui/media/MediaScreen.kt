@@ -150,12 +150,12 @@ fun MediaScreen(vm: MediaViewModel, api: Api, imageLoader: ImageLoader, userId: 
                 BarIcon(Lu.Trash, "Hapus", { confirmTrash = true }, tint = Color.White)
             } else PageHeader(
                 title = title,
-                subtitle = when { s.loading -> null; inGallery -> "${s.photos} foto · ${s.videos} video"; s.mode == MediaMode.Folders -> "${s.folders.size} folder"; else -> "${s.albums.size} album" },
+                subtitle = when { s.loading -> null; inGallery -> "${"%,d".format(java.util.Locale("id", "ID"), s.photos)} foto · ${"%,d".format(java.util.Locale("id", "ID"), s.videos)} video"; s.mode == MediaMode.Folders -> "${s.folders.size} folder"; else -> "${s.albums.size} album" },
                 leading = if (s.scope != null) ({ BarIcon(Lu.Back, "Kembali", { vm.closeScope() }, tint = MaterialTheme.sd.ink) }) else null,
                 actions = {
                     if (s.mode == MediaMode.Albums && s.scope == null) BarIcon(Lu.Plus, "Album baru", { newAlbum = true }, tint = MaterialTheme.sd.primaryInk)
                     if (s.mode == MediaMode.Albums && s.scope == null && s.privateStatus.unlocked) TextButton(onClick = vm::lockPrivate) { Icon(Lu.Lock, null, Modifier.size(16.dp)); Text("  Kunci") }
-                    if (inGallery) BarIcon(Lu.Filter, "Filter", { vm.loadStorages(); filterSheet = true }, tint = if (s.filter.active) MaterialTheme.sd.primary else MaterialTheme.sd.muted)
+                    if (inGallery) BarIcon(Lu.Filter, "Filter", { filterSheet = true }, tint = if (s.filter.active) MaterialTheme.sd.primary else MaterialTheme.sd.muted)
                     if (inGallery) Box {
                         BarIcon(Lu.More, "Urutkan", { sortMenu = true })
                         DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }, shape = RoundedCornerShape(14.dp)) {
@@ -168,6 +168,7 @@ fun MediaScreen(vm: MediaViewModel, api: Api, imageLoader: ImageLoader, userId: 
     ) { pad ->
         Column(Modifier.padding(pad).fillMaxSize()) {
             if (s.scope == null) SlidingTabs(listOf("Semua", "Folder", "Album"), s.mode.ordinal, { vm.setMode(listOf(MediaMode.All, MediaMode.Folders, MediaMode.Albums)[it]) }, Modifier.padding(horizontal = 16.dp, vertical = 10.dp))
+            if (s.scope == null && s.mode != MediaMode.Albums) StorageBar(s.storages, s.storageId, vm::selectStorage)
             PullToRefreshBox(isRefreshing = s.refreshing, onRefresh = { vm.reload(true) }, modifier = Modifier.fillMaxSize()) {
                 when {
                     s.loading -> SkeletonGrid()
@@ -180,7 +181,7 @@ fun MediaScreen(vm: MediaViewModel, api: Api, imageLoader: ImageLoader, userId: 
         }
     }
 
-    if (filterSheet) MediaFilterSheet(s.filter, s.storages, showStorage = s.scope == null, onChange = vm::setFilter, onDismiss = { filterSheet = false })
+    if (filterSheet) MediaFilterSheet(s.filter, onChange = vm::setFilter, onDismiss = { filterSheet = false })
     open?.let { o -> MediaViewer(o.items, o.index, api, imageLoader, onClose = { open = null }) }
     if (unlocking) UnlockDialog(userId = userId, error = s.unlockError, hasPassword = s.privateStatus.hasPassword, onDismiss = { unlocking = false; vm.clearUnlockError() }, onUnlock = { vm.unlock(it) })
     LaunchedEffect(s.privateStatus.unlocked) { if (s.privateStatus.unlocked) unlocking = false }
@@ -285,12 +286,12 @@ private fun Gallery(s: MediaState, vm: MediaViewModel, api: Api, imageLoader: Im
                 val n = when (k) { MediaKind.All -> s.photos + s.videos; MediaKind.Image -> s.photos; MediaKind.Video -> s.videos }
                 val on = s.kind == k
                 Row(Modifier.clip(RoundedCornerShape(50)).background(if (on) MaterialTheme.sd.primary else MaterialTheme.sd.surface).border(1.dp, if (on) MaterialTheme.sd.primary else MaterialTheme.sd.line, RoundedCornerShape(50)).pressable(onClick = { vm.setKind(k) }, shape = RoundedCornerShape(50), scaleTo = 0.95f).padding(horizontal = 14.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(k.label, style = MaterialTheme.typography.labelLarge, color = if (on) Color.White else MaterialTheme.sd.ink)
-                    Text("  $n", style = MaterialTheme.typography.labelMedium, color = if (on) Color.White.copy(alpha = 0.8f) else MaterialTheme.sd.faint)
+                    Text(k.label, style = MaterialTheme.typography.labelLarge, color = if (on) Color.White else MaterialTheme.sd.ink, maxLines = 1, softWrap = false)
+                    Text("  ${compactCount(n)}", maxLines = 1, softWrap = false, style = MaterialTheme.typography.labelMedium, color = if (on) Color.White.copy(alpha = 0.8f) else MaterialTheme.sd.faint)
                 }
             }
         }
-        ActiveFilters(s.filter, s.storages.firstOrNull { it.id == s.filter.storageId }?.name) { vm.setFilter(it) }
+        ActiveFilters(s.filter) { vm.setFilter(it) }
         if (s.items.isEmpty()) { Message(if (s.filter.active) "Tidak ada foto atau video yang cocok dengan filter." else "Belum ada foto atau video di sini."); return@Column }
         Box(Modifier.fillMaxSize()) {
         LazyVerticalGrid(columns = GridCells.Adaptive(112.dp), horizontalArrangement = Arrangement.spacedBy(2.dp), verticalArrangement = Arrangement.spacedBy(2.dp), contentPadding = PaddingValues(bottom = 16.dp), state = gridState, modifier = Modifier.fillMaxSize().dragSelect(gridState, { k -> byKey[k as? String] }, vm::select)) {

@@ -34,8 +34,8 @@ enum class MediaSort(val sort: String, val dir: String, val label: String) {
 }
 /** Which period of the gallery is shown. Custom carries its own dates. */
 enum class MediaPeriod(val label: String) { All("Semua waktu"), Today("Hari ini"), Week("7 hari terakhir"), Month("30 hari terakhir"), Year("Tahun ini"), Custom("Pilih tanggal") }
-data class MediaFilter(val period: MediaPeriod = MediaPeriod.All, val customAfter: String? = null, val customBefore: String? = null, val customLabel: String? = null, val storageId: String? = null) {
-    val active get() = period != MediaPeriod.All || storageId != null
+data class MediaFilter(val period: MediaPeriod = MediaPeriod.All, val customAfter: String? = null, val customBefore: String? = null, val customLabel: String? = null) {
+    val active get() = period != MediaPeriod.All
 }
 
 sealed interface MediaScope {
@@ -50,6 +50,9 @@ data class MediaState(
     val filter: MediaFilter = MediaFilter(),
     val timeline: List<MonthCount> = emptyList(),
     val storages: List<Storage> = emptyList(),
+    /** The storage whose photos are shown; null is every storage together. Each storage has its own gallery. */
+    val storageId: String? = null,
+    val storageReady: Boolean = false,
     val sort: MediaSort = MediaSort.Newest,
     val items: List<FileEntry> = emptyList(),
     val cursor: String? = null,
@@ -70,12 +73,33 @@ data class MediaState(
     val pickerAlbums: List<Album>? = null,
 )
 
-class MediaViewModel(private val api: Api) : ViewModel() {
+private const val PREF_STORAGE = "media_storage"
+
+class MediaViewModel(private val api: Api, private val prefs: android.content.SharedPreferences? = null) : ViewModel() {
     private val _state = MutableStateFlow(MediaState())
     val state: StateFlow<MediaState> = _state
     private var job: Job? = null
 
-    init { reload(false); loadHighlights() }
+    init {
+        viewModelScope.launch { chooseStorage(); reload(false); loadHighlights() }
+    }
+
+    /** Starts on the storage used last time, or the first one: photos from different storages are not mixed unless asked for. */
+    private suspend fun chooseStorage() {
+        try {
+            val all = api.get<List<Storage>>("/storages").filter { it.status == "CONNECTED" }
+            val saved = prefs?.getString(PREF_STORAGE, null)
+            val pick = when { saved == "all" -> null; saved != null && all.any { it.id == saved } -> saved; else -> (all.firstOrNull { it.isDefault } ?: all.firstOrNull())?.id }
+            _state.update { it.copy(storages = all, storageId = pick, storageReady = true) }
+        } catch (e: ApiException) { _state.update { it.copy(storageReady = true) } }
+    }
+
+    fun selectStorage(id: String?) {
+        if (_state.value.storageId == id) return
+        prefs?.edit()?.putString(PREF_STORAGE, id ?: "all")?.apply()
+        _state.update { it.copy(storageId = id, items = emptyList(), cursor = null, timeline = emptyList(), folders = emptyList(), highlights = emptyList(), selection = emptySet()) }
+        reload(false); loadHighlights()
+    }
 
     private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
 
@@ -95,7 +119,7 @@ class MediaViewModel(private val api: Api) : ViewModel() {
         val (after, before) = range(s.filter)
         if (after != null) append("&after=${enc(after)}")
         if (before != null) append("&before=${enc(before)}")
-        if (s.filter.storageId != null && s.scope !is MediaScope.InFolder) append("&storageId=${enc(s.filter.storageId)}")
+        if (s.storageId != null && s.scope !is MediaScope.InFolder) append("&storageId=${enc(s.storageId)}")
     }
 
     private fun range(f: MediaFilter): Pair<String?, String?> {
@@ -128,7 +152,6 @@ class MediaViewModel(private val api: Api) : ViewModel() {
     }
 
     fun setFilter(f: MediaFilter) { if (_state.value.filter == f) return; _state.update { it.copy(filter = f, items = emptyList(), cursor = null, timeline = emptyList()) }; reload(false) }
-    fun loadStorages() { if (_state.value.storages.isNotEmpty()) return; viewModelScope.launch { try { _state.update { it.copy(storages = api.get<List<Storage>>("/storages").filter { st -> st.status == "CONNECTED" && !st.isDefault }) } } catch (_: ApiException) { } } }
 
     fun reload(refresh: Boolean) {
         job?.cancel()
@@ -137,7 +160,7 @@ class MediaViewModel(private val api: Api) : ViewModel() {
             val s = _state.value
             try {
                 when {
-                    s.mode == MediaMode.Folders && s.scope == null -> { val f = api.get<MediaFolders>("/media/folders"); _state.update { it.copy(folders = f.items, loading = false, refreshing = false) } }
+                    s.mode == MediaMode.Folders && s.scope == null -> { val f = api.get<MediaFolders>("/media/folders" + (s.storageId?.let { "?storageId=${enc(it)}" } ?: "")); _state.update { it.copy(folders = f.items, loading = false, refreshing = false) } }
                     s.mode == MediaMode.Albums && s.scope == null -> { val a = api.get<Albums>("/albums"); _state.update { it.copy(albums = a.albums, privateStatus = a.privateStatus, loading = false, refreshing = false) } }
                     else -> { val p = api.get<MediaPage>(pagePath(s, null)); _state.update { it.copy(items = p.items, cursor = p.nextCursor, photos = p.counts.image, videos = p.counts.video, loading = false, refreshing = false) }; loadTimeline() }
                 }
@@ -162,7 +185,7 @@ class MediaViewModel(private val api: Api) : ViewModel() {
                 val now = Calendar.getInstance()
                 val date = "%04d-%02d-%02d".format(now.get(Calendar.YEAR), now.get(Calendar.MONTH) + 1, now.get(Calendar.DAY_OF_MONTH))
                 val tz = TimeZone.getDefault().getOffset(now.timeInMillis) / 60_000
-                val h = api.get<Highlights>("/media/highlights?date=$date&tz=$tz")
+                val h = api.get<Highlights>("/media/highlights?date=$date&tz=$tz" + (_state.value.storageId?.let { "&storageId=${enc(it)}" } ?: ""))
                 _state.update { it.copy(highlights = h.groups) }
             } catch (e: ApiException) { /* memories are a bonus: no error screen for them */ }
         }

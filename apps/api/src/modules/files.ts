@@ -407,8 +407,8 @@ export function mediaTimeline(ctx: AuthCtx, q: { kind?: "all" | "image" | "video
 }
 
 /** "On this day" for the gallery: see mediaHighlights. */
-export function listMediaHighlights(ctx: AuthCtx, today: string, tz: number) {
-  const storages = db.all<{ id: string }>("SELECT id FROM storages WHERE workspace_id = ? AND status = 'CONNECTED'", ctx.workspaceId).map((r) => r.id).filter((id) => permissionsFor(ctx, id).includes("READ"));
+export function listMediaHighlights(ctx: AuthCtx, today: string, tz: number, storageId?: string) {
+  const storages = db.all<{ id: string }>("SELECT id FROM storages WHERE workspace_id = ? AND status = 'CONNECTED'", ctx.workspaceId).map((r) => r.id).filter((id) => permissionsFor(ctx, id).includes("READ") && (!storageId || storageId === id));
   return mediaHighlights(ctx, `${TYPE_FILTERS.image} OR ${TYPE_FILTERS.video}`, storages, today, tz);
 }
 
